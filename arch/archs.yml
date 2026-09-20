@@ -1,0 +1,4 @@
+archs:
+  - name: wasm
+    path: wasm
+    full_name: WebAssembly

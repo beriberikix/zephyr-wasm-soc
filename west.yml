@@ -21,3 +21,5 @@ manifest:
       remote: upstream
       revision: e201b84b04e4fab1844658e71da0b7e340f1cc82
       path: zephyr
+      # Without this, `west build` is not available in the workspace.
+      west-commands: scripts/west-commands.yml

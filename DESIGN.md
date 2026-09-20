@@ -171,6 +171,8 @@ Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 | `OUTPUT_STAT` | readelf step. |
 | `OUTPUT_PRINT_MEMORY_USAGE` | Parses ELF section sizes. |
 
+All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
+
 ## 5. Changes to the Zephyr tree
 
 The Zephyr tree is read-only. Anything unavoidable becomes a numbered patch in

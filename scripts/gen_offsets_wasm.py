@@ -92,7 +92,18 @@ def main() -> int:
     ap.add_argument("--compiler", help="compiler to run when input is a .c file")
     ap.add_argument("--flag", action="append", default=[], dest="flags",
                     help="compiler flag, repeatable")
+    ap.add_argument("--rsp", type=Path,
+                    help="file of compiler flags, one per line; the build writes "
+                         "this because the real flags are only known at generate time")
     args = ap.parse_args()
+
+    if args.rsp and args.rsp.exists():
+        for line in args.rsp.read_text().splitlines():
+            line = line.strip()
+            # A bare -I/-D/-isystem with nothing after it is an empty
+            # property, not a flag.
+            if line and line not in ("-I", "-D", "-isystem"):
+                args.flags.append(line)
 
     if args.input.suffix == ".c":
         if not args.compiler:

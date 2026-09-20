@@ -1,0 +1,10 @@
+identifier: wasm_node
+name: WebAssembly on a Node.js host
+type: sim
+simulation:
+  - name: custom
+toolchain:
+  - wasm-clang
+ram: 1024
+testing:
+  default: false

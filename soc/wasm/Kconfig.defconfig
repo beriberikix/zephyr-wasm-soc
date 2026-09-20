@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_NODE
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 1000000
+
+config NUM_IRQS
+	default 16
+
+endif # SOC_NODE

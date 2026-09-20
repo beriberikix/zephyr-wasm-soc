@@ -1,0 +1,57 @@
+# WebAssembly architecture configuration
+# SPDX-License-Identifier: Apache-2.0
+
+config WASM
+	bool
+	select ARCH_IS_SET
+	select ATOMIC_OPERATIONS_C
+	select USE_SWITCH
+	select USE_SWITCH_SUPPORTED
+	select ARCH_HAS_CUSTOM_SWAP_TO_MAIN
+	select ARCH_HAS_CUSTOM_BUSY_WAIT
+	help
+	  WebAssembly architecture. The kernel runs freestanding in a single
+	  wasm32 linear memory; the host supplies devices as imported
+	  functions rather than as memory-mapped registers.
+
+if WASM
+
+menu "WebAssembly Options"
+
+config ARCH
+	string
+	default "wasm"
+
+# Context switching runs on Binaryen's Asyncify transform for now. Everything
+# goes through one internal interface so a stack-switching backend can replace
+# it later without touching the rest of the arch.
+config WASM_ASYNCIFY
+	bool
+	default y
+	help
+	  Use Asyncify to save and restore thread stacks.
+
+config WASM_ASYNCIFY_BUFFER_SIZE
+	int "Bytes of each thread stack reserved for the Asyncify buffer"
+	default 4096
+	help
+	  Every thread stack object is split in two: the low part is the C
+	  shadow stack, the high part is the Asyncify buffer that holds
+	  unwound wasm frames.
+
+	  Spike C measured the buffer needing roughly 88 bytes plus 32 per
+	  frame live when the thread yields. Asyncify does not bounds-check
+	  this buffer: overflowing it corrupts whatever follows, silently and
+	  without a trap, so the default is deliberately generous.
+
+config WASM_IRQ_LINES
+	int "Number of host interrupt lines"
+	default 16
+	help
+	  Size of the software ISR table. Interrupts arrive cooperatively: the
+	  host sets a pending word in linear memory and the kernel notices it
+	  at a safepoint.
+
+endmenu
+
+endif # WASM

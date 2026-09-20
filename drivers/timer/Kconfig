@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config WASM_HOST_TIMER
+	bool "System timer backed by the zephyr_host clock imports"
+	default y
+	depends on WASM
+	select TICKLESS_CAPABLE
+	help
+	  Monotonic time and alarms come from the host. Under virtual time the
+	  host jumps to the next deadline when the kernel idles, which is what
+	  makes runs reproducible.

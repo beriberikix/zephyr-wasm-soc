@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+description: System timer provided by the host through the zephyr_host imports
+compatible: "wasm,host-timer"
+include: base.yaml

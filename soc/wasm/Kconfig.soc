@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_NODE
+	bool
+	select SOC_FAMILY_WASM
+	help
+	  A Node.js host acting as the SoC: it provides the zephyr_host
+	  imports instead of memory-mapped peripherals.
+
+config SOC
+	default "node" if SOC_NODE
+
+config SOC_SERIES
+	default "wasm" if SOC_NODE
+
+config SOC_FAMILY
+	default "wasm" if SOC_FAMILY_WASM
+
+config SOC_FAMILY_WASM
+	bool

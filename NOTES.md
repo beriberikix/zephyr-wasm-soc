@@ -1,17 +1,23 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 2 done  |  Last commit: spike C  |  Blocker: none
-Milestone 0 complete. Next: Milestone 1, starting with the toolchain,
-SoC, board and Kconfig skeleton, aiming first at
-`west build -b wasm_node samples/hello_world --cmake-only` configuring.
+Tick: 3 done  |  Last commit: M1 configure  |  Blocker: none
+Next: get the build to compile and link. Configure now succeeds; the C has
+not been compiled yet, so expect real errors in the arch sources and in the
+minimal libc's expectations. After that, the post-link wasm-opt step and
+host/run.mjs.
+
+Build command (until README.md is written):
+  west build -b wasm_node -d build-hello zephyr/samples/hello_world -- \
+    -DTOOLCHAIN_ROOT=$POC -DZEPHYR_TOOLCHAIN_VARIANT=wasm-clang \
+    -DWASM_MODULE_DIR=$POC -DZEPHYR_EXTRA_MODULES=$POC
 
 ### Checklist
 - [x] T0 tools installed, workspace created
 - [x] M0-A sections spike ... decision recorded
 - [x] M0-B offsets spike ... decision recorded
 - [x] M0-C fibers spike ... numbers recorded
-- [ ] M1 toolchain+board configure (west build --cmake-only)
+- [x] M1 toolchain+board configure (west build --cmake-only)
 - [ ] M1 link zephyr.elf -> zephyr.wasm (post-link wasm-opt)
 - [ ] M1 host/run.mjs boots to banner
 - [ ] M1 threads switch (synchronization sample)
@@ -274,3 +280,50 @@ error. `--pass-arg=asyncify-asserts` does not change this; it checks state
 transitions, not bounds. The Asyncify half of every thread stack therefore has
 to be sized for the deepest stack that thread can reach, and the port should
 put something detectable immediately after it.
+
+
+### Tick 3 — Milestone 1: the build configures
+
+`west build -b wasm_node samples/hello_world --cmake-only` now completes.
+That is only configuration: nothing has been compiled yet.
+
+Six things had to be settled to get there, and all but the last were
+straightforward once found.
+
+**The SoC directory is keyed by where soc.yml sits.** Putting `soc.yml` at the
+top of the SoC tree and the Kconfig files in a subdirectory produced a SoC
+directory of `soc/`, so none of the Kconfig files were sourced and `ARCH` came
+out undefined. `soc.yml` and the Kconfig files have to be siblings.
+
+**The manifest must declare Zephyr's west extensions.** Without
+`west-commands: scripts/west-commands.yml` on the zephyr project, `west build`
+does not exist in the workspace at all.
+
+**TOOLCHAIN_ROOT has to supply Zephyr's generic templates too.** Pointing it at
+the module makes Zephyr look there for `cmake/linker/target_template.cmake` and
+`cmake/compiler/target_template.cmake`, which are not toolchain specific. The
+module ships one-line shims that include the originals.
+
+**CMake's compiler probes link an executable**, and wasm-ld refuses to link one
+without an entry symbol. `CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY` is the
+usual answer for a freestanding target and works here.
+
+**Two more linker hooks were needed** beyond the documented ones:
+`toolchain_ld_configure_files` and `toolchain_ld_relocation`. Both generate
+linker-script fragments, so both are empty here.
+
+**Substituting the offsets generator was the fiddly part.** Two failures worth
+recording. First a dependency cycle: making the generated header depend on
+`zephyr_generated_headers` while that target already depends on it is a cycle
+CMake rejects outright. Second, `file(GENERATE)` refused to write the flags
+response file, because a per-target property such as `INCLUDE_DIRECTORIES` on
+an OBJECT library is evaluated once per language and the two evaluations
+differed. Only language-neutral properties from `zephyr_interface` can go in
+that file; per-target includes are plain CMake values and are passed directly.
+
+A third Zephyr patch was needed, for the same reason as the first two: the arch
+dispatch headers `include/zephyr/arch/cpu.h` and
+`include/zephyr/arch/arch_inlines.h` are hardcoded `#elif` chains ending in
+`#error`, with no out-of-tree hook. Shadowing them from the module was the
+alternative and was rejected: it depends on winning an include-path race and
+means carrying a copy of a header that moves upstream.

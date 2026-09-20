@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config WASM_HOST_CONSOLE
+	bool "Console over the zephyr_host console_write import"
+	default y
+	depends on WASM
+	select CONSOLE_HAS_DRIVER
+	help
+	  Routes printk through the host rather than a UART.

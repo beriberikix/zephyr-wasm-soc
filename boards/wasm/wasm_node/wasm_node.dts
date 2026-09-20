@@ -1,0 +1,61 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * There is no hardware to describe. The devicetree exists because Zephyr's
+ * build requires one, and it names the host-provided devices so drivers can
+ * be bound the ordinary way.
+ */
+
+/dts-v1/;
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	model = "WebAssembly on a Node.js host";
+	compatible = "wasm,node";
+
+	chosen {
+		zephyr,console = &host_console;
+		zephyr,shell-uart = &host_console;
+		zephyr,sram = &ram0;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "wasm,cpu";
+			reg = <0>;
+		};
+	};
+
+	/*
+	 * A nominal window into the single wasm linear memory. Nothing places
+	 * anything here: wasm-ld lays out the module and the heap follows it.
+	 * Zephyr wants a zephyr,sram node, so this is one.
+	 */
+	ram0: memory@0 {
+		device_type = "memory";
+		compatible = "mmio-sram";
+		reg = <0x0 0x1000000>;   /* 16 MB, nominal */
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		host_console: console {
+			compatible = "wasm,host-console";
+			status = "okay";
+		};
+
+		host_timer: timer {
+			compatible = "wasm,host-timer";
+			status = "okay";
+		};
+	};
+};

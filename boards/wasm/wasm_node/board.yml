@@ -1,0 +1,6 @@
+board:
+  name: wasm_node
+  full_name: WebAssembly on a Node.js host
+  vendor: wasm
+  socs:
+    - name: node

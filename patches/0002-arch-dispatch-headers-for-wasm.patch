@@ -1,0 +1,26 @@
+diff --git a/include/zephyr/arch/arch_inlines.h b/include/zephyr/arch/arch_inlines.h
+index a4ea881f795..326a6365879 100644
+--- a/include/zephyr/arch/arch_inlines.h
++++ b/include/zephyr/arch/arch_inlines.h
+@@ -34,6 +34,8 @@
+ #include <zephyr/arch/sparc/arch_inlines.h>
+ #elif defined(CONFIG_RX)
+ #include <zephyr/arch/rx/arch_inlines.h>
++#elif defined(CONFIG_WASM)
++#include <zephyr/arch/wasm/arch_inlines.h>
+ #elif defined(CONFIG_ARCH_IS_SET)
+ #error "The selected architecture is missing from this dispatch header"
+ #endif
+diff --git a/include/zephyr/arch/cpu.h b/include/zephyr/arch/cpu.h
+index feebfde70f5..64afcad659d 100644
+--- a/include/zephyr/arch/cpu.h
++++ b/include/zephyr/arch/cpu.h
+@@ -33,6 +33,8 @@
+ #include <zephyr/arch/sparc/arch.h>
+ #elif defined(CONFIG_RX)
+ #include <zephyr/arch/rx/arch.h>
++#elif defined(CONFIG_WASM)
++#include <zephyr/arch/wasm/arch.h>
+ #elif defined(CONFIG_ARCH_IS_SET)
+ #error "The selected architecture is missing from this dispatch header"
+ #endif

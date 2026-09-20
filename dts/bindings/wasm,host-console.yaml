@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+description: Console provided by the host through the zephyr_host imports
+compatible: "wasm,host-console"
+include: base.yaml
