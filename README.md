@@ -187,6 +187,33 @@ zephyr-wasm/scripts/build.sh build-hello zephyr/samples/hello_world
 ninja -C build-hello run
 ```
 
+## In a browser
+
+The same module runs in Chrome. The guest lives in a Worker, because the
+driver loop blocks its thread between suspensions and would otherwise freeze
+the tab; output and keystrokes cross by message.
+
+```sh
+zephyr-wasm/scripts/serve_web.sh 8777
+# then open http://127.0.0.1:8777/zephyr-wasm/host/web/index.html
+```
+
+Pick a build and press Run. For the shell, click the output area and type;
+<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. The page needs a server because
+`file://` blocks both Workers and `fetch`; it is bound to the loopback address
+and serves the workspace, so one server covers the harness and every
+`build-*/` directory.
+
+Verified in Chrome: hello_world, synchronization, the 32-test ztest suite, the
+time slicing test, and the shell answering `kernel version` and `demo ping`.
+The ztest output is byte-identical to the Node run once carriage returns are
+accounted for, which the page's terminal consumes as a terminal should.
+
+This says nothing new about engine neutrality, because Chrome is V8, the same
+engine as Node. That claim rests on the wasmtime result below. What the
+browser shows is that the harness is portable to somewhere with no
+filesystem, no stdio and no blocking main thread.
+
 ## A second engine
 
 `host/run.mjs` runs on Node, which is V8. `host/run_wasmtime.py` implements
@@ -228,7 +255,10 @@ boards/wasm/wasm_node/      the board
 drivers/              console and system timer over host imports
 cmake/                toolchain variant, and the build steps Zephyr lacks
 scripts/              offsets and section generators, build and check scripts
-host/run.mjs          the host harness
+host/core.mjs         the engine-neutral driver loop and host ABI
+host/run.mjs          the Node front-end
+host/run_wasmtime.py  a separate implementation, for wasmtime
+host/web/             the browser front-end: a page and a Worker
 spikes/               the Milestone 0 experiments, each with a run.sh
 tests/two_threads/    a minimal two-thread reproducer
 tests/timeslice/      two spinners that only run if preemption works

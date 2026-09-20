@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zephyr on WebAssembly</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #5c5c5c; --line: #d8d8d8;
+    --term-bg: #f6f6f4; --accent: #2b5797;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --fg: #e6e6e6; --muted: #9aa0a6; --line: #30343a;
+      --term-bg: #0f1115; --accent: #7aa2f7;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  select, button {
+    font: inherit; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  #term {
+    background: var(--term-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; min-height: 380px; max-height: 60vh; overflow: auto;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-word; outline: none;
+  }
+  #term:focus { border-color: var(--accent); }
+  #status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  kbd {
+    font: 12px ui-monospace, monospace; border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px; background: var(--bg);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Zephyr on WebAssembly</h1>
+  <p class="sub">
+    The kernel runs freestanding in one wasm32 linear memory. This page is the
+    SoC: it provides the <code>zephyr_host</code> imports and drives the
+    Asyncify loop that makes context switching possible. The guest runs in a
+    Worker, because it blocks its thread between suspensions.
+  </p>
+
+  <div class="bar">
+    <select id="build">
+      <option value="/build-hello/zephyr/zephyr.wasm">hello_world</option>
+      <option value="/build-sync/zephyr/zephyr.wasm">synchronization</option>
+      <option value="/build-sem/zephyr/zephyr.wasm">ztest: kernel semaphore</option>
+      <option value="/build-slice/zephyr/zephyr.wasm">timeslice: two spinners</option>
+      <option value="/build-shell/zephyr/zephyr.wasm" data-interactive="1">shell (type into the output)</option>
+    </select>
+    <button id="run" class="primary">Run</button>
+    <button id="stop" disabled>Stop</button>
+    <button id="clear">Clear</button>
+  </div>
+
+  <div id="term" tabindex="0" role="log" aria-live="polite"></div>
+  <div id="status">Pick a build and press Run. For the shell, click the output
+    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.</div>
+</main>
+
+<script type="module">
+/*
+ * The page. Everything interesting is in the Worker; this is a terminal just
+ * good enough to read the shell, and a keyboard.
+ */
+const termEl = document.getElementById('term');
+const statusEl = document.getElementById('status');
+const buildEl = document.getElementById('build');
+const runEl = document.getElementById('run');
+const stopEl = document.getElementById('stop');
+const clearEl = document.getElementById('clear');
+
+let worker = null;
+let running = false;
+
+/* A minimal terminal.
+ *
+ * The shell emits ANSI escapes for colour and cursor movement. Interpreting
+ * all of that would mean writing a terminal emulator; handling the three
+ * things that change what the text says, and dropping the rest, is enough to
+ * read it. */
+const term = {
+  lines: [''],
+  col: 0,
+  decoder: new TextDecoder(),
+  pending: '',
+
+  write(chunk) {
+    const text = this.pending + this.decoder.decode(chunk, { stream: true });
+    this.pending = '';
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\u001b') {
+        /* CSI ... final byte, or a short escape. If the sequence is split
+         * across chunks, keep it for next time. */
+        const m = /^\u001b\[[0-9;?]*[ -/]*[@-~]/.exec(text.slice(i));
+        if (m) { i += m[0].length; continue; }
+        if (text.length - i < 12) { this.pending = text.slice(i); break; }
+        i += 2; continue;
+      }
+      if (ch === '\n') { this.lines.push(''); this.col = 0; i++; continue; }
+      if (ch === '\r') { this.col = 0; i++; continue; }
+      if (ch === '\b') { if (this.col > 0) this.col--; i++; continue; }
+      if (ch === '\u0007') { i++; continue; }              // bell
+      const line = this.lines[this.lines.length - 1];
+      this.lines[this.lines.length - 1] =
+        line.slice(0, this.col) + ch + line.slice(this.col + 1);
+      this.col++;
+      i++;
+    }
+    this.render();
+  },
+
+  render() {
+    /* Keep the pane bounded; a ztest run is a few hundred lines. */
+    if (this.lines.length > 4000) this.lines.splice(0, this.lines.length - 4000);
+    termEl.textContent = this.lines.join('\n');
+    termEl.scrollTop = termEl.scrollHeight;
+  },
+
+  clear() { this.lines = ['']; this.col = 0; this.pending = ''; this.render(); },
+};
+
+function setRunning(state) {
+  running = state;
+  runEl.disabled = state;
+  stopEl.disabled = !state;
+  buildEl.disabled = state;
+}
+
+function start() {
+  term.clear();
+  const opt = buildEl.selectedOptions[0];
+  const interactive = opt.dataset.interactive === '1';
+
+  worker?.terminate();
+  worker = new Worker('./worker.js', { type: 'module' });
+  worker.onmessage = ({ data }) => {
+    if (data.type === 'out') term.write(new Uint8Array(data.buf));
+    else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
+    else if (data.type === 'done') {
+      setRunning(false);
+      statusEl.textContent = `finished with exit code ${data.code}`;
+    }
+  };
+  worker.onerror = (e) => {
+    term.write(new TextEncoder().encode(`\n*** worker error: ${e.message} ***\n`));
+    setRunning(false);
+  };
+
+  setRunning(true);
+  statusEl.textContent = interactive
+    ? 'running: click the output area and type'
+    : 'running';
+  worker.postMessage({
+    type: 'run',
+    url: opt.value,
+    interactive,
+    maxTimeMs: interactive ? 600_000 : 60_000,
+  });
+  if (interactive) termEl.focus();
+}
+
+runEl.onclick = start;
+stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
+clearEl.onclick = () => term.clear();
+
+/* Keystrokes go to the guest's UART as bytes. */
+termEl.addEventListener('keydown', (e) => {
+  if (!running || !worker) return;
+  let bytes = null;
+  if (e.key === 'Enter') bytes = [13];
+  else if (e.key === 'Backspace') bytes = [8];
+  else if (e.key === 'Tab') bytes = [9];
+  else if (e.key === 'Escape') bytes = [27];
+  else if (e.ctrlKey && e.key.length === 1) bytes = [e.key.toLowerCase().charCodeAt(0) - 96];
+  else if (e.key.length === 1) bytes = Array.from(new TextEncoder().encode(e.key));
+  if (!bytes) return;
+  e.preventDefault();
+  worker.postMessage({ type: 'input', bytes });
+});
+
+/* A hook for driving this page from a script or a test. */
+window.zephyrType = (text) => {
+  if (!running || !worker) return false;
+  worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(text)) });
+  return true;
+};
+window.zephyrOutput = () => term.lines.join('\n');
+window.zephyrRunning = () => running;
+</script>
+</body>
+</html>
