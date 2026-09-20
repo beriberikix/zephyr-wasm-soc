@@ -57,6 +57,23 @@ an interrupt is on hardware. The dispatcher is an ordinary call and
 `arch_is_in_isr()` is true while it runs, so anything it makes ready is
 deferred; `arch_cpu_idle()` reschedules explicitly afterwards.
 
+### D4b. Preemption through safepoints
+
+Nothing preempts a running wasm function, so a thread that never calls the
+kernel cannot be interrupted. `CONFIG_WASM_SAFEPOINTS` inserts a call at the
+top of every loop body after linking, and the interrupt is taken there. The
+pass runs before Asyncify so those calls can suspend.
+
+It needs a second piece that is not optional. Under virtual time the clock
+only moves when the kernel idles, so a spinning thread freezes it, and a
+frozen clock means the timer never fires. Every
+`CONFIG_WASM_SAFEPOINTS_PER_TICK` safepoints the guest calls the host's
+`safepoint_tick` import, and the host advances time and raises any deadline
+that has passed.
+
+Cost: 1.023x code size, and 2.28x wall time on a tight arithmetic loop, which
+is the worst case. The acceptance suite shows no perceptible change.
+
 ### D5. Determinism by default
 The host runs on virtual time. When the kernel idles, the host jumps straight
 to the next deadline. `--realtime` opts out.

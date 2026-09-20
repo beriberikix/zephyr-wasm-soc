@@ -1,15 +1,32 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 23 done  |  Last commit: final report  |  Blocker: none
+Tick: 24 done  |  Last commit: preemption  |  Blocker: none
 
-The final report is written, at the end of this file. Milestones 0, 1 and 2
-are complete and Milestone 3 is untouched.
+**Preemption works.** Two threads at equal priority, both spinning in loops
+with no kernel calls and no way out, both got a near-equal share:
 
-If the loop continues, the one stretch item worth doing is preemption through
-safepoint instrumentation, because without it a thread that never yields
-cannot be interrupted at all, which is the largest single gap between this and
-something usable. The other three stretch items are conveniences.
+    main: two equal-priority spinners, neither yields
+    b: finished
+    a: finished
+    main: a=50499612 b=49519850
+    PASS: both threads ran, so preemption works
+
+Built with `CONFIG_WASM_SAFEPOINTS=n` the same test hangs after its first
+line, which is the honest control: without safepoints the first thread to run
+keeps the processor forever.
+
+All four Milestone 2 criteria still pass with safepoints on by default, and
+output is still deterministic.
+
+Remaining Milestone 3 items, both conveniences:
+
+* **Twister runner.** Needs a patch to `platform-schema.yaml`, whose `arch`
+  enum is closed and has no `wasm`, plus a `custom` simulation entry pointing
+  at the host harness.
+* **UART and shell.** A UART driver over host imports, and
+  `samples/subsys/shell/shell_module` working interactively. The shell needs
+  input, which the host harness has never had to provide.
 
 ### Tick 22 — Milestone 2 complete
 
@@ -234,3 +251,44 @@ slot zero, so calling one is an indirect call with the wrong type, and the
 engine reports a signature mismatch naming the callee. A class of bug that is a
 wild jump elsewhere surfaces as a type error at the call site, which is more
 useful once you know to read it that way.
+
+
+### Tick 24 — preemption, and what it costs
+
+Nothing preempts a running wasm function, so preemption has to be built rather
+than configured. Two pieces.
+
+**Safepoints.** A post-link pass inserts a call at the top of every loop body,
+which covers the back-edge and the first iteration alike. The pass works on
+the text format, where every loop starts on its own line, so inserting a call
+with no operands and no results is a one-line edit per loop. It runs before
+Asyncify, so the transform sees those calls and can suspend through them:
+taking an interrupt there may switch threads. The dispatcher is skipped, since
+instrumenting its loop would let a safepoint call it from inside itself.
+
+**A counted tick, which turned out to be necessary rather than optional.**
+The brief lists instruction-count time as a separate stretch item; it is not
+separable. Under virtual time the clock only moves when the kernel idles, so a
+thread that spins without calling the kernel freezes time, and a frozen clock
+means the timer never fires and preemption can never happen. Safepoints alone
+deadlock. Every `CONFIG_WASM_SAFEPOINTS_PER_TICK` safepoints the guest calls a
+host import, and the host advances virtual time and raises any deadline that
+has passed. That is what makes the spinning case work at all.
+
+**The cost, measured on 800 million iterations of a tight arithmetic loop:**
+
+| | Without | With | Ratio |
+|---|---|---|---|
+| Code size | 329686 | 337175 | 1.023x |
+| Wall time | 1.74 s | 3.83 s | 2.28x |
+
+The size cost is small. The time cost is large, and that figure is the worst
+case by construction: the loop body is two arithmetic operations, so the check
+roughly doubles the work per iteration. Real code does more between
+back-edges, and the acceptance suite shows no perceptible change. Still, 2.28x
+on tight loops is the honest headline, and it is the price of preemption on a
+target with no interrupts.
+
+The knob is `CONFIG_WASM_SAFEPOINTS_PER_TICK`: lower is more responsive and
+slower. It decides how coarse preemption is for code that never calls into the
+kernel.
