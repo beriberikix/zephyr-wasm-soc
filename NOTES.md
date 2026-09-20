@@ -1,56 +1,34 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 13 done  |  Last commit: section scan covers the whole build  |  Blocker: none
+Tick: 14 done  |  Last commit: static thread list verified  |  Blocker: none
 
-Two real bugs in the section generator fixed, and the sample still stops after
-one line. Correcting an earlier note: in `samples/synchronization`, `thread_b`
-is the **static** thread (`K_THREAD_DEFINE`) and `thread_a` is created from
-main with `k_thread_create`. The thread that runs is the dynamic one, so it is
-static threads that never start.
+hello_world still passes. `samples/synchronization` still emits one line.
 
-Where that leaves it: the generator no longer emits a fallback for
-`_static_thread_data`, so the real section's bounds are in use, and the list
-should be populated. Yet `thread_b` still never runs.
+**The section work is now verified correct.** Counting the entries the kernel
+walks at boot gives exactly one static thread, which is what the sample
+defines. So the list is populated, the renamed section survives the link, and
+the bounds resolve. That rules out the whole section mechanism as the cause
+and was worth establishing before going further.
 
-Next:
+What is left is scheduling: a thread that is on the ready queue is never
+switched to. The suspect is the one part of the switch contract this port has
+never checked against the kernel's expectations, in `kernel/include/kswap.h`:
 
-1. Check whether `z_init_static_threads` sees anything: print
-   `__static_thread_data_list_start` and `_end` at boot, or count the entries
-   it walks. That separates "the list is empty" from "the list is fine and the
-   threads are not being started".
-2. If the list is empty, the renamed section is being dropped at link time.
-   `STRUCT_SECTION_ITERABLE` marks entries RETAIN, which survives in the
-   object; confirm it survives the link too.
-3. If the list is fine, look at the delay path: static threads are started
-   through a timeout, so this may be the same wake machinery rather than
-   anything to do with sections.
+* `arch_new_thread()` publishes `thread->switch_handle = thread`, and
+  `z_wasm_switch()` publishes the outgoing thread the same way. Read the
+  contract at the top of `kswap.h` and confirm both are what it asks for,
+  particularly whether `switch_handle` must be NULL while a thread is running
+  and non-NULL only when it is safe to switch to.
+* Check what the scheduler thinks is ready: print
+  `_kernel.ready_q.cache` and `arch_current_thread()` around a switch.
+* The sample's two threads share a priority, so also confirm whether it
+  depends on time slicing, which this port does not have until the safepoint
+  work in Milestone 3. If it does, the sample may be the wrong second test
+  and something with an explicit handoff would prove switching sooner.
 
-### Tick 12 — the kernel's clamp is not "never"
-
-The host had been reading the kernel's clamped timeout as "no alarm at all".
-It is not. When the kernel has no near deadline it does not send a sentinel;
-it clamps to a deadline roughly two days out. Treating that as "never" ended
-runs early, because the kernel idles briefly between being woken and
-programming its next real deadline, and in that window the host concluded
-nothing could ever happen again.
-
-The host now keeps a clamped deadline as a real one and simply flags it. Time
-still advances to it, the kernel still gets its chance to reprogram, and
-quiescence is decided by watching what the kernel does next: waking from a
-clamped deadline and immediately asking for another, twice in a row, means
-there is no work left. Waking from a real deadline is progress and resets the
-count.
-
-That distinction is the interesting part. Under virtual time the host is the
-only thing that can decide a program has finished, and the guest's own
-"nothing soon" is not the same statement as "nothing ever". Conflating them
-ends runs early, which is harder to spot than a hang because the exit status
-looks like success.
-
-With this in place a full sleep-and-wake cycle works: the timer fires, the
-timeout expires, and the sleeping thread is resumed.
-
+That last point matters: it is worth five minutes to check the sample's
+threads really do hand off explicitly before assuming the port is at fault.
 
 ### Tick 13 — two bugs in the generator, one of them silent
 
@@ -78,3 +56,20 @@ The general shape of this is worth keeping for the report: a build step that
 reasons about sections from object files is reasoning about a superset of what
 ends up in the image, and the difference is exactly the pay-per-use linkage
 Zephyr relies on.
+
+
+### Tick 14 — the sections are right; it is the scheduler
+
+A single measurement settled where the remaining fault is not. Counting the
+entries the kernel actually walks at boot gives exactly one static thread,
+which is exactly what the sample defines.
+
+So the renaming survives the link, the bounds resolve to the real section, and
+the generated fallbacks stay out of the way. Everything the section shim is
+responsible for is working. The fault is downstream, in getting a ready thread
+onto the processor.
+
+Worth noting as method rather than result: this is the third tick in a row
+where the useful move was to measure one thing precisely rather than to fix
+something plausible. The two generator bugs found last tick were real, and
+neither was the cause.
