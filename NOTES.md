@@ -1,63 +1,44 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 18 done  |  Last commit: kernel stack reservation  |  Blocker: none
+Tick: 19 done  |  Last commit: trap site identified  |  Blocker: none
 
-Both threads can now be started by hand and one runs. The trap that follows is
-unchanged and is the single thing to chase:
+**The trapping instruction is identified.** The failing function contains
+exactly one indirect call, and it is this:
 
-    a: round 0
-    RuntimeError: function signature mismatch
-      at wasm-function[34]:0x5bba
-      at wasm-function[21]:0x3fff
-      at wasm-function[37]:0x7077
-      at wasm-function[26]:0x4bd4      <- z_wasm_thread_entry
-      at Host.step
+    local.get 1
+    local.get 1
+    i32.load offset=16
+    call_indirect (type 0)          ;; type 0 = (func (param i32))
 
-Reading that chain: the host enters `z_wasm_thread_entry`, which calls
-`z_thread_entry` (37), which calls the thread entry indirectly (21), which
-calls the thread's loop (34), and the trap is inside that. It happens on the
-host's attempt to resume the thread after its `k_msleep`, so it is a rewind
-that goes wrong, not the original run.
+That loads a function pointer from offset 16 of a structure and calls it,
+passing the structure itself. That shape is a timeout callback: Zephyr's
+`struct _timeout` holds its handler at that offset and `sys_clock_announce`
+walks the expired list calling `t->fn(t)`. So the kernel is announcing ticks,
+finding the sleeping thread's timeout, and calling a handler pointer that is
+not a valid function of that type.
 
-Ruled out this tick, each by measurement rather than argument:
+The host trace confirms the setting. It is a rewind of the idle thread, its
+Asyncify cursor is sane at 60 bytes into a 16 KB buffer, and the rewind
+resumes inside `arch_cpu_idle` where the interrupt is dispatched and the tick
+announced.
 
-* **Stack or buffer too small.** Raising the thread stack to 8 KB and the
-  Asyncify buffer to 16 KB changes nothing.
-* **The host rewinding from the wrong buffer.** Instrumented; the buffer the
-  guest names when unwinding always matches the one the host keys the context
-  by, so no mismatch ever occurs.
+So this is memory corruption of a timeout structure, not an Asyncify problem.
 
-Next, in order:
+Next:
 
-1. Confirm it really is a rewind: log in the host whether the failing entry
-   was a fresh call or a `asyncify_start_rewind` before the call. One line.
-2. If it is, dump the Asyncify buffer header before rewinding: the cursor
-   should sit above the base and below the end. A cursor outside that range
-   means the unwind wrote somewhere unexpected.
-3. Build the module without `wasm-opt`'s default optimisation, using only
-   `--asyncify`, and see whether the trap survives. That separates a genuine
-   state problem from an interaction with Binaryen's other passes.
-
-### Tick 17 — a second thread runs
-
-Starting the stuck thread by hand from main makes it run. That is worth
-stating plainly: the port creates a thread, schedules it, switches to it, and
-its code executes and prints. Everything the arch is responsible for on that
-path works.
-
-The stride hypothesis from last tick was wrong, and measuring it cost little:
-entries sit 48 bytes apart, `sizeof` is 48, and both read back correct fields.
-The section layout was never the problem. Worth recording as a small lesson in
-its own right, since it was a confident-sounding theory that survived exactly
-one measurement.
-
-What is left is two specific faults rather than one vague one. The kernel's
-own static-thread start path takes effect for one of two identical entries.
-And once a thread is running, an indirect call traps, in the same way tick 7's
-null function pointer did, which suggests looking at what happens when a
-thread's work finishes rather than at the work itself.
-
+1. Print the timeout's handler pointer and the thread it belongs to from the
+   timer ISR before announcing. If it is zero, something cleared it; if it is
+   a plausible but wrong address, something overwrote it.
+2. Work out what shares that memory. The prime suspect remains the thread
+   stack split, since a thread's Asyncify buffer sits immediately above its
+   shadow stack and an overrun in either direction lands in the other, or in
+   the next object. Print each thread's stack base, `stack_ptr`, buffer base
+   and buffer end at creation and check for overlap directly rather than by
+   reasoning.
+3. `_timeout` structures live inside `struct k_thread`, so an overrun of a
+   thread's own stack object into the adjacent thread struct would produce
+   exactly this.
 
 ### Tick 18 — two hypotheses tested, both wrong, one real fix
 
@@ -79,3 +60,28 @@ Reading the trap's call chain does narrow things usefully. The host enters the
 thread trampoline, which reaches the thread's own loop, and the trap is inside
 that, on the attempt to resume after a sleep. So the failure is in a rewind
 rather than in the original run, which is a much smaller place to look.
+
+
+### Tick 19 — the trap is a corrupted timeout callback
+
+Three checks, and the third one found it.
+
+The failing function contains exactly one indirect call, and disassembling it
+is unambiguous: it loads a function pointer from offset 16 of a structure and
+calls it with that structure as the argument. That is Zephyr's timeout
+callback shape, which means the kernel is announcing ticks, finding the
+sleeping thread's expired timeout, and calling a handler that is not a valid
+function.
+
+The other two checks framed it. The host confirms the failing entry is a
+rewind, not a fresh call, and that the Asyncify cursor is well inside its
+buffer at 60 bytes of 16 KB. So the Asyncify state is healthy and the
+suspension machinery is doing its job; what is wrong is the data the kernel
+reads afterwards.
+
+That reframes the whole problem. This is not a context-switching bug and never
+was. Something is overwriting a timeout structure, and timeout structures live
+inside `struct k_thread`, which sits near the stack objects this port carves
+in two. The next step is to stop reasoning about the split and simply print
+every thread's stack base, stack pointer, buffer base and buffer end, and look
+for the overlap.

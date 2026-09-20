@@ -231,10 +231,20 @@ class Host {
     } else if (c.sp !== null) {
       this.ex.__stack_pointer.value = c.sp;
     }
+    const wasFresh = c.fresh;
+
     c.fresh = false;
 
     if (this.opts.traceSwitches) {
-      process.stderr.write(`[enter] ${c.entry}(0x${c.arg.toString(16)}) sp=0x${(this.ex.__stack_pointer.value).toString(16)}\n`);
+      const w = new Uint32Array(this.mem.buffer);
+      const cur = w[c.buf >> 2], end = w[(c.buf >> 2) + 1];
+      const used = cur - (c.buf + 8);
+      const sane = cur >= c.buf + 8 && cur <= end;
+      process.stderr.write(
+        `[enter] ${wasFresh ? 'fresh ' : 'REWIND'} ${c.entry}(0x${c.arg.toString(16)}) ` +
+        `sp=0x${this.ex.__stack_pointer.value.toString(16)} ` +
+        `buf=0x${c.buf.toString(16)} cursor=+${used} limit=${end - (c.buf + 8)}` +
+        `${sane ? '' : '  <-- CURSOR OUT OF RANGE'}\n`);
     }
     this.ex[c.entry](c.arg);
 
