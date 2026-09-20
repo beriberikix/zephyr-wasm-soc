@@ -29,6 +29,10 @@ I32 = ValType.i32()
 I64 = ValType.i64()
 
 
+class GaveUp(Exception):
+    """Raised out of an import to stop a guest that will not stop by itself."""
+
+
 class Host:
     def __init__(self, path: Path, max_time_ms: int):
         self.max_time_ns = max_time_ms * 1_000_000
@@ -90,6 +94,11 @@ class Host:
 
         def safepoint_tick():
             self.now_ns += SAFEPOINT_TICK_NS
+            # The only place a guest that never suspends can be stopped. The
+            # check between steps below cannot reach one, because such a guest
+            # never ends a step. This import cannot suspend, so raising is the
+            # way out; the instance is finished either way.
+            self.check_deadline()
             if self.alarm_ns is not None and self.now_ns >= self.alarm_ns:
                 self.alarm_ns = None
                 self.quiescent = 0
@@ -203,6 +212,10 @@ class Host:
             self.current = known
         return True
 
+    def check_deadline(self):
+        if self.now_ns > self.max_time_ns:
+            raise GaveUp(f"gave up after {self.max_time_ns // 1_000_000} ms of guest time")
+
     def run(self) -> int:
         self.block_addr = self.call("z_wasm_switch_block_addr")
         self.irq_addr = self.call("z_wasm_irq_pending_addr")
@@ -210,12 +223,13 @@ class Host:
         self.current = {"entry": "z_wasm_boot", "arg": 0, "buf": self.scratch,
                         "sp": None, "fresh": True}
         while not self.done:
-            if self.now_ns > self.max_time_ns:
-                sys.stderr.write(f"\n*** gave up after {self.max_time_ns // 1_000_000} ms "
-                                 "of guest time ***\n")
+            try:
+                self.check_deadline()
+                if not self.step():
+                    break
+            except GaveUp as gave_up:
+                sys.stderr.write(f"\n*** {gave_up} ***\n")
                 return 2
-            if not self.step():
-                break
         return self.exit_code
 
 

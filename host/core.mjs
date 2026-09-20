@@ -32,6 +32,10 @@
 
 const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
 
+/* Thrown out of an import to stop a guest that will not stop by itself. See
+ * checkDeadline(). */
+class GaveUp extends Error {}
+
 /* Anything at or beyond this is the kernel saying "nothing soon" rather than
  * naming a deadline it cares about. It clamps to roughly INT32_MAX ticks. */
 const CLAMP_NS = 100_000_000_000n;
@@ -145,6 +149,8 @@ export class Host {
           if (!self.opts.realtime) {
             self.nowNs += SAFEPOINT_TICK_NS;
           }
+          /* The only place a guest that never suspends can be stopped. */
+          self.checkDeadline();
           if (self.alarmNs !== null && self.timeNs >= self.alarmNs) {
             self.alarmNs = null;
             self.quiescentRounds = 0;
@@ -194,6 +200,33 @@ export class Host {
     this.done = true;
     this.exitCode = 1;
     return false;
+  }
+
+  /* Has this run gone on too long?
+   *
+   * The two limits below used to be checked between steps, which is no help
+   * against the case they exist for: a guest that spins without suspending
+   * never ends a step, so the loop never comes back round and the message
+   * about a guest that ran without suspending could not be printed. A run in
+   * that state hung for as long as anyone was willing to wait.
+   *
+   * So the check also runs from safepoint_tick, which a spinning guest calls
+   * by construction. That import cannot suspend -- it is not in the Asyncify
+   * import list, and adding it would mean paying a full unwind per loop
+   * iteration -- so stopping the guest means throwing. The exception unwinds
+   * the wasm frames to run(), which catches it. The instance is finished
+   * either way; that is what giving up means.
+   */
+  checkDeadline() {
+    if (this.timeNs > this.deadlineNs) {
+      throw new GaveUp(`gave up after ${this.opts.maxTimeMs} ms of guest time`);
+    }
+    /* Virtual time only advances when the kernel idles or reports progress,
+     * so bound the wall clock as well, generously. */
+    if (Number(this.platform.nowNs() - this.startedAt) / 1e6 > this.opts.maxTimeMs * 3) {
+      throw new GaveUp('gave up: the guest ran without suspending');
+    }
+    return true;
   }
 
   /* Begin unwinding out of the guest. Both suspension points land here. */
@@ -280,23 +313,17 @@ export class Host {
     this.current = { entry: 'z_wasm_boot', arg: 0, buf: this.scratchBuf, sp: null, fresh: true };
     this.startInput();
 
-    const deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
+    this.deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
     while (!this.done) {
-      if (this.timeNs > deadlineNs) {
-        this.platform.writeErr(`\n*** gave up after ${this.opts.maxTimeMs} ms of guest time ***\n`);
+      try {
+        this.checkDeadline();
+        if (!this.step()) break;
+      } catch (err) {
+        if (!(err instanceof GaveUp)) throw err;
+        this.platform.writeErr(`\n*** ${err.message} ***\n`);
         this.exitCode = 2;
         break;
       }
-      /* Virtual time only advances when the kernel idles, so a guest that
-       * spins without ever suspending would never trip the guest-time check.
-       * Bound the wall clock as well, generously, so a hang is reported
-       * rather than sat through. */
-      if (Number(this.platform.nowNs() - this.startedAt) / 1e6 > this.opts.maxTimeMs * 3) {
-        this.platform.writeErr('\n*** gave up: the guest ran without suspending ***\n');
-        this.exitCode = 2;
-        break;
-      }
-      if (!this.step()) break;
       if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a
          * turn and typed characters would never arrive. Give it one whenever
