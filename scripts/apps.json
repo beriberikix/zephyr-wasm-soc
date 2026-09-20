@@ -1,0 +1,77 @@
+{
+  "_comment": [
+    "The applications the demo site is built from, and what each one is",
+    "supposed to print. One entry here is the whole of adding a build: it",
+    "feeds scripts/stage_site.sh, the _site/manifest.json the page reads its",
+    "menu from, and scripts/check_site.mjs, which is what CI runs.",
+    "",
+    "app: a path under the west workspace. {module} is this repository.",
+    "expect: substrings that must all appear in the output. This is the",
+    "  acceptance criterion, so it should name what the application is for,",
+    "  not merely that it started.",
+    "endless: the application never finishes, so the harness gives up at",
+    "  max_time_ms and exits 2. Expected, not a failure.",
+    "interactive: the page forwards keystrokes to the guest's UART.",
+    "upstream: unmodified upstream Zephyr code. false for this port's own",
+    "  tests, which prove the port rather than the samples.",
+    "kind: sample or test. The score in ROADMAP.md counts upstream samples,",
+    "  because the samples are the teaching material. An upstream test suite",
+    "  is evidence for the port and is not a sample."
+  ],
+  "builds": [
+    {
+      "name": "hello",
+      "app": "zephyr/samples/hello_world",
+      "kind": "sample",
+      "title": "hello_world",
+      "upstream": true,
+      "max_time_ms": 10000,
+      "expect": ["Booting Zephyr OS", "Hello World! wasm_node"]
+    },
+    {
+      "name": "sync",
+      "app": "zephyr/samples/synchronization",
+      "kind": "sample",
+      "title": "synchronization",
+      "upstream": true,
+      "max_time_ms": 2000,
+      "endless": true,
+      "expect": [
+        "thread_a: Hello World from cpu 0 on wasm_node!",
+        "thread_b: Hello World from cpu 0 on wasm_node!"
+      ]
+    },
+    {
+      "name": "sem",
+      "app": "zephyr/tests/kernel/semaphore/semaphore",
+      "kind": "test",
+      "title": "ztest: kernel semaphore",
+      "upstream": true,
+      "max_time_ms": 60000,
+      "expect": ["PROJECT EXECUTION SUCCESSFUL"],
+      "expect_at_least": { "^ PASS": 32 },
+      "deterministic": true
+    },
+    {
+      "name": "slice",
+      "app": "{module}/tests/timeslice",
+      "kind": "test",
+      "title": "timeslice: two spinners",
+      "upstream": false,
+      "max_time_ms": 30000,
+      "expect": ["PASS: both threads ran, so preemption works"]
+    },
+    {
+      "name": "shell",
+      "app": "zephyr/samples/subsys/shell/shell_module",
+      "kind": "sample",
+      "title": "shell (type into the output)",
+      "upstream": true,
+      "interactive": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 20000,
+      "ci_stdin": "kernel version\ndemo ping\n",
+      "expect": ["uart:~$", "Zephyr version 4.4.99", "pong"]
+    }
+  ]
+}

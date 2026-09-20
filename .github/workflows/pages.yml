@@ -79,29 +79,24 @@ jobs:
       - name: Build the demo
         run: ./zephyr-wasm/scripts/stage_site.sh
 
+      # Every build in the manifest, against the output scripts/apps.json says
+      # it should produce. The list used to live here and covered three of the
+      # five; the timeslice test, which is the only one with a self-checking
+      # PASS line, was built on every run and never executed.
       - name: Check the builds actually run
-        run: |
-          set -e
-          fail() { echo "::error::$1"; exit 1; }
-
-          out=$(node zephyr-wasm/host/run.mjs _site/m/hello.wasm)
-          echo "$out"
-          echo "$out" | grep -q 'Hello World' || fail "hello_world did not greet"
-
-          out=$(node zephyr-wasm/host/run.mjs --max-time 2000 _site/m/sync.wasm || true)
-          echo "$out"
-          echo "$out" | grep -q 'thread_b' || fail "synchronization did not alternate"
-
-          out=$(node zephyr-wasm/host/run.mjs --max-time 60000 _site/m/sem.wasm)
-          echo "$out" | tail -5
-          echo "$out" | grep -q 'PROJECT EXECUTION SUCCESSFUL' || fail "ztest did not pass"
-          n=$(echo "$out" | grep -c '^ PASS' || true)
-          [ "$n" -ge 32 ] || fail "expected at least 32 ztest passes, got $n"
-
-          echo "all three ran; $n ztest cases passed"
+        run: node zephyr-wasm/scripts/check_site.mjs _site
 
       - name: Check two runs are identical
         run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000
+
+      # The page is the product, so it is checked in a browser rather than
+      # only under Node. Chromium runs every non-interactive build and reads
+      # the output back through the page's own terminal.
+      - name: Check the page in a browser
+        run: |
+          npm install --no-save playwright@1.56
+          npx playwright install --with-deps chromium
+          node zephyr-wasm/scripts/check_browser.mjs _site
 
       - name: Upload the site
         if: github.ref == 'refs/heads/main'

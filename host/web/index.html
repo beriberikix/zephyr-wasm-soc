@@ -64,14 +64,10 @@
   </p>
 
   <div class="bar">
-    <select id="build">
-      <option value="./m/hello.wasm">hello_world</option>
-      <option value="./m/sync.wasm">synchronization</option>
-      <option value="./m/sem.wasm">ztest: kernel semaphore</option>
-      <option value="./m/slice.wasm">timeslice: two spinners</option>
-      <option value="./m/shell.wasm" data-interactive="1">shell (type into the output)</option>
+    <select id="build" disabled>
+      <option>loading…</option>
     </select>
-    <button id="run" class="primary">Run</button>
+    <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
   </div>
@@ -95,6 +91,31 @@ const clearEl = document.getElementById('clear');
 
 let worker = null;
 let running = false;
+let builds = [];
+
+/* The menu comes from the manifest scripts/stage_site.sh writes, which is
+ * generated from scripts/apps.json. The page used to carry its own copy of
+ * the list, which meant adding a build meant editing two files that had to
+ * agree, and nothing checked that they did. */
+async function loadManifest() {
+  try {
+    const res = await fetch('./manifest.json');
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const manifest = await res.json();
+    builds = manifest.builds;
+    buildEl.innerHTML = '';
+    for (const b of builds) {
+      const opt = document.createElement('option');
+      opt.value = b.name;
+      opt.textContent = b.title;
+      buildEl.append(opt);
+    }
+    buildEl.disabled = false;
+    runEl.disabled = false;
+  } catch (err) {
+    statusEl.textContent = `could not read manifest.json: ${err.message}`;
+  }
+}
 
 /* A minimal terminal.
  *
@@ -154,8 +175,9 @@ function setRunning(state) {
 
 function start() {
   term.clear();
-  const opt = buildEl.selectedOptions[0];
-  const interactive = opt.dataset.interactive === '1';
+  const build = builds.find((b) => b.name === buildEl.value);
+  if (!build) return;
+  const interactive = !!build.interactive;
 
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
@@ -178,12 +200,14 @@ function start() {
     : 'running';
   worker.postMessage({
     type: 'run',
-    url: opt.value,
+    url: `./${build.path}`,
     interactive,
-    maxTimeMs: interactive ? 600_000 : 60_000,
+    maxTimeMs: build.max_time_ms ?? 60_000,
   });
   if (interactive) termEl.focus();
 }
+
+loadManifest();
 
 runEl.onclick = start;
 stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
@@ -212,6 +236,7 @@ window.zephyrType = (text) => {
 };
 window.zephyrOutput = () => term.lines.join('\n');
 window.zephyrRunning = () => running;
+window.zephyrBuilds = () => builds;
 </script>
 </body>
 </html>

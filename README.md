@@ -66,6 +66,7 @@ The acceptance suite shows no perceptible change.
 | wasm-opt | 132 | Binaryen |
 | wasm-objdump | 1.0.42 | wabt |
 | Node.js | 26 | 20 or newer should do |
+| Python | 3.12 | Zephyr's own `west build` needs 3.12 or newer |
 | west, cmake, ninja | | with Zephyr's Python dependencies |
 
 **Version matters more than it should.** On clang 18 the linker leaves the
@@ -260,10 +261,23 @@ under wasmtime. The kernel is the same module in all three.
 ## Continuous integration
 
 `.github/workflows/pages.yml` starts from a bare Ubuntu runner, installs the
-toolchain, clones Zephyr, applies the seven patches, builds five applications,
-runs three of them under Node, checks two runs are byte-identical, and only
-then publishes. It is the reproducibility check for everything above: if it is
-green, these instructions work on a machine that is not the author's.
+toolchain, clones Zephyr, applies the seven patches, builds everything
+`scripts/apps.json` names, runs each one and checks it printed what that file
+says it should, checks two runs are byte-identical, runs the page itself in
+Chromium, and only then publishes. It is the reproducibility check for
+everything above: if it is green, these instructions work on a machine that is
+not the author's.
+
+To run those checks locally against a staged site:
+
+```sh
+node zephyr-wasm/scripts/check_site.mjs        # every build, under Node
+node zephyr-wasm/scripts/check_browser.mjs     # every build, in Chromium
+```
+
+The browser check needs Playwright (`npm install --no-save playwright && npx
+playwright install chromium`); nothing else here does, which is why it is not
+a dependency of the repository.
 
 ## Layout
 
@@ -275,6 +289,9 @@ boards/wasm/wasm_node/      the board
 drivers/              console and system timer over host imports
 cmake/                toolchain variant, and the build steps Zephyr lacks
 scripts/              offsets and section generators, build and check scripts
+scripts/apps.json     the applications the demo is built from, and what each
+                      one must print; the single source for the page's menu,
+                      the staged manifest and what CI asserts
 host/core.mjs         the engine-neutral driver loop and host ABI
 host/run.mjs          the Node front-end
 host/run_wasmtime.py  a separate implementation, for wasmtime

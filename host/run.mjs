@@ -73,6 +73,10 @@ const nodePlatform = {
       process.stdin.setRawMode(false);
     }
     process.stdin.pause();
+    /* Let the process end with the listener still attached: without this a
+     * run that read input would keep the event loop alive after the guest
+     * had finished. */
+    process.stdin.unref();
   },
 
   /* A macrotask, so anything queued on the event loop, typed characters in
@@ -82,4 +86,14 @@ const nodePlatform = {
 };
 
 const opts = parseArgs(process.argv.slice(2));
-process.exit(await new Host(nodePlatform, opts).run());
+
+/* Set the code and let Node exit on its own, rather than process.exit().
+ *
+ * Writes to stdout are synchronous when it is a terminal or a file and
+ * asynchronous when it is a pipe, and process.exit() discards whatever is
+ * still queued. So the output was complete when a person watched it or
+ * redirected it to a file, and silently truncated whenever it was piped --
+ * which is every run inside a shell substitution, a tee, or a checking
+ * script. The guest was never at fault and the run had already finished.
+ */
+process.exitCode = await new Host(nodePlatform, opts).run();
