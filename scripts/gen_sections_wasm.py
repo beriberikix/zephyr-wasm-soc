@@ -257,11 +257,24 @@ def main() -> int:
         # are not in the image, and the link fails on them. The archives are
         # rebuilt from the current source list, so they are the honest view of
         # what is about to be linked.
+        #
+        # One directory per archive, because member names collide. An
+        # application's source is very often named after the thing it
+        # exercises -- bitarray.c, timer.c, mutex.c -- and Zephyr has a source
+        # of that name too, so extracting every archive into one directory
+        # silently overwrote one with the other. Whichever lost the race had
+        # its iterable-section entries disappear from this scan, and a family
+        # that is defined only in the loser was then given a weak empty
+        # fallback, which suppresses wasm-ld's real bounds and leaves the list
+        # permanently empty. That is how a parameterised ztest suite ran once
+        # with a null parameter instead of seven times with its values.
         tmp = tempfile.mkdtemp(prefix="wasm_sections_")
-        for archive in sorted(args.scan_dir.rglob("*.a")):
-            subprocess.run([args.ar, "x", "--output", tmp, str(archive)],
+        for n, archive in enumerate(sorted(args.scan_dir.rglob("*.a"))):
+            into = Path(tmp) / f"{n:03d}-{archive.stem}"
+            into.mkdir()
+            subprocess.run([args.ar, "x", "--output", str(into), str(archive)],
                            capture_output=True, check=False)
-        paths += sorted(Path(tmp).glob("*.obj")) + sorted(Path(tmp).glob("*.o"))
+        paths += sorted(Path(tmp).rglob("*.obj")) + sorted(Path(tmp).rglob("*.o"))
     paths = [p for p in paths if p.suffix in (".obj", ".o") and p.exists()]
     if not paths:
         sys.stderr.write("gen_sections_wasm: no objects to scan\n")

@@ -163,6 +163,39 @@ export class Host {
     };
   }
 
+  /* An Asyncify buffer is two words -- a cursor and an end -- followed by
+   * the saved frames. Binaryen does not bounds-check the cursor against the
+   * end, and --asyncify-asserts does not add a check either, so a buffer
+   * that is too small is written straight past and whatever follows it is
+   * quietly corrupted. In spike C a 248-byte buffer absorbed 1112 bytes and
+   * the run carried on.
+   *
+   * The host can see it for nothing, because both words are in linear
+   * memory: after an unwind the cursor says how much was written. It is
+   * still after the fact -- the bytes are already gone -- but a run that
+   * says which thread overflowed its buffer and by how much is a different
+   * thing to debug than one that produces the wrong answer later on. */
+  bufferUse(buf) {
+    const w = new Uint32Array(this.mem.buffer, buf, 2);
+    const base = buf + 8;
+    return { cursor: w[0], end: w[1], used: w[0] - base, limit: w[1] - base };
+  }
+
+  checkBuffer(buf, where) {
+    const { cursor, end, used, limit } = this.bufferUse(buf);
+    if (cursor >= buf + 8 && cursor <= end) return true;
+    this.platform.writeErr(
+      `\n*** asyncify buffer overflow ${where}: ` +
+      `buffer 0x${buf.toString(16)} holds ${limit} bytes and the cursor is at ` +
+      `${used}. Memory after the buffer has been overwritten.\n` +
+      `*** Raise CONFIG_WASM_ASYNCIFY_BUFFER_SIZE, or give this thread a ` +
+      `larger stack: the buffer is carved out of the thread's own stack ` +
+      `object. ***\n`);
+    this.done = true;
+    this.exitCode = 1;
+    return false;
+  }
+
   /* Begin unwinding out of the guest. Both suspension points land here. */
   suspend({ idle, fatal = false }) {
     const blk = this.readSwitchBlock();
@@ -290,14 +323,12 @@ export class Host {
     c.fresh = false;
 
     if (this.opts.traceSwitches) {
-      const w = new Uint32Array(this.mem.buffer);
-      const cur = w[c.buf >> 2], end = w[(c.buf >> 2) + 1];
-      const used = cur - (c.buf + 8);
-      const sane = cur >= c.buf + 8 && cur <= end;
+      const { used, limit } = this.bufferUse(c.buf);
+      const sane = used >= 0 && used <= limit;
       this.platform.writeErr(
         `[enter] ${wasFresh ? 'fresh ' : 'REWIND'} ${c.entry}(0x${c.arg.toString(16)}) ` +
         `sp=0x${this.ex.__stack_pointer.value.toString(16)} ` +
-        `buf=0x${c.buf.toString(16)} cursor=+${used} limit=${end - (c.buf + 8)}` +
+        `buf=0x${c.buf.toString(16)} cursor=+${used} limit=${limit}` +
         `${sane ? '' : '  <-- CURSOR OUT OF RANGE'}\n`);
     }
     this.ex[c.entry](c.arg);
@@ -310,6 +341,11 @@ export class Host {
     this.ex.asyncify_stop_unwind();
 
     if (this.pendingFatal) return false;
+
+    /* The frames have just been written, so this is where an overflow shows. */
+    if (this.unwoundInto !== undefined && !this.checkBuffer(this.unwoundInto, 'on suspend')) {
+      return false;
+    }
 
     c.sp = this.currentSp;
     if (this.unwoundInto !== undefined && this.unwoundInto !== c.buf) {
