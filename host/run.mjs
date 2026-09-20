@@ -15,10 +15,16 @@ import { Host } from './core.mjs';
 
 function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
-                 interactive: false, traceGpio: false, gpio: [], wasm: null };
+                 interactive: false, traceGpio: false, gpio: [],
+                 clock: 'virtual', timeScale: 1,
+                 seed: undefined, trueRandom: false, wasm: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--realtime') opts.realtime = true;
+    else if (a === '--paced') opts.clock = 'paced';
+    else if (a === '--time-scale') opts.timeScale = Number(argv[++i]);
+    else if (a === '--seed') opts.seed = Number(argv[++i]);
+    else if (a === '--true-random') opts.trueRandom = true;
     else if (a === '--trace-switches') opts.traceSwitches = true;
     else if (a === '--trace-gpio') opts.traceGpio = true;
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
@@ -53,6 +59,16 @@ function usage() {
   --max-time <ms>    give up after this much guest time (default 10000)
   --interactive      forward this terminal's input to the guest UART, and
                      do not stop when the guest has nothing left to do
+  --paced            let virtual time pass at the rate it claims, so a
+                     sample that blinks once a second can be watched. The
+                     guest sees the same clock either way, so the output is
+                     unchanged
+  --time-scale <n>   with --paced, divide the waiting: 10 is ten times
+                     faster than real, 0.1 is slow motion
+  --seed <n>         seed the entropy generator, for a different but still
+                     repeatable sequence
+  --true-random      take entropy from the platform instead, which ends
+                     reproducibility
   --trace-gpio       log every GPIO output change to stderr
   --gpio <ms>:<pin>=<0|1>
                      move an input pin at a given guest time, repeatable.
@@ -102,6 +118,9 @@ const nodePlatform = {
    * particular, gets delivered before the guest runs again. */
   yieldToEventLoop: (hasInput) =>
     new Promise((resolve) => setTimeout(resolve, hasInput ? 0 : 1)),
+
+  /* Used only for pacing. Also a macrotask, so input still arrives. */
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
 const opts = parseArgs(process.argv.slice(2));

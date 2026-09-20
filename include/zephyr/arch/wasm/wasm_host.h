@@ -58,6 +58,17 @@ WASM_HOST_IMPORT(uart_poll_in) int32_t wasm_host_uart_poll_in(void);
 WASM_HOST_IMPORT(gpio_out) void wasm_host_gpio_out(int32_t port, uint32_t values);
 WASM_HOST_IMPORT(gpio_in) uint32_t wasm_host_gpio_in(int32_t port);
 
+/* Entropy. Fills the buffer; cannot fail.
+ *
+ * What it fills it with is host policy rather than ABI. Both hosts use the
+ * same seeded generator by default, because CI requires two runs of a build
+ * to be byte-identical and a real random source would end that. A flag opts
+ * into the platform's own randomness for anyone who wants it.
+ *
+ * Not a suspension point.
+ */
+WASM_HOST_IMPORT(entropy_get) void wasm_host_entropy_get(uint8_t *buf, int32_t len);
+
 /* Progress report from a safepoint.
  *
  * Under virtual time the clock only moves when the kernel idles, so a thread

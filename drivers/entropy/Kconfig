@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config ENTROPY_WASM_HOST
+	bool "Entropy from the host"
+	default y
+	depends on DT_HAS_WASM_HOST_ENTROPY_ENABLED
+	depends on ENTROPY_GENERATOR
+	select ENTROPY_HAS_DRIVER
+	help
+	  Asks the host for random bytes. Not a real entropy source: the host's
+	  default generator is seeded and repeats exactly, because a run of this
+	  port has to be reproducible. Only for tests and for samples that want
+	  a number rather than a secret.

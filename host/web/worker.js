@@ -62,6 +62,10 @@ const browserPlatform = {
   yieldToEventLoop: (hasInput) =>
     new Promise((resolve) => setTimeout(resolve, hasInput ? 0 : 1)),
 
+  /* Used only for pacing. A macrotask, so queued messages -- a button press,
+   * a change of speed -- are delivered while the host waits. */
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+
   /* An output pin moved. The page draws it. */
   gpioOut(port, values) {
     self.postMessage({ type: 'gpio', port, values });
@@ -70,6 +74,14 @@ const browserPlatform = {
 
 self.onmessage = async (event) => {
   const msg = event.data;
+
+  if (msg.type === 'speed') {
+    /* Applies to the next wait, which is at most a few hundred milliseconds
+     * away, so the slider feels immediate without anything being
+     * interrupted. */
+    if (host) host.opts.timeScale = msg.timeScale;
+    return;
+  }
 
   if (msg.type === 'gpio-in') {
     /* Safe at any time: the host records the line and applies it at the top
@@ -105,6 +117,8 @@ self.onmessage = async (event) => {
     traceSwitches: false,
     maxTimeMs: msg.maxTimeMs ?? 10_000,
     interactive: !!msg.interactive,
+    clock: msg.clock ?? 'virtual',
+    timeScale: msg.timeScale ?? 1,
     wasm: msg.url,
   };
 

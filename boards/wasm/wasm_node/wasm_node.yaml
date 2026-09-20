@@ -13,3 +13,4 @@ testing:
   default: false
 supported:
   - gpio
+  - entropy

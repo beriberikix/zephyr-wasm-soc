@@ -316,6 +316,28 @@ That means an external interrupt is delivered no sooner than the next time
 the guest idles or reaches a safepoint, which is the same bound everything
 else on this port has.
 
+### D5b. Pacing: waiting afterwards, not deciding beforehand
+
+A sample that blinks once a second is correct under virtual time and
+invisible: the host jumps straight to each deadline and the whole run is
+over before anyone sees it. `--paced` waits out the difference *after* the
+guest has done the work, rather than deciding in advance how long to let it
+run.
+
+That ordering is what keeps determinism. The clock is still set to the
+deadline and never to however long the host actually slept, so the guest
+observes exactly the timestamps it observes under plain virtual time.
+Pacing changes when a thing is shown and never what it is, which is checked:
+the same build under `--paced`, under `--paced --time-scale 10` and under
+plain virtual time produces byte-identical output, in 5.07 s, 0.56 s and
+0.06 s respectively.
+
+`timeScale` divides the wait, so the page can offer slow motion and fast
+forward without the guest being able to tell. An advance longer than
+`PACE_MAX_NS` is taken at full speed: the kernel clamps "nothing soon" to a
+deadline about two days out, and sitting through that would be a hang rather
+than pacing.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

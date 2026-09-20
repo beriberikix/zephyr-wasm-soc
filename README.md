@@ -29,6 +29,8 @@ log, including what did not work. `BRIEF.md` is the original task.
 * `samples/basic/blinky` and `samples/basic/button` run, with the LEDs drawn
   on the page and buttons to press. The pins are Zephyr's own emulated GPIO
   controller, so the driver and subsystem code above them is the real thing.
+* `tests/drivers/entropy/api` passes, on a generator that is seeded by
+  default so that runs stay reproducible.
 * 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
   `scripts/kernel_tests.json` records every suite tried, including the nine
   that do not pass and why.
@@ -262,6 +264,10 @@ under wasmtime. The kernel is the same module in all three.
 | Flag | Effect |
 |---|---|
 | `--realtime` | follow the wall clock instead of virtual time |
+| `--paced` | let virtual time pass at the rate it claims, so a sample that blinks once a second can be watched. The guest sees the same clock either way, so the output is unchanged |
+| `--time-scale <n>` | with `--paced`, divide the waiting: 10 is ten times faster than real, 0.1 is slow motion |
+| `--trace-gpio` | log every GPIO output change to stderr |
+| `--gpio <ms>:<pin>=<0\|1>` | move an input pin at a given guest time, repeatable |
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |

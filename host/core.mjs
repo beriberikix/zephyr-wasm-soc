@@ -21,6 +21,8 @@
  *   startInput(push, interrupt)                            optional
  *   stopInput()                                            optional
  *   yieldToEventLoop(hasInput)  -> Promise                 let the host breathe
+ *   wait(ms)                    -> Promise                 pacing, if used
+ *   gpioOut(port, values, ns)                              optional
  *
  * host/run.mjs supplies a Node one and host/web/worker.js a browser one. The
  * wasmtime host in host/run_wasmtime.py is a separate implementation in
@@ -47,6 +49,22 @@ const CLAMP_NS = 100_000_000_000n;
  * enough to distinguish "still working" from "quiescent" and cheap, because
  * each round costs one suspension, not one tick. */
 const QUIESCENT_ROUNDS = 2;
+
+/* The default entropy seed. Any fixed value would do; this one is only
+ * memorable. Both hosts use the same generator and the same seed, so a build
+ * that prints random numbers prints the same ones under Node and under
+ * wasmtime, which the two-engine check depends on. */
+const DEFAULT_SEED = 0x5eed0001;
+
+/* The most virtual time that pacing will sit through in one go.
+ *
+ * Under virtual time the kernel clamps "nothing soon" to a deadline about two
+ * days out, and jumping to it is how a run reaches its quiet end. Sleeping
+ * two days of wall clock to match would not be pacing, it would be a hang, so
+ * an advance longer than this is taken as fast as ever. Five seconds is
+ * longer than anything a person is watching for and far shorter than the
+ * clamp. */
+const PACE_MAX_NS = 5_000_000_000n;
 
 /* Virtual time charged per safepoint progress report. With the default of
  * 20000 safepoints between reports this makes a spinning thread advance the
@@ -93,6 +111,20 @@ export class Host {
      * of the loop rather than written straight into guest memory, because a
      * message handler can run before the module is even instantiated. */
     this.externalIrqs = 0;
+    /* xorshift32, seeded. Not a good generator and not meant to be one: it
+     * has to be cheap, identical in both hosts, and repeatable, because CI
+     * requires two runs of a build to be byte-identical. --true-random opts
+     * out for anyone who wants the platform's own randomness. */
+    this.randState = (opts.seed ?? DEFAULT_SEED) >>> 0 || DEFAULT_SEED;
+  }
+
+  nextRandomByte() {
+    let x = this.randState;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5;  x >>>= 0;
+    this.randState = x;
+    return x & 0xff;
   }
 
   /* Raise an interrupt from outside the driver loop. Safe to call from a
@@ -170,6 +202,18 @@ export class Host {
             return;
           }
           self.suspend({ idle: false });
+        },
+
+        entropy_get(ptr, len) {
+          const bytes = new Uint8Array(self.mem.buffer, ptr, len);
+          if (self.opts.trueRandom && globalThis.crypto?.getRandomValues) {
+            /* getRandomValues refuses more than 65536 bytes at a time. */
+            for (let off = 0; off < len; off += 65536) {
+              globalThis.crypto.getRandomValues(bytes.subarray(off, Math.min(off + 65536, len)));
+            }
+            return;
+          }
+          for (let i = 0; i < len; i++) bytes[i] = self.nextRandomByte();
         },
 
         gpio_out(port, values) {
@@ -372,6 +416,25 @@ export class Host {
     this.startInput();
 
     this.deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
+
+    /* Pacing: make virtual time pass at something like the rate it claims.
+     *
+     * A sample that sleeps a second between blinks is correct under virtual
+     * time and invisible, because the host jumps straight to each deadline
+     * and the whole run is over before a person sees it. Pacing waits out
+     * the difference afterwards: the guest has already done the work, and
+     * the host sleeps to match before letting it do any more.
+     *
+     * Doing it after the fact rather than before is what keeps determinism.
+     * The guest observes exactly the timestamps it observes under plain
+     * virtual time -- the clock is still set to the deadline and never to
+     * however long the host actually slept -- so pacing changes when a thing
+     * is shown and never what it is. timeScale divides the wait: 10 is ten
+     * times faster than real, 0.1 is slow motion.
+     */
+    const paced = this.opts.clock === 'paced';
+    let pacedFrom = this.nowNs;
+
     while (!this.done) {
       try {
         this.checkDeadline();
@@ -389,6 +452,18 @@ export class Host {
         this.platform.writeErr(`\n*** ${err.message} ***\n`);
         this.exitCode = 2;
         break;
+      }
+      if (paced) {
+        const advanced = this.nowNs - pacedFrom;
+        pacedFrom = this.nowNs;
+        if (advanced > 0n && advanced <= PACE_MAX_NS) {
+          const ms = Number(advanced) / 1e6 / (this.opts.timeScale || 1);
+          if (ms >= 1) {
+            this.yieldToHost = false;
+            await this.platform.wait(ms);
+            continue;
+          }
+        }
       }
       if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a

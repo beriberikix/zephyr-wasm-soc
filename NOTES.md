@@ -284,3 +284,57 @@ that fails to load takes the Worker with it and reports nothing at all: the
 page sat with its menu filled in and its Run button doing nothing. Under
 Node everything passed, because Node loads those files from the repository
 rather than from `_site`. The staged layout is a thing only a browser sees.
+
+
+### Tick 37 — making a second last a second
+
+Blinky ran from the first build and was unwatchable: under virtual time the
+host jumps straight to each deadline, so five seconds of blinking is over in
+sixty milliseconds. Correct, and no use at all to the person the whole idea
+is for.
+
+The fix is smaller than it looked, and the shape of it is the interesting
+part. The obvious way round is to decide in advance how long to let the
+guest run, which means the host choosing the guest's clock, which is the end
+of determinism. Waiting *afterwards* has neither problem: the guest runs to
+its next deadline exactly as it always did, the clock is set to that
+deadline and never to however long the host actually slept, and then the
+host sits out the difference before letting anything else happen.
+
+So the guest cannot tell. Same build, three ways:
+
+| | wall time | output |
+|---|---|---|
+| virtual | 0.06 s | identical |
+| `--paced` | 5.07 s | identical |
+| `--paced --time-scale 10` | 0.56 s | identical |
+
+Which also means slow motion is free, and that is most of what phase 2 wants
+from a time control. In Chromium the LED now changes at 1029, 2053 and
+3082 ms of wall clock, which is blinky doing what blinky says it does.
+
+One thing needed guarding. The kernel clamps "nothing soon" to a deadline
+about two days out, and reaching it is the normal quiet end of a run; pacing
+that faithfully would be a hang rather than a feature. Anything longer than
+five seconds of virtual time is taken at full speed.
+
+
+### Tick 38 — entropy, and the second engine earning its keep again
+
+One import, one driver, and the only decision worth recording: the default
+generator is seeded and repeats exactly. A real entropy source would end the
+byte-identical guarantee that CI checks on every push, so
+`crypto.getRandomValues` is behind `--true-random` and the default is a
+xorshift32 from a fixed seed. `tests/drivers/entropy/api` passes, and it is
+in the demo now as standing evidence rather than something that was true
+once.
+
+Both hosts implement that generator separately, from the same seed, which
+means a build that prints random numbers has to print the same ones under
+Node and under wasmtime. It did not, the first time: the wasmtime host wrote
+to `self.memory` where every other line in the file writes to `self.mem`, so
+the import raised and the run died five lines in. The two-engine check said
+so immediately. That is twice now that keeping the second host a genuinely
+separate implementation has caught something that a shared one could not
+have.
+

@@ -23,6 +23,7 @@
 		zephyr,console = &host_uart;
 		zephyr,shell-uart = &host_uart;
 		zephyr,sram = &ram0;
+		zephyr,entropy = &host_rng;
 	};
 
 	aliases {
@@ -157,6 +158,11 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 			ngpios = <8>;
+		};
+
+		host_rng: rng {
+			compatible = "wasm,host-entropy";
+			status = "okay";
 		};
 
 		host_gpio: gpio-bridge {

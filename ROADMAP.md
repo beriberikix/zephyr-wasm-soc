@@ -113,9 +113,8 @@ which nothing in the port has ever considered.
 
 ## Phase 1 — a virtual board
 
-Done, apart from the real-time work. It was the largest unlock per unit of
-work and it turned out to be mostly a bridge, because Zephyr already ships
-the hard part.
+Done. It was the largest unlock per unit of work and it turned out to be
+mostly a bridge, because Zephyr already ships the hard part.
 
 - [x] **GPIO**, as a bridge rather than a driver. `drivers/gpio/gpio_emul.c`
       is board agnostic and already implements pin state, direction, pull,
@@ -146,8 +145,17 @@ the hard part.
       four `gpio-leds` and two `gpio-keys`, wired active low with a pull-up
       the way a button usually is, with the `led0` and `sw0` aliases the
       samples look for.
-- [ ] **Entropy** and **real time**, which are the two left. Blinky blinks at
-      exactly one second of virtual time, which is correct and invisible.
+- [x] **Real time.** `--paced` waits out the difference after the guest has
+      done the work rather than deciding in advance how long to let it run,
+      which is what keeps the guest's clock identical to plain virtual time.
+      Blinky now blinks once a second in the browser, and the page has a
+      speed control from a quarter to twenty times. `DESIGN.md` D5b.
+- [x] **Entropy**, over one import, with the seeded generator as the default
+      and `--true-random` as the opt-out, because a real random source would
+      end the byte-identical guarantee CI depends on. Both hosts implement
+      the same generator from the same seed, so they still agree on a build
+      that prints random numbers -- which `tests/drivers/entropy/api` does,
+      and which is now in the demo as standing evidence.
 
 `basic/blinky` and `basic/button` now run unmodified, the first with its LED
 drawn on the page and the second with a button to press. That is the score at
