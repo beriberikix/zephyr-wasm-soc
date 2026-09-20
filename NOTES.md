@@ -449,3 +449,22 @@ Asyncify needed nothing. Its buffers are in linear memory, so they come
 along, and a snapshot is only ever taken between steps where its state is
 normal.
 
+
+### Tick 42 — the harness catching something, including itself
+
+The full sweep after phase 1 and 2: 24 of the 25 suites exactly as recorded,
+which is the answer wanted. GPIO, entropy and the three thread-monitoring
+options that `CONFIG_WASM_INSPECT` selects are now in every build, and none
+of it moved a single case.
+
+The twenty-fifth was `poll`, reported as no longer building:
+`'zephyr/kobj-types-enum.h' file not found`. It builds perfectly on its own,
+and it built perfectly on the next parallel run too. So it is a race in
+Zephyr's generated-header dependency edges, exposed by this harness building
+three applications at once, and not a regression at all.
+
+The harness now builds one at a time by default. A regression harness that
+reports failures it caused itself is worse than a slow one, and the
+distinction matters more here than elsewhere: the whole value of
+`kernel_tests.json` is that a line moving means something.
+

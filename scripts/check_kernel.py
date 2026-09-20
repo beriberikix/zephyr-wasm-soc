@@ -79,7 +79,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", help="comma-separated suite paths")
-    ap.add_argument("--jobs", type=int, default=2, help="suites to build at once")
+    ap.add_argument("--jobs", type=int, default=1,
+                    help="suites to build at once. One by default, because "
+                         "building several at once intermittently fails on a "
+                         "generated header that has not been written yet, and "
+                         "a regression harness that reports failures it caused "
+                         "itself is worse than a slow one. Higher is faster and "
+                         "occasionally lies.")
     ap.add_argument("--update", action="store_true",
                     help="rewrite the recorded statuses from this run")
     ap.add_argument("--keep-builds", action="store_true")
