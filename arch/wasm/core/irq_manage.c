@@ -19,7 +19,20 @@ volatile uint32_t z_wasm_irq_pending;
 volatile uint32_t z_wasm_irq_masked = 1U;
 
 static struct _isr_table_entry isr_table[CONFIG_WASM_IRQ_LINES];
-static uint32_t irq_enabled_mask;
+static volatile uint32_t irq_enabled_mask;
+
+/* Exported so the host can watch the mask while debugging a stuck idle. */
+__attribute__((export_name("z_wasm_irq_masked_addr")))
+uint32_t z_wasm_irq_masked_addr(void)
+{
+	return (uint32_t)(uintptr_t)&z_wasm_irq_masked;
+}
+
+__attribute__((export_name("z_wasm_irq_enabled_addr")))
+uint32_t z_wasm_irq_enabled_addr(void)
+{
+	return (uint32_t)(uintptr_t)&irq_enabled_mask;
+}
 
 /* The host needs the addresses of these two words and nothing else. */
 __attribute__((export_name("z_wasm_irq_pending_addr")))

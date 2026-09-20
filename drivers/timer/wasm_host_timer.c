@@ -43,7 +43,11 @@ void sys_clock_set_timeout(uint32_t ticks, bool idle)
 {
 	ARG_UNUSED(idle);
 
-	if (ticks == (uint32_t)K_TICKS_FOREVER) {
+	/* The kernel clamps rather than passing K_TICKS_FOREVER through, so a
+	 * request at or near the clamp means "nothing to wake for" just as
+	 * much as the sentinel does.
+	 */
+	if (ticks == (uint32_t)K_TICKS_FOREVER || ticks >= (uint32_t)INT32_MAX) {
 		/* Nothing to wake for. Leaving no alarm set is what lets the
 		 * host decide the run is over.
 		 */

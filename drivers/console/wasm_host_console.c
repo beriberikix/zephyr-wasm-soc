@@ -7,6 +7,7 @@
 #include <zephyr/init.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/printk-hooks.h>
+#include <zephyr/sys/libc-hooks.h>
 #include <zephyr/arch/wasm/wasm_host.h>
 
 /*
@@ -37,7 +38,14 @@ static int console_out(int c)
 
 static int wasm_host_console_init(void)
 {
+	/* printk and printf go through different hooks. Installing only the
+	 * first is enough for the boot banner and leaves anything using the C
+	 * library silently discarded, which is how hello_world prints.
+	 */
 	__printk_hook_install(console_out);
+#ifdef CONFIG_STDOUT_CONSOLE
+	__stdout_hook_install(console_out);
+#endif
 	return 0;
 }
 

@@ -1,66 +1,21 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 8 done  |  Last commit: generic swap-to-main  |  Blocker: none
+Tick: 9 done  |  Last commit: hello_world  |  Blocker: none
 
-Boot now reaches two switches: to the main thread, then to the idle thread.
-It then loops in idle forever.
+**hello_world runs, and exits cleanly.**
 
-Trace, with `--trace-switches`:
-
-    [enter] z_wasm_boot(0x0) sp=0x4000
     *** Booting Zephyr OS build e201b84b04e4 ***
-    [switch #1] -> buf=0xa100 sp=0xa100 fresh
-    [enter] z_wasm_thread_entry(0xd300) sp=0xa100
-    *** Booting Zephyr OS build e201b84b04e4 ***
-    [switch #2] -> buf=0xc100 sp=0xc100 fresh
-    [enter] z_wasm_thread_entry(0xd270) sp=0xc100
-    [enter] z_wasm_thread_entry(0xd270) sp=0xc100   <- idle, round and round
+    Hello World! wasm_node/node
+    exit=0
 
-Three things to chase, in this order:
+That is the first of the four Milestone 2 acceptance criteria.
 
-1. **Idle never wakes.** The host advances virtual time and sets the pending
-   bit, but nothing runs. Check in order: is IRQ line 0 enabled by the time
-   idle first suspends; is `z_wasm_irq_masked` zero when the dispatcher runs;
-   does the timer ISR actually call `sys_clock_announce`. A trace of the
-   pending word and the mask across a suspension will say which.
-2. **The banner still prints twice**, once inside `z_wasm_boot` and once
-   inside the main thread. Removing the custom swap-to-main did not change
-   that, so the cause is elsewhere. Find where the banner is actually printed
-   in this Zephyr version before theorising further; it is not in
-   `kernel/init.c`.
-3. **`arch_cpu_irqs_are_enabled` is declared but never defined**, which shows
-   up as a warning. Implement it.
-
-Also worth fixing in the harness: `--max-time` is checked between
-suspensions, so a guest that never suspends is never interrupted. The wall
-clock guard added this tick has the same flaw. Bounding a spinning guest needs
-the safepoint instrumentation from Milestone 3, or an external timeout.
-
-### Tick 7 — two real bugs, and how wasm reports them
-
-**An empty init level was being walked.** The generator rounded every level's
-array up to one element, so a level with no entries left a zeroed entry inside
-the range `z_sys_init_run_level` walks, and the kernel called a null function
-pointer. On hardware that faults at a null address. In wasm a null function
-pointer is table slot 0, so the call is an indirect call with the wrong type
-and the engine reports `function signature mismatch`, which points at the
-callee rather than at the null. Empty levels are now genuinely zero-length, so
-a level's start coincides with the next level's.
-
-This is worth keeping as a portability note. Wasm checks indirect call
-signatures exactly, where other targets tolerate a cast, so a class of
-mistakes that would be a wild jump elsewhere surfaces here as a type error at
-the call site.
-
-**The Asyncify reservation was larger than the default stacks.** Every thread
-stack object yields `ARCH_THREAD_STACK_RESERVED` bytes to its Asyncify buffer,
-and the default main stack is 1024 bytes against a 4096-byte reservation, so
-the split ran off the bottom of the object. The board now sets stack sizes
-that clear the reservation with room left over. This is a real cost of the
-approach and belongs in the final report: on this port every thread pays for
-an Asyncify buffer whether or not it ever suspends deeply.
-
+Next: `samples/synchronization`. It needs the parts hello_world never exercised
+-- two threads alternating, `k_msleep` honoured, and the timer interrupt
+actually delivered. The interrupt path has not yet been proven: nothing in
+hello_world required a single interrupt to be taken. Expect the enabled-mask
+question from tick 8 to resurface there.
 
 ### Tick 8 — Asyncify cannot suspend in a function that never returns
 
@@ -87,3 +42,38 @@ A second, smaller lesson: the host's `--max-time` is checked between
 suspensions, so a guest that spins without suspending is never interrupted.
 Bounding that needs the safepoint instrumentation from Milestone 3. Until
 then, a hang has to be killed from outside.
+
+
+### Tick 9 — hello_world, and three bugs between here and it
+
+Three separate faults stood between the banner and the greeting. Two were mine
+and one is a property of the platform worth keeping.
+
+**Zero-length arrays in a section may not be emitted at all.** The generated
+per-level init arrays were sized to the number of entries, so an empty level
+got a zero-length array. Clang need not emit such an object, which leaves the
+level's symbol pointing at whatever the linker put there instead, and since
+`z_sys_init_run_level` walks from one level's start to the next, one level's
+range silently swallowed another level's entries. That is why the boot banner
+printed twice: it ran at two levels. Every level now gets at least one entry,
+a no-op where it would otherwise be empty, which costs one call and keeps
+every address well defined.
+
+Spike A's conclusion that adjacent definitions stay contiguous still holds. It
+just does not extend to objects the compiler may decline to emit.
+
+**The kernel clamps rather than passing the forever sentinel through.** Asked
+for an unbounded timeout, it sends roughly `INT32_MAX` ticks, not
+`K_TICKS_FOREVER`. The driver only recognised the sentinel, so it armed an
+alarm about two days out in virtual time, the host obligingly jumped there,
+and the run died on its time limit. The driver now treats a request at or near
+the clamp as what it means.
+
+**printk and printf are different hooks.** The console driver installed only
+the printk hook, which is enough for the boot banner and silently discards
+anything written through the C library. hello_world prints with `printf`. Both
+hooks are now installed.
+
+Also: the harness now treats a kernel that idles with no timer armed as a
+clean end of run rather than an error. For a sample that has finished its
+work, nothing can ever happen again, and that is success.

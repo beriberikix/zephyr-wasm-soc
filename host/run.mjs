@@ -162,6 +162,8 @@ class Host {
     this.switchBlockAddr = this.ex.z_wasm_switch_block_addr();
     this.irqPendingAddr = this.ex.z_wasm_irq_pending_addr();
     this.scratchBuf = this.ex.z_wasm_boot_scratch_addr();
+    this.maskedAddr = this.ex.z_wasm_irq_masked_addr?.();
+    this.enabledAddr = this.ex.z_wasm_irq_enabled_addr?.();
 
     /* The first context is the boot path itself. */
     this.current = { entry: 'z_wasm_boot', arg: 0, buf: this.scratchBuf, sp: null, fresh: true };
@@ -216,10 +218,21 @@ class Host {
     this.contexts.set(c.buf, c);
 
     if (this.resumeSame) {
+      if (this.opts.traceSwitches && this.maskedAddr) {
+        const w = new Uint32Array(this.mem.buffer);
+        process.stderr.write(`[idle] pending=0x${w[this.irqPendingAddr >> 2].toString(16)} ` +
+          `masked=${w[this.maskedAddr >> 2]} enabled=0x${w[this.enabledAddr >> 2].toString(16)} ` +
+          `alarm=${this.alarmNs} now=${this.nowNs}\n`);
+      }
       /* Idle: the same context resumes once something is pending. */
       const pending = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0];
       if (pending === 0 && !this.advanceToNextDeadline()) {
-        process.stderr.write('\n*** kernel idled with nothing left to wake it ***\n');
+        /* Every thread is idle and no timer is armed, so nothing can ever
+         * happen again. For a sample that has finished its work that is the
+         * normal end of the run, not a failure. */
+        if (this.opts.traceSwitches) {
+          process.stderr.write('[idle] nothing left to wake the kernel; stopping\n');
+        }
         return false;
       }
       return true;

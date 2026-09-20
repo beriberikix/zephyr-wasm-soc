@@ -168,17 +168,30 @@ def render(init_entries, iterables, iter_refs) -> str:
             out.append(f"extern const struct init_entry {sym};")
     out.append("")
 
-    out.append("/* Defined next to each other on purpose: one translation unit keeps")
-    out.append(" * them contiguous and in declaration order, which is what lets")
-    out.append(" * z_sys_init_run_level() walk from one level's start to the next. */")
+    out.append("/* One explicit section, declared in level order.")
+    out.append(" *")
+    out.append(" * Adjacency in the source is not enough on its own: as plain globals")
+    out.append(" * these would land in .bss, where the linker is free to order and pad")
+    out.append(" * them as it likes, and z_sys_init_run_level() walks from one level's")
+    out.append(" * start to the next, so a reordering silently makes one level's range")
+    out.append(" * cover another level's entries. Naming a section pins the order. */")
+    out.append("#define Z_WASM_INIT_ARR __attribute__((section(\"z_initarr\"), used, aligned(4)))")
+    out.append("")
+    out.append("/* A level with no entries still needs a real array. A zero-length one")
+    out.append(" * may not be emitted at all, which leaves its symbol at an address the")
+    out.append(" * linker chose for something else, and the walk then covers whatever")
+    out.append(" * happens to follow. One no-op entry costs a call and keeps every")
+    out.append(" * level's address well defined. */")
+    out.append("static int z_wasm_init_nop(void) { return 0; }")
     for level in LEVELS:
         # A level with no entries must be zero-length, so its start coincides
         # with the next level's. Rounding up to one leaves a zeroed entry in
         # the walked range, and calling its null init_fn is an indirect call
         # to table slot 0, which traps as a signature mismatch rather than
         # faulting the way it would on hardware.
-        out.append(f"struct init_entry __init_{level}_start[{len(by_level[level])}];")
-    out.append("struct init_entry __init_end[1];")
+        n = max(len(by_level[level]), 1)
+        out.append(f"Z_WASM_INIT_ARR struct init_entry __init_{level}_start[{n}];")
+    out.append("Z_WASM_INIT_ARR struct init_entry __init_end[1];")
     out.append("")
 
     out.append("/* Called before z_cstart(). Copies each entry into the slot the")
@@ -189,7 +202,8 @@ def render(init_entries, iterables, iter_refs) -> str:
     for level in LEVELS:
         entries = by_level[level]
         if not entries:
-            out.append(f"\t/* {level}: none; start == the next level's start */")
+            out.append(f"\t__init_{level}_start[0].init_fn = z_wasm_init_nop;   /* {level}: no entries */")
+            out.append(f"\t__init_{level}_start[0].dev = NULL;")
             continue
         for i, (prio, sub, sym) in enumerate(entries):
             out.append(f"\t__init_{level}_start[{i}] = {sym};   /* priority {prio}.{sub} */")
