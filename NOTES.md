@@ -1,16 +1,16 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 1 done  |  Last commit: spike B  |  Blocker: none
-Next: spike C (Asyncify fibers). Two or more threads with their own shadow
-stack and Asyncify buffer, switching under a host driver loop, plus code-size
-and speed numbers for wasm-opt --asyncify.
+Tick: 2 done  |  Last commit: spike C  |  Blocker: none
+Milestone 0 complete. Next: Milestone 1, starting with the toolchain,
+SoC, board and Kconfig skeleton, aiming first at
+`west build -b wasm_node samples/hello_world --cmake-only` configuring.
 
 ### Checklist
 - [x] T0 tools installed, workspace created
 - [x] M0-A sections spike ... decision recorded
 - [x] M0-B offsets spike ... decision recorded
-- [ ] M0-C fibers spike ... numbers recorded
+- [x] M0-C fibers spike ... numbers recorded
 - [ ] M1 toolchain+board configure (west build --cmake-only)
 - [ ] M1 link zephyr.elf -> zephyr.wasm (post-link wasm-opt)
 - [ ] M1 host/run.mjs boots to banner
@@ -202,3 +202,75 @@ This is the port's first and so far only change to the Zephyr tree,
 with no generic fallback and no out-of-tree hook, so a new architecture cannot
 compile `offsets.c` without appearing in that file. `scripts/apply_patches.sh`
 applies it and is idempotent.
+
+
+### Tick 2 — spike C: Asyncify fibers
+
+Reproduce with `spikes/c-fibers/run.sh`; the captured log is `out.log`.
+
+Four threads, each with its own shadow-stack region and its own Asyncify
+buffer, switch round-robin under a host driver loop. Each keeps its own state
+across suspension and locals survive the unwind and rewind, which the module
+checks itself and reports as a failure if it ever stops being true.
+
+**Swapping a thread means swapping two things.** Asyncify saves the wasm
+frames into its buffer, but it does not touch `__stack_pointer`, the global
+that walks the C shadow stack in linear memory. The host saves and restores
+that separately on every switch. wasm-ld exports the global and it is writable
+from the host, so no extra machinery is needed. This is exactly the split the
+arch will make inside each `K_THREAD_STACK` object.
+
+**Link with wasm-ld directly, not through the clang driver.** The driver drops
+the wasm name section. Without names Binaryen cannot match an asyncify
+onlylist: it prints a warning, instruments nothing, and produces a module that
+looks smaller and silently never suspends. That cost a wrong measurement
+before it was caught, and it is a trap worth remembering when the real build
+is wired up.
+
+**Cost, on a kernel-shaped module** with a narrow yield path, sixty functions
+that never yield, and an indirect call table that can reach a yielding
+function, which is the shape Zephyr actually has:
+
+| Build | Size | vs baseline |
+|---|---|---|
+| baseline | 8168 B | 1.00x |
+| full asyncify | 9936 B | 1.22x |
+| asyncify with ignore-indirect | 9036 B | 1.11x |
+| asyncify with a complete onlylist | 9936 B | 1.22x |
+
+The narrowing options do not help here, and two of them are actively wrong.
+Binaryen already instruments only what can transitively reach a suspending
+import, so a *correct* onlylist, one naming every frame that can be live
+across a yield rather than just the yielding leaf, costs exactly what the full
+pass costs. The cheaper-looking variants fail: with `ignore-indirect`, or with
+an onlylist naming only the leaf, a yield reached through the indirect table
+does not suspend at all. The thread runs straight past it. Since Zephyr
+reaches thread entries, init handlers and ISRs indirectly, both are unusable
+and the port takes the full pass.
+
+**Speed is the good news.** Code that never yields runs at 1.00x: twenty
+thousand rounds of sixty indirect calls each took 9.9 ms instrumented and
+9.9 ms not. The instrumentation is paid for in size, not in throughput.
+
+**Switch cost scales with how deep the stack is when a thread yields**, since
+Asyncify copies the live frames:
+
+| Depth at yield | ns per switch | Buffer bytes used |
+|---|---|---|
+| 0 | 220 | 88 |
+| 4 | 264 | 216 |
+| 16 | 408 | 600 |
+| 32 | 595 | 1112 |
+
+That is 88 bytes plus 32 per frame, and roughly 200 ns plus 12 ns per frame.
+Measuring this needed care: the first attempt showed a flat line because clang
+had turned the recursive test function into an accumulator loop, so there was
+no depth to measure.
+
+**The sharp edge: a buffer that is too small corrupts memory silently.**
+Asyncify does not bounds-check. Given a 248 byte buffer and a stack needing
+1112, it wrote 864 bytes past the end and kept going, with no trap and no
+error. `--pass-arg=asyncify-asserts` does not change this; it checks state
+transitions, not bounds. The Asyncify half of every thread stack therefore has
+to be sized for the deepest stack that thread can reach, and the port should
+put something detectable immediately after it.

@@ -120,6 +120,43 @@ Struct layout has to come from the target compiler. For one representative
 struct the host reports 32 bytes and wasm32 reports 16, so compiling
 `offsets.c` natively, as the brief warns, would be wrong by a factor of two.
 
+### D8. Thread stack split, and why the full Asyncify pass
+
+Spike C settles the shape of a thread. Each `K_THREAD_STACK` object is split
+in two: the low part is the C shadow stack that `__stack_pointer` walks, and
+the high part is the Asyncify buffer holding unwound wasm frames. A switch
+swaps both, because Asyncify saves the wasm frames but does not touch
+`__stack_pointer`. wasm-ld exports that global and the host can write it.
+
+Sizing comes from the measurements: the buffer needs about 88 bytes plus 32
+per frame live at the moment of the yield. The reserved split will be a
+Kconfig with a conservative default, because a buffer that is too small does
+not fail cleanly. Asyncify does not bounds-check it. In the spike a 248 byte
+buffer absorbed 1112 bytes and carried on, silently overwriting whatever
+followed, and `asyncify-asserts` does not add a bounds check. The port places
+the buffer at the top of the stack object so an overflow runs into the next
+guard rather than into live thread state.
+
+The port uses the **full** Asyncify pass, not `ignore-indirect` and not an
+onlylist. Both narrowing options break the case Zephyr depends on: a yield
+reached through an indirect call, which is how thread entries, init handlers
+and ISR table entries are all reached. In the spike those builds ran straight
+past the yield instead of suspending. A correct onlylist, naming every frame
+that can be live across a yield, turns out to cost exactly what the full pass
+costs anyway, because Binaryen already instruments only what can reach a
+suspending import. There is nothing to win.
+
+The measured cost is 1.22x code size on a kernel-shaped module, and no
+measurable throughput cost on code that does not yield. A switch is about
+200 ns plus 12 ns per live frame.
+
+### D9. Link with wasm-ld directly
+
+The clang driver drops the wasm name section. Nothing in the kernel needs it,
+but Binaryen does: without names an asyncify onlylist silently matches nothing
+and produces a module that never suspends. The toolchain files invoke wasm-ld
+directly so names survive and any future narrowing stays possible.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
