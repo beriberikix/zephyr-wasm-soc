@@ -1,7 +1,10 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 0  |  Last commit: 7502d7f scaffolding  |  Blocker: none
+Tick: 0 done  |  Last commit: 812dd17 spike A  |  Blocker: none
+Next: spike B (offsets header). Spike A's object-introspection finding
+(wasm-objdump -x gives symbol -> segment name, llvm-nm gives data offsets)
+is the likely basis for it.
 
 ### Checklist
 - [x] T0 tools installed, workspace created
