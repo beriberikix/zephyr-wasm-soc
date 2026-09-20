@@ -22,6 +22,23 @@ if(CONFIG_WASM_SAFEPOINTS)
   endif()
 endif()
 
+# The features the module actually uses, from its target_features section.
+#
+# Going through the text format for the safepoint pass loses that section, so
+# the tools downstream fall back to their own defaults and reject anything
+# past the MVP. Newer Binaryen enables enough by default to hide this; older
+# Binaryen rejects i32.extend8_s and stops. Naming them is both portable and
+# more honest about what the module needs.
+set(WASM_FEATURES
+  --enable-mutable-globals
+  --enable-sign-ext
+  --enable-bulk-memory
+  --enable-nontrapping-float-to-int
+  --enable-reference-types
+  --enable-multivalue
+  CACHE INTERNAL ""
+)
+
 # Every import that can suspend has to be named, or Asyncify will not treat a
 # call to it as a suspension point.
 set(asyncify_imports
@@ -48,7 +65,7 @@ function(wasm_add_asyncify_step)
       COMMAND ${PYTHON_EXECUTABLE} ${WASM_MODULE_DIR}/scripts/instrument_safepoints.py
               -i ${wat_in} -o ${wat_out}
       COMMAND ${WAT2WASM} ${wat_out} -o ${instrumented}
-      COMMAND ${WASM_OPT} --asyncify
+      COMMAND ${WASM_OPT} ${WASM_FEATURES} --asyncify
               --pass-arg=asyncify-imports@${WASM_ASYNCIFY_IMPORTS}
               ${instrumented} -o ${wasm_out}
       BYPRODUCTS ${wasm_out} ${wat_in} ${wat_out} ${instrumented}
@@ -57,7 +74,7 @@ function(wasm_add_asyncify_step)
   else()
     add_custom_command(
       TARGET ${logical_target_for_zephyr_elf} POST_BUILD
-      COMMAND ${WASM_OPT} --asyncify
+      COMMAND ${WASM_OPT} ${WASM_FEATURES} --asyncify
               --pass-arg=asyncify-imports@${WASM_ASYNCIFY_IMPORTS}
               ${linked} -o ${wasm_out}
       BYPRODUCTS ${wasm_out}
