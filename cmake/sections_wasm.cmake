@@ -27,7 +27,10 @@ function(wasm_add_sections_step)
     COMMAND ${PYTHON_EXECUTABLE}
             ${WASM_MODULE_DIR}/scripts/gen_sections_wasm.py
             --objdump ${WASM_OBJDUMP}
-            --scan-dir ${PROJECT_BINARY_DIR}
+            # The whole build tree, not just the zephyr subdirectory: the
+            # application's own objects sit outside it, and they are where
+            # K_THREAD_DEFINE and most SYS_INIT entries in a sample live.
+            --scan-dir ${CMAKE_BINARY_DIR}
             -o ${sections_c}
     DEPENDS ${ZEPHYR_LIBS_PROPERTY} zephyr kernel
     COMMENT "Scanning objects for linker-section symbols"

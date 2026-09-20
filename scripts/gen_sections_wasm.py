@@ -59,14 +59,21 @@ ITERABLES = {
 
 
 ITER_REF_RE = re.compile(r"__(?:start|stop)_(z_iter_\w+)")
+ITER_DEF_RE = re.compile(r"^\s+-\s+\d+:\s+(z_iter_\w+)\s", re.M)
 
 
-def scan_iter_refs(objdump: str, path: Path) -> set[str]:
-    """Every z_iter_ section this object names, defined or merely referenced."""
+def scan_iter_sections(objdump: str, path: Path) -> tuple[set[str], set[str]]:
+    """Return (sections referenced, sections actually defined) for one object.
+
+    The distinction decides whether a family needs a fallback definition. A
+    weak fallback for a section that does exist would be worse than useless:
+    it gives wasm-ld a definition and so suppresses the synthesised bounds,
+    leaving the list permanently empty.
+    """
     proc = subprocess.run([objdump, "-x", str(path)], capture_output=True, text=True)
     if proc.returncode != 0:
-        return set()
-    return set(ITER_REF_RE.findall(proc.stdout))
+        return set(), set()
+    return set(ITER_REF_RE.findall(proc.stdout)), set(ITER_DEF_RE.findall(proc.stdout))
 
 
 def scan_object(objdump: str, path: Path) -> list[tuple[str, str]]:
@@ -103,8 +110,11 @@ def collect(objdump: str, paths: list[Path]):
     init_entries = []   # (level, prio, sub, symbol)
     iterables = {key: [] for key in ITERABLES}
     iter_refs: set[str] = set()
+    iter_defs: set[str] = set()
     for path in paths:
-        iter_refs |= scan_iter_refs(objdump, path)
+        refs, defs = scan_iter_sections(objdump, path)
+        iter_refs |= refs
+        iter_defs |= defs
         for name, seg in scan_object(objdump, path):
             m = INIT_SEG_RE.match(seg)
             if m and m.group("level") in LEVELS:
@@ -115,7 +125,8 @@ def collect(objdump: str, paths: list[Path]):
                 # e.g. ._static_thread_data.static.foo_
                 if seg == f"z_iter_{key}":
                     iterables[key].append(name)
-    return init_entries, iterables, sorted(iter_refs)
+    # Only a family that is referenced and never defined needs a fallback.
+    return init_entries, iterables, sorted(iter_refs - iter_defs)
 
 
 def render_bounds(iter_refs) -> str:
@@ -160,6 +171,7 @@ def render(init_entries, iterables, iter_refs) -> str:
         "#include <zephyr/init.h>",
         "#include <zephyr/device.h>",
         "#include <kernel_internal.h>",
+        "#include <kernel_internal.h>",
         "",
     ]
 
@@ -183,6 +195,18 @@ def render(init_entries, iterables, iter_refs) -> str:
     out.append(" * happens to follow. One no-op entry costs a call and keeps every")
     out.append(" * level's address well defined. */")
     out.append("static int z_wasm_init_nop(void) { return 0; }")
+    out.append("")
+    out.append("/* The kernel's own init lists are pay-per-use: their entries live only in")
+    out.append(" * objects the link may never pull in, so the section can be defined in")
+    out.append(" * some object and still be absent from the image. A weak bound fallback")
+    out.append(" * cannot cover that, because it would also suppress the real bounds")
+    out.append(" * wherever the section does exist. An anchor member is unambiguous: it")
+    out.append(" * keeps the section present, and its function does nothing. */")
+    out.append("static void z_wasm_anchor_fn(void) { }")
+    for key, ctype in (("k_kernel_init_pre_entry", "struct k_kernel_init_pre_entry"),
+                       ("k_kernel_init_post_entry", "struct k_kernel_init_post_entry")):
+        out.append(f'__attribute__((section("z_iter_{key}"), used))')
+        out.append(f"const {ctype} z_wasm_anchor_{key} = {{ .init_fn = z_wasm_anchor_fn }};")
     for level in LEVELS:
         # A level with no entries must be zero-length, so its start coincides
         # with the next level's. Rounding up to one leaves a zeroed entry in

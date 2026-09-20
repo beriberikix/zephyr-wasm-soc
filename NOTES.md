@@ -1,64 +1,30 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 12 done  |  Last commit: clamp handling  |  Blocker: none
+Tick: 13 done  |  Last commit: section scan covers the whole build  |  Blocker: none
 
-Waking now works. The trace shows a full sleep-and-wake cycle:
+Two real bugs in the section generator fixed, and the sample still stops after
+one line. Correcting an earlier note: in `samples/synchronization`, `thread_b`
+is the **static** thread (`K_THREAD_DEFINE`) and `thread_a` is created from
+main with `k_thread_create`. The thread that runs is the dynamic one, so it is
+static threads that never start.
 
-    [switch #3] -> buf=0xc9e0 fresh        (idle)
-    [idle] alarm=600100000 now=100000000 isr=1
-    [switch #4] -> buf=0x49c0 resume       (thread_a wakes)
-    [switch #5] -> buf=0xc9e0 resume       (back to idle)
-
-So the timer fires, the timeout expires, and a sleeping thread is resumed.
-That was the open question from tick 10 and it is answered.
-
-What remains is narrower than it looked: **thread_b is never created.** Only
-three contexts ever exist across the whole run, and they are main, thread_a
-and idle. The sample creates thread_b with `k_thread_create` from main, so
-either main never reaches that call or the created thread is never made
-runnable.
+Where that leaves it: the generator no longer emits a fallback for
+`_static_thread_data`, so the real section's bounds are in use, and the list
+should be populated. Yet `thread_b` still never runs.
 
 Next:
 
-1. Confirm by printing the thread count, or by watching for a fourth fresh
-   context. `CONFIG_THREAD_NAME` would make the trace self-explanatory and is
-   worth turning on while debugging.
-2. If main never reaches the call, find out what it blocks on first.
-3. If the thread is created but never scheduled, suspect `arch_new_thread`:
-   in particular whether `switch_handle` is published in a state the scheduler
-   accepts, since that is the one part of the switch contract this port has
-   never verified against what the kernel expects.
-
-### Tick 11 — the timer is right, the host's stop condition is not
-
-Instrumenting the timer driver answered the question from tick 10 and raised a
-better one.
-
-Everything in the driver is correct. The ISR fires on schedule, announces the
-right number of ticks, and the kernel reprograms sensible deadlines: a 500 ms
-sleep becomes a deadline 500 ms later, to the tick. With that instrumentation
-compiled in, `thread_a` prints over and over, which means the kernel is
-scheduling, sleeping and waking exactly as it should.
-
-Take the instrumentation out and the sample stops after one line. A behaviour
-that depends on printing is a timing bug, and here the timing that changes is
-the host's, not the guest's.
-
-The suspicion falls on the host's stop condition rather than on anything in
-the kernel. The host ends the run when the kernel idles with no alarm armed,
-on the reasoning that nothing can ever happen again. That is true only if the
-kernel has already had the chance to program its next deadline. The host
-consumes the alarm when it fires, so there is a window where the kernel has
-been woken, has not yet reprogrammed, and idles: the host sees no alarm and
-declares the run over. Printing from the ISR widens the window enough to hide
-it.
-
-Worth stating as a general point about virtual time: the host decides when
-time passes, so the host also decides what "nothing left to do" means, and
-getting that wrong ends a run early rather than hanging it. A hang would have
-been easier to notice.
-
+1. Check whether `z_init_static_threads` sees anything: print
+   `__static_thread_data_list_start` and `_end` at boot, or count the entries
+   it walks. That separates "the list is empty" from "the list is fine and the
+   threads are not being started".
+2. If the list is empty, the renamed section is being dropped at link time.
+   `STRUCT_SECTION_ITERABLE` marks entries RETAIN, which survives in the
+   object; confirm it survives the link too.
+3. If the list is fine, look at the delay path: static threads are started
+   through a timeout, so this may be the same wake machinery rather than
+   anything to do with sections.
 
 ### Tick 12 — the kernel's clamp is not "never"
 
@@ -84,3 +50,31 @@ looks like success.
 
 With this in place a full sleep-and-wake cycle works: the timer fires, the
 timeout expires, and the sleeping thread is resumed.
+
+
+### Tick 13 — two bugs in the generator, one of them silent
+
+**The scan was looking at the wrong half of the build tree.** It walked the
+Zephyr build subdirectory, and an application's own objects live outside it.
+Every `K_THREAD_DEFINE` and most `SYS_INIT` entries in a sample are in exactly
+those objects, so they were invisible: the generator saw 99 objects and missed
+the one that mattered. It now walks the whole build tree and sees 100.
+
+**A weak fallback for a section that exists is worse than no fallback.** The
+fallbacks were emitted for any family the generator did not find members for,
+which included families it simply could not see. That is not harmless: giving
+wasm-ld a definition suppresses the bounds it would otherwise synthesise, so a
+list that really does have members reads as empty. The generator now
+distinguishes a section that is referenced from one that is defined, and
+emits a fallback only for families that are referenced and defined nowhere.
+
+That rule alone was not enough either, because the kernel's own init lists are
+pay-per-use: their entries sit in objects the link may never pull in, so a
+section can be defined in some object and still be absent from the image.
+Those two families get an anchor member instead, which is unambiguous, keeps
+the section present, and does nothing when called.
+
+The general shape of this is worth keeping for the report: a build step that
+reasons about sections from object files is reasoning about a superset of what
+ends up in the image, and the difference is exactly the pay-per-use linkage
+Zephyr relies on.
