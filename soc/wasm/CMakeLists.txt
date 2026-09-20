@@ -11,3 +11,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/sections_wasm.cmake)
 # Runs after the link: turns the linked module into the Asyncify-transformed
 # zephyr.wasm the host actually loads.
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/postlink_wasm.cmake)
+
+# `west build -t run`.
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/run_wasm.cmake)

@@ -1,0 +1,12 @@
+diff --git a/scripts/schemas/twister/platform-schema.yaml b/scripts/schemas/twister/platform-schema.yaml
+index 730726c15bf..5a5df66d4ce 100644
+--- a/scripts/schemas/twister/platform-schema.yaml
++++ b/scripts/schemas/twister/platform-schema.yaml
+@@ -60,6 +60,7 @@ $defs:
+           - riscv
+           - rx
+           - sparc
++          - wasm
+           - x86
+           - xtensa
+           - unit

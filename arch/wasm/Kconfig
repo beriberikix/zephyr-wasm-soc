@@ -70,6 +70,18 @@ config WASM_SAFEPOINTS_PER_TICK
 	  the knob that decides how coarse preemption is for code that never
 	  calls into the kernel.
 
+config WASM_RUN_MAX_TIME_MS
+	int "Guest time limit for `west build -t run`"
+	default 60000
+	help
+	  Bounds a run started through the build system, which is also how
+	  twister drives this board.
+
+config WASM_RUN_REALTIME
+	bool "Follow the wall clock for `west build -t run`"
+	help
+	  Off by default, so runs are reproducible.
+
 config WASM_IRQ_LINES
 	int "Number of host interrupt lines"
 	default 16

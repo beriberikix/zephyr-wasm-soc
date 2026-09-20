@@ -64,3 +64,16 @@ The patch routes the declarations through `TYPE_SECTION_START` and friends,
 which is what the rest of Zephyr does and which produces the identical symbols
 on every existing target. Worth fixing upstream for its own sake: a list
 placed by the abstraction should have its bounds taken from the abstraction.
+
+## 0006-twister-know-about-wasm.patch
+
+Twister validates every board's metadata against
+`scripts/schemas/twister/platform-schema.yaml`, whose `arch` field is a closed
+enum of the in-tree architectures. An out-of-tree architecture therefore
+cannot describe itself honestly: the board either names an architecture it is
+not, or fails validation.
+
+The patch adds `wasm` to the list. That is the smallest possible fix and also
+shows the shape of the real one: the enum should come from the architectures
+actually present, the same way `list_hardware.py` already discovers them,
+rather than being written out by hand.
