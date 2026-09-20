@@ -1,0 +1,40 @@
+diff --git a/include/zephyr/device.h b/include/zephyr/device.h
+index 06a752cb69d..0f34b6a3704 100644
+--- a/include/zephyr/device.h
++++ b/include/zephyr/device.h
+@@ -1285,7 +1285,7 @@ device_get_dt_nodelabels(const struct device *dev)
+ #define Z_DEVICE_INIT_ENTRY_DEFINE(node_id, dev_id, level, prio)                                   \
+ 	Z_DEVICE_CHECK_INIT_LEVEL(level)                                                           \
+                                                                                                    \
+-	static const Z_DECL_ALIGN(struct init_entry) __used __noasan Z_INIT_ENTRY_SECTION(         \
++	Z_INIT_ENTRY_STORAGE const Z_DECL_ALIGN(struct init_entry) __used __noasan Z_INIT_ENTRY_SECTION( \
+ 		level, prio, Z_DEVICE_INIT_SUB_PRIO(node_id))                                      \
+ 		Z_INIT_ENTRY_NAME(DEVICE_NAME_GET(dev_id)) = {                                     \
+ 			.init_fn = NULL,                                                           \
+diff --git a/include/zephyr/init.h b/include/zephyr/init.h
+index 701f9789551..d4a3aacba44 100644
+--- a/include/zephyr/init.h
++++ b/include/zephyr/init.h
+@@ -167,8 +167,21 @@ struct init_entry {
+  *
+  * @see SYS_INIT()
+  */
++#ifdef CONFIG_WASM
++/* On wasm the init entries have to be reachable by name from a generated
++ * file. wasm-ld has no linker script, so the ordered, contiguous block that
++ * z_sys_init_run_level() walks cannot be produced by section placement; it is
++ * built at boot by copying the entries into arrays the generator sized. That
++ * copy has to name each entry, so they get external linkage here. See
++ * DESIGN.md D6 in the zephyr-wasm module.
++ */
++#define Z_INIT_ENTRY_STORAGE
++#else
++#define Z_INIT_ENTRY_STORAGE static
++#endif
++
+ #define SYS_INIT_NAMED(name, init_fn_, level, prio)                                       \
+-	static const Z_DECL_ALIGN(struct init_entry)                                      \
++	Z_INIT_ENTRY_STORAGE const Z_DECL_ALIGN(struct init_entry)                        \
+ 		Z_INIT_ENTRY_SECTION(level, prio, 0) __used __noasan                      \
+ 		Z_INIT_ENTRY_NAME(name) = {.init_fn = (init_fn_), .dev = NULL}            \
+ 

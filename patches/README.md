@@ -34,3 +34,20 @@ it means carrying a copy of a header that changes upstream.
 
 The same upstream fix would serve both patches: let a module contribute its
 architecture to these dispatch points instead of requiring an edit in tree.
+
+## 0003-init-entries-external-linkage-on-wasm.patch
+
+`kernel/init.c` walks `levels[level]` to `levels[level+1]`, so every init entry
+has to sit in one contiguous block ordered by level and then by priority. On
+every other architecture the linker script does that, sorting input sections by
+the level and priority encoded in their names. wasm-ld has no linker script and
+never orders segments by name (spike A), so the block has to be built another
+way: a generated file declares arrays the right size and fills them at boot by
+copying each entry into its sorted position.
+
+That copy has to name each entry, and `SYS_INIT_NAMED` and `DEVICE_DT_DEFINE`
+declare them `static`. The patch makes the storage class conditional, so only
+`CONFIG_WASM` changes and every other architecture keeps its internal linkage.
+
+Nothing points *at* an init entry, so copying them is safe; what matters is
+only that the entries are reachable and in order.

@@ -94,6 +94,12 @@ list is only iterated and bounded, never indexed by devicetree ordinal, so the
 numeric sort the ELF build does is not needed. This is a PoC simplification
 and is the first thing to revisit if device lookup misbehaves.
 
+As built, with the detail spike A could not have predicted: several iterable
+lists are pay-per-use and simply absent from a given image, which a linker
+script renders as an empty range and wasm-ld rejects outright. Every family is
+therefore given a weak, zero-length bound pair that the real symbols override
+wherever the section exists.
+
 How fragile this is: the renaming half is solid, since `__start_`/`__stop_` is
 a documented wasm-ld feature. The generated half depends on two things that
 are conventions rather than guarantees: Zephyr keeping level and priority

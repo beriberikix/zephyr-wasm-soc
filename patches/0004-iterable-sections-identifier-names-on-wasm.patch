@@ -1,0 +1,50 @@
+diff --git a/include/zephyr/sys/iterable_sections.h b/include/zephyr/sys/iterable_sections.h
+index 1e34749eff4..b66a6eb02d9 100644
+--- a/include/zephyr/sys/iterable_sections.h
++++ b/include/zephyr/sys/iterable_sections.h
+@@ -47,9 +47,21 @@ extern "C" {
+  * @param[in]  secname type name of iterable section.
+  * @param[in]  section_postfix postfix to use in section name
+  */
++#ifdef CONFIG_WASM
++/* wasm-ld has no linker script, but it does synthesise __start_<s>/__stop_<s>
++ * for a section whose name is a C identifier. Zephyr's names contain dots, so
++ * on wasm the section is renamed to an identifier and the list bounds become
++ * those synthesised symbols. Ordering is unaffected: these lists do not depend
++ * on it. See DESIGN.md D6 in the zephyr-wasm module.
++ */
++#define TYPE_SECTION_ITERABLE(type, varname, secname, section_postfix) \
++	Z_DECL_ALIGN(type) varname \
++	__attribute__((section("z_iter_" #secname))) __used __noasan
++#else
+ #define TYPE_SECTION_ITERABLE(type, varname, secname, section_postfix) \
+ 	Z_DECL_ALIGN(type) varname \
+ 	__in_section(_##secname, static, _CONCAT(section_postfix, _)) __used __noasan
++#endif
+ 
+ /**
+  * @brief iterable section start symbol for a generic type
+@@ -60,7 +72,11 @@ extern "C" {
+  * would be TYPE_SECTION_START(foobar)
+  *
+  */
++#ifdef CONFIG_WASM
++#define TYPE_SECTION_START(secname) _CONCAT(__start_z_iter_, secname)
++#else
+ #define TYPE_SECTION_START(secname) _CONCAT(_##secname, _list_start)
++#endif
+ 
+ /**
+  * @brief iterable section end symbol for a generic type
+@@ -70,7 +86,11 @@ extern "C" {
+  * @param[in]  secname type name of iterable section.  For 'struct foobar' this
+  * would be TYPE_SECTION_START(foobar)
+  */
++#ifdef CONFIG_WASM
++#define TYPE_SECTION_END(secname) _CONCAT(__stop_z_iter_, secname)
++#else
+ #define TYPE_SECTION_END(secname) _CONCAT(_##secname, _list_end)
++#endif
+ 
+ /**
+  * @brief iterable section extern for start symbol for a generic type

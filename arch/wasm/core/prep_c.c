@@ -10,6 +10,7 @@
 #include <kernel_internal.h>
 
 extern FUNC_NORETURN void z_cstart(void);
+extern void z_wasm_init_sections(void);
 
 /*
  * The kernel boots on a dummy thread that owns no stack object, so when it
@@ -38,6 +39,11 @@ uint32_t z_wasm_boot_scratch_addr(void)
 __attribute__((export_name("z_wasm_boot")))
 void z_wasm_boot(void)
 {
+	/* Fills the init-entry arrays that stand in for what a linker script
+	 * would have placed. Must run before anything walks them.
+	 */
+	z_wasm_init_sections();
+
 	z_cstart();
 	CODE_UNREACHABLE;
 }
