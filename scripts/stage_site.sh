@@ -33,7 +33,13 @@ for entry in "${apps[@]}"; do
   build="build-site-$name"
   if [ ! -f "$build/zephyr/zephyr.wasm" ]; then
     echo "building $name from $app"
-    "$module/scripts/build.sh" "$build" "$app" > /dev/null
+    # Quiet on success, but show everything on failure: a build log that is
+    # thrown away is no use when the failure is on someone else's machine.
+    if ! "$module/scripts/build.sh" "$build" "$app" > "$build.log" 2>&1; then
+      echo "--- build of $name failed ---"
+      cat "$build.log"
+      exit 1
+    fi
   fi
   cp "$build/zephyr/zephyr.wasm" "$site/m/$name.wasm"
   printf "  %-6s %s\n" "$name" "$(du -h "$site/m/$name.wasm" | cut -f1)"
