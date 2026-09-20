@@ -64,13 +64,56 @@ Traps kill the instance and cannot be recovered from: a Wasm trap unwinds to
 the host with no way back into the module. Fatal errors therefore go through
 the `fatal` import, not through a trap, so the host can print a diagnosis.
 
+### D6. Linker sections: renaming where order is free, generation where it is not
+
+Spike A (`spikes/a-sections/`) showed wasm-ld synthesises `__start_`/`__stop_`
+for C-identifier section names but never orders segments by name, has no
+`--defsym`, and errors out on a reference to a section nothing defines.
+
+The port therefore splits the problem:
+
+**Unordered families use renaming.** For iterable sections whose order carries
+no meaning, the module shadows the naming macros so the section name is a C
+identifier, and takes `__start_`/`__stop_` as the list bounds. This covers
+most of `STRUCT_SECTION_ITERABLE`. Because an absent section breaks the link,
+each family the kernel references gets one anchor entry emitted by the module.
+
+**Ordered families are generated.** Init entries cannot work this way:
+`z_sys_init_run_level` in `kernel/init.c` walks `levels[level]` to
+`levels[level+1]`, so all entries must be one contiguous block sorted by level
+then priority. Instead a build step reads the pass-1 objects, recovers each
+entry's level and priority from the segment name Zephyr already encodes
+(available in the `linking` custom section), sorts, and emits a C file that
+defines the six per-level arrays adjacently in one translation unit. Spike A
+question 9 confirmed those land contiguous in declaration order and that the
+kernel's own walk then visits the right entries, so `kernel/init.c` needs no
+patch.
+
+Device order is left as link order. With `CONFIG_DEVICE_DEPS=n` the device
+list is only iterated and bounded, never indexed by devicetree ordinal, so the
+numeric sort the ELF build does is not needed. This is a PoC simplification
+and is the first thing to revisit if device lookup misbehaves.
+
+How fragile this is: the renaming half is solid, since `__start_`/`__stop_` is
+a documented wasm-ld feature. The generated half depends on two things that
+are conventions rather than guarantees: Zephyr keeping level and priority
+encoded in the section name, and wasm-ld keeping declaration order within a
+translation unit. Both are stable in practice, and both fail loudly rather
+than silently if they change.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 
 | Kconfig | Why |
 |---|---|
-| (none yet) | |
+| `DEVICE_DEPS` | Device dependency arrays need a second link stage and a numeric sort wasm-ld cannot do. Off also keeps the build single-stage. |
+| `GEN_ISR_TABLES` | The generator reads the linked ELF. The port uses a software ISR table with dynamic interrupts instead. |
+| `USERSPACE` | Out of scope per the brief, and its gperf passes are ELF-only. |
+| `SYMTAB` | Generator reads the linked ELF. |
+| `BUILD_OUTPUT_BIN` | objcopy step, meaningless for a wasm module. |
+| `OUTPUT_STAT` | readelf step. |
+| `OUTPUT_PRINT_MEMORY_USAGE` | Parses ELF section sizes. |
 
 ## 5. Changes to the Zephyr tree
 

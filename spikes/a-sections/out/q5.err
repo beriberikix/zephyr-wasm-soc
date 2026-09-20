@@ -1,0 +1,2 @@
+wasm-ld: error: out/q5.o: undefined symbol: __stop_z_init_SMP
+wasm-ld: error: out/q5.o: undefined symbol: __start_z_init_SMP

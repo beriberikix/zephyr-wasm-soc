@@ -1,0 +1,83 @@
+########## Q1: __start_/__stop_ synthesis ##########
+RESULT: link succeeded, wasm-ld DOES synthesise __start_zsec/__stop_zsec
+  a.o b.o: start=65536 stop=65548 count=3
+  contents: 0xa1 0xa2 0xb1
+
+########## Q2: ordering of same-named segments ##########
+--- objects given in order a,b ---
+  link order a,b: start=65536 stop=65548 count=3
+  contents: 0xa1 0xa2 0xb1
+--- objects given in order b,a ---
+  link order b,a: start=65536 stop=65548 count=3
+  contents: 0xb1 0xa1 0xa2
+--- from an archive, members added in reverse ---
+  archive b,a: start=65536 stop=65548 count=3
+  contents: 0xb1 0xa1 0xa2
+
+########## Q2b: does wasm-ld sort by segment name? ##########
+declared in source order: p90, p10, p50 (all in section 'zord')
+  single object, one section: start=65536 stop=65548 count=3
+  contents: 0x5a 0xa 0x32
+--- distinct sections, names sorted lexically? ---
+ - segment[0] <zord> memory=0 size=12 - init i32=65536
+
+########## Q3: dotted / non-identifier names ##########
+--- sections in the OBJECT ---
+Idx Name            Size     VMA      Type
+  0 IMPORT          00000018 00000000 
+  1 DATACOUNT       00000001 00000000 
+  2 DATA            00000025 00000000 DATA
+  3 linking         000000af 00000000 
+  4 producers       00000025 00000000 
+  5 target_features 00000084 00000000 
+--- data segments in the LINKED module ---
+ - segment[0] <.z_init_POST_KERNEL_P_50_SUB_0_> memory=0 size=4 - init i32=65536
+ - segment[1] <.z_init_POST_KERNEL_P_10_SUB_0_> memory=0 size=4 - init i32=65540
+ - segment[2] <._device.static.5_> memory=0 size=4 - init i32=65544
+ - segment[3] <._device.static.1_> memory=0 size=4 - init i32=65548
+
+########## Q3b: renamed section, priorities out of order ##########
+declared in source order 90, 10, 50 -- is the linker sorting them?
+  renamed identifier section: start=65536 stop=65560 count=3
+  contents: 0x5a 0xa 0x32
+
+########## Q4: --defsym aliasing ##########
+RESULT: wasm-ld has NO --defsym
+wasm-ld: error: unknown argument: --defsym=__init_EARLY_start=__start_z_init_EARLY
+
+########## Q5: referencing a section no object defines ##########
+RESULT: absent section is a LINK ERROR
+wasm-ld: error: out/q5.o: undefined symbol: __stop_z_init_SMP
+wasm-ld: error: out/q5.o: undefined symbol: __start_z_init_SMP
+
+########## Q8: object introspection (symbol -> segment name) ##########
+  - symbol table [count=4]
+   - 0: D <init_a> segment=0 offset=0 size=4 [ no_strip binding=global vis=hidden ]
+   - 1: D <init_b> segment=1 offset=0 size=4 [ no_strip binding=global vis=hidden ]
+   - 2: D <dev_e> segment=2 offset=0 size=4 [ no_strip binding=global vis=hidden ]
+   - 3: D <dev_a> segment=3 offset=0 size=4 [ no_strip binding=global vis=hidden ]
+  - segment info [count=4]
+   - 0: .z_init_POST_KERNEL_P_50_SUB_0_ p2align=2 [ RETAIN ]
+   - 1: .z_init_POST_KERNEL_P_10_SUB_0_ p2align=2 [ RETAIN ]
+   - 2: ._device.static.5_ p2align=2 [ RETAIN ]
+   - 3: ._device.static.1_ p2align=2 [ RETAIN ]
+Custom:
+ - name: "producers"
+Custom:
+ - name: "target_features"
+
+########## Q9: are adjacent per-level arrays contiguous? ##########
+  EARLY          offset 0
+  PRE_KERNEL_1   offset 16
+  PRE_KERNEL_2   offset 24
+  POST_KERNEL    offset 40
+  APPLICATION    offset 48
+  end            offset 56
+  monotonic and contiguous: true
+  walk(EARLY) visits fn ids: 12
+  walk(PRE_KERNEL_1) visits fn ids: 3
+  walk(PRE_KERNEL_2) visits fn ids: 45
+  walk(POST_KERNEL) visits fn ids: 6
+  walk(APPLICATION) visits fn ids: 7
+
+########## done ##########

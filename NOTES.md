@@ -1,11 +1,11 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 0  |  Last commit: (pending)  |  Blocker: none
+Tick: 0  |  Last commit: 7502d7f scaffolding  |  Blocker: none
 
 ### Checklist
-- [ ] T0 tools installed, workspace created
-- [ ] M0-A sections spike ... decision recorded
+- [x] T0 tools installed, workspace created
+- [x] M0-A sections spike ... decision recorded
 - [ ] M0-B offsets spike ... decision recorded
 - [ ] M0-C fibers spike ... numbers recorded
 - [ ] M1 toolchain+board configure (west build --cmake-only)
@@ -95,3 +95,59 @@ Friction points that shape the design, with the approach chosen for each:
    empty, so a bintools dir that declares nothing makes those steps harmless.
 5. **Twister's `arch` enum is closed** and has no `wasm`. Only matters for the
    Milestone 3 twister runner.
+
+
+### Tick 0 — spike A: linker sections
+
+Reproduce with `spikes/a-sections/run.sh`; the captured log is `out/spike-a.log`.
+
+What wasm-ld does:
+
+| Question | Answer |
+|---|---|
+| `__start_X`/`__stop_X` for C-identifier section names | Yes, synthesised, same as ELF |
+| Ordering of same-named segments | Input order only: object order on the command line, then declaration order inside each object |
+| Sorting by segment or symbol name | Never. Declaring 90, 10, 50 gives back 90, 10, 50 |
+| Dotted names such as `.z_init_POST_KERNEL_P_50_SUB_0_` | Preserved verbatim, in the object and in the linked module, but get no start/stop symbols because they are not C identifiers |
+| `--defsym` to bridge a name | Not supported at all |
+| Referencing a section no object defines | Link error, not an empty range |
+| Ordering knobs | None. Only `--merge-data-segments` |
+
+So wasm-ld gives bounds but never ordering, and there is no link-time way to
+rename a symbol.
+
+The thing that makes a clean answer possible is that wasm object files carry a
+`linking` custom section that maps every symbol to its full segment name,
+dots and all:
+
+```
+- symbol table [count=4]
+ - 0: D <init_a> segment=0 offset=0 size=4
+- segment info [count=4]
+ - 0: .z_init_POST_KERNEL_P_50_SUB_0_ p2align=2 [ RETAIN ]
+```
+
+A build step can therefore recover each entry's level and priority from the
+name Zephyr already encodes, without parsing anything ELF-shaped.
+
+The constraint that shapes the decision is in `kernel/init.c`. Its
+`z_sys_init_run_level` walks `levels[level]` up to `levels[level+1]`, so the
+six level symbols are not independent bounds: every init entry must sit in one
+contiguous block, ordered by level and then by priority. Bounds alone are not
+enough, which rules out the pure renaming approach for init entries.
+
+Question 9 settles how to satisfy that. Per-level arrays defined next to each
+other in a single translation unit land contiguous and in declaration order,
+and walking them the way the kernel does visits exactly the right entries:
+
+```
+EARLY          offset 0     walk visits 1,2
+PRE_KERNEL_1   offset 16    walk visits 3
+PRE_KERNEL_2   offset 24    walk visits 4,5
+POST_KERNEL    offset 40    walk visits 6
+APPLICATION    offset 48    walk visits 7
+end            offset 56
+```
+
+That is a generated file the kernel accepts as-is, with no patch to
+`kernel/init.c`.

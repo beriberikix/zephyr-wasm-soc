@@ -1,0 +1,3 @@
+wasm-ld: error: out/q6.o: undefined symbol: __init_EARLY_end
+wasm-ld: error: out/q6.o: undefined symbol: __init_EARLY_start
+wasm-ld: error: out/q6.o: undefined symbol: __init_EARLY_start
