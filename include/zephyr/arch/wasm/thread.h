@@ -31,6 +31,16 @@ typedef struct _callee_saved _callee_saved_t;
 
 struct _thread_arch {
 	uint32_t irq_lock_key;
+
+	/* A fresh thread is started by the host calling an exported
+	 * trampoline, which gets only the thread pointer. struct k_thread does
+	 * not keep the entry point and its arguments in a form reachable from
+	 * there, so the arch keeps its own copy.
+	 */
+	void (*entry)(void *, void *, void *);
+	void *arg1;
+	void *arg2;
+	void *arg3;
 };
 
 typedef struct _thread_arch _thread_arch_t;

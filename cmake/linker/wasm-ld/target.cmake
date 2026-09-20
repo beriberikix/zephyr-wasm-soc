@@ -54,6 +54,9 @@ function(toolchain_ld_link_elf)
     ${LINKERFLAGPREFIX},--export=__stack_pointer
     ${LINKERFLAGPREFIX},--export=__heap_base
     ${LINKERFLAGPREFIX},--export=__data_end
+    # Zephyr copies zephyr_pre0.map to zephyr.map after linking, so the map
+    # has to exist even though nothing here reads it.
+    ${LINKERFLAGPREFIX},-Map,${TOOLCHAIN_LD_LINK_ELF_OUTPUT_MAP}
 
     ${LINKERFLAGPREFIX},--whole-archive
     ${WHOLE_ARCHIVE_LIBS}

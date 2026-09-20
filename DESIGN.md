@@ -170,6 +170,9 @@ Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 | `BUILD_OUTPUT_BIN` | objcopy step, meaningless for a wasm module. |
 | `OUTPUT_STAT` | readelf step. |
 | `OUTPUT_PRINT_MEMORY_USAGE` | Parses ELF section sizes. |
+| `CHECK_INIT_PRIORITIES` | Reads the linked ELF's symbol table. |
+| `ATOMIC_OPERATIONS_C` | Not off so much as replaced by the builtin form. The C implementation drags in syscall headers, and a single linear memory with no SMP needs nothing stronger than the compiler builtins. |
+| `GEN_ABSOLUTE_SYM_KCONFIG` | Not a Kconfig, but recorded here: made a no-op by patch 0001. Its callers pass names that are themselves macros, which only works with the stringifying assembly form. Nothing reads the resulting symbols at run time. |
 
 All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
 

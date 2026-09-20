@@ -6,6 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/sys/printk-hooks.h>
 #include <zephyr/arch/wasm/wasm_host.h>
 
 /*

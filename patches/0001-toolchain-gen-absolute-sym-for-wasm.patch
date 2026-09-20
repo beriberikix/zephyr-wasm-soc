@@ -1,8 +1,8 @@
 diff --git a/include/zephyr/toolchain/gcc.h b/include/zephyr/toolchain/gcc.h
-index 699a7503e3d..cc226615e31 100644
+index 699a7503e3d..9a08bd5dc68 100644
 --- a/include/zephyr/toolchain/gcc.h
 +++ b/include/zephyr/toolchain/gcc.h
-@@ -619,6 +619,27 @@ do {                                                                    \
+@@ -619,6 +619,34 @@ do {                                                                    \
  		"\n\t.equ\t" #name "," #value        \
  		"\n\t.type\t" #name ",#object")
  
@@ -23,9 +23,16 @@ index 699a7503e3d..cc226615e31 100644
 +	static __attribute__((section("z_offsets"), used))   \
 +	const long name = (long)(value)
 +
-+#define GEN_ABSOLUTE_SYM_KCONFIG(name, value)        \
-+	static __attribute__((section("z_offsets"), used))   \
-+	const long name = (long)(value)
++/* The Kconfig variant cannot work the same way. Its callers pass names that
++ * are themselves macros, such as CONFIG_MAIN_STACK_SIZE, which the assembly
++ * form never expands because it stringifies them first. Using one as a C
++ * identifier expands it instead, and the result is not an identifier at all.
++ *
++ * Nothing reads these at run time: they exist so tools can recover Kconfig
++ * values from a built ELF image, and this port produces no ELF image. So the
++ * macro does nothing here, which is recorded in the module's DESIGN.md.
++ */
++#define GEN_ABSOLUTE_SYM_KCONFIG(name, value) do { } while (false)
 +
  #else
  #error processor architecture not supported

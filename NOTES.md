@@ -1,11 +1,10 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 3 done  |  Last commit: M1 configure  |  Blocker: none
-Next: get the build to compile and link. Configure now succeeds; the C has
-not been compiled yet, so expect real errors in the arch sources and in the
-minimal libc's expectations. After that, the post-link wasm-opt step and
-host/run.mjs.
+Tick: 4 done  |  Last commit: M1 builds  |  Blocker: none
+The kernel now compiles and links into a real wasm module with the intended
+host ABI. Next: the post-link `wasm-opt --asyncify` step, then `host/run.mjs`,
+aiming at the hello_world banner.
 
 Build command (until README.md is written):
   west build -b wasm_node -d build-hello zephyr/samples/hello_world -- \
@@ -18,7 +17,7 @@ Build command (until README.md is written):
 - [x] M0-B offsets spike ... decision recorded
 - [x] M0-C fibers spike ... numbers recorded
 - [x] M1 toolchain+board configure (west build --cmake-only)
-- [ ] M1 link zephyr.elf -> zephyr.wasm (post-link wasm-opt)
+- [x] M1 compile and link (a real wasm module; post-link wasm-opt still to wire)
 - [ ] M1 host/run.mjs boots to banner
 - [ ] M1 threads switch (synchronization sample)
 - [ ] M1 timer + k_msleep, virtual time
@@ -327,3 +326,53 @@ dispatch headers `include/zephyr/arch/cpu.h` and
 `#error`, with no out-of-tree hook. Shadowing them from the module was the
 alternative and was rejected: it depends on winning an include-path race and
 means carrying a copy of a header that moves upstream.
+
+
+### Tick 4 — Milestone 1: it builds
+
+`west build -b wasm_node samples/hello_world` now produces a 300 KB
+WebAssembly binary module, and the module's interface is the one the design
+called for. Six imports, all in `zephyr_host`: `console_write`, `time_now_ns`,
+`set_alarm_ns`, `wait_for_event`, `switch_to`, `fatal`. The exports the host
+needs are there too: `z_wasm_boot`, `z_wasm_switch_block_addr`,
+`z_wasm_irq_pending_addr`, `z_wasm_thread_entry`, and `__stack_pointer` as a
+mutable global.
+
+The whole Zephyr kernel, the minimal libc and both drivers compile for wasm32
+essentially untouched. What broke was all at the edges, and most of it in the
+build rather than the code.
+
+**The offsets generator needed four things the first cut missed.** It has to
+force-include the generated Kconfig header, or the architecture is invisible
+and the macro chain falls through to its `#error`. It has to pass the target
+triple, or clang builds for the host and fails on a Mach-O section name, which
+would have produced wrong numbers rather than an error had the section name
+been portable. It has to be told where `gen_offset.h` lives, because Zephyr
+passes an include path built from the arch root, which for an out-of-tree
+architecture points into the module rather than the Zephyr tree. And it has to
+wait for the syscall headers, because unlike Zephyr's own generator, which
+reads an object built later, this one compiles the source during
+header generation.
+
+**The Kconfig variant of the absolute-symbol macro cannot use the data form at
+all.** Its callers pass names that are themselves macros, such as
+`CONFIG_MAIN_STACK_SIZE`. The assembly form stringifies the name before
+expansion, so it never notices; using one as a C identifier expands it, and
+the result is not an identifier. Nothing reads those symbols at run time, they
+exist so tools can recover Kconfig values from a built ELF image, and this port
+produces none, so the macro is a no-op here.
+
+**There are four arch dispatch headers, not two.** `exception.h` is a third,
+and `syscall.h` a fourth whose `#error` is not reachable in this
+configuration. Patch 0002 now covers three.
+
+Smaller things: `struct k_thread` does not keep the entry point in a form the
+host-called trampoline can reach, so the arch keeps its own copy;
+`arch_thread_return_value_set` must not be defined by a `CONFIG_USE_SWITCH`
+port because the kernel supplies it; C-implemented atomics drag in syscall
+headers, and builtins are both lighter and the right choice for a
+single-threaded linear memory.
+
+Two more Kconfigs forced off, both because they read a linked ELF:
+`CHECK_INIT_PRIORITIES`, and the map-file copy needed `--Map` passing through
+to wasm-ld, which it does support.

@@ -39,11 +39,11 @@ static void timer_isr(const void *arg)
 	}
 }
 
-void sys_clock_set_timeout(int32_t ticks, bool idle)
+void sys_clock_set_timeout(uint32_t ticks, bool idle)
 {
 	ARG_UNUSED(idle);
 
-	if (ticks == K_TICKS_FOREVER) {
+	if (ticks == (uint32_t)K_TICKS_FOREVER) {
 		/* Nothing to wake for. Leaving no alarm set is what lets the
 		 * host decide the run is over.
 		 */
@@ -51,8 +51,8 @@ void sys_clock_set_timeout(int32_t ticks, bool idle)
 		return;
 	}
 
-	if (ticks < 1) {
-		ticks = 1;
+	if (ticks < 1U) {
+		ticks = 1U;
 	}
 
 	wasm_host_set_alarm_ns(last_announced_ns + (int64_t)ticks * NSEC_PER_TICK);

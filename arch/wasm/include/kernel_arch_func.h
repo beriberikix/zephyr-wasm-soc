@@ -25,11 +25,9 @@ static ALWAYS_INLINE void arch_switch(void *switch_to, void **switched_from)
 	z_wasm_switch(switch_to, switched_from);
 }
 
-static ALWAYS_INLINE void arch_thread_return_value_set(struct k_thread *thread,
-						       unsigned int value)
-{
-	thread->arch.irq_lock_key = value;
-}
+/* arch_thread_return_value_set is not defined here: under CONFIG_USE_SWITCH
+ * the kernel provides it itself, in kernel_internal.h.
+ */
 
 static ALWAYS_INLINE bool arch_is_in_isr(void)
 {

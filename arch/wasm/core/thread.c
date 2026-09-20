@@ -18,19 +18,14 @@ void z_wasm_thread_entry(uint32_t thread_addr)
 {
 	struct k_thread *thread = (struct k_thread *)(uintptr_t)thread_addr;
 
-	z_thread_entry(thread->entry.pEntry, thread->entry.parameter1,
-		       thread->entry.parameter2, thread->entry.parameter3);
+	z_thread_entry((k_thread_entry_t)thread->arch.entry, thread->arch.arg1,
+		       thread->arch.arg2, thread->arch.arg3);
 }
 
 void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 		     char *stack_ptr, k_thread_entry_t entry,
 		     void *p1, void *p2, void *p3)
 {
-	ARG_UNUSED(entry);
-	ARG_UNUSED(p1);
-	ARG_UNUSED(p2);
-	ARG_UNUSED(p3);
-
 	/*
 	 * Split the stack object. K_THREAD_STACK already reserved
 	 * ARCH_THREAD_STACK_RESERVED bytes, so stack_ptr is the top of the
@@ -53,6 +48,10 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	thread->callee_saved.asyncify_end = (uint32_t)end;
 	thread->callee_saved.fresh = 1U;
 	thread->arch.irq_lock_key = 0U;
+	thread->arch.entry = (void (*)(void *, void *, void *))entry;
+	thread->arch.arg1 = p1;
+	thread->arch.arg2 = p2;
+	thread->arch.arg3 = p3;
 
 	/* USE_SWITCH: the handle is the thread itself, published once the
 	 * thread is ready to be switched to.
