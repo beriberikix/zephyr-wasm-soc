@@ -1,0 +1,9 @@
+name: zephyr_wasm
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    arch_root: .
+    soc_root: .
+    board_root: .
+    dts_root: .

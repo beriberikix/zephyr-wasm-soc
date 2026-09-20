@@ -1,0 +1,23 @@
+# West manifest for the arch/wasm Zephyr proof of concept.
+#
+# This repo (zephyr-wasm) is both the manifest repo and the out-of-tree
+# Zephyr module that provides arch/wasm, soc/wasm/node and board wasm_node.
+#
+# Zephyr is pinned to a main commit rather than a release tag so the port is
+# developed against the same tree the design notes were written from.
+# No Zephyr modules are imported: the port uses the minimal libc and needs no
+# HAL, so `import` is deliberately absent to keep the workspace small.
+
+manifest:
+  self:
+    path: zephyr-wasm
+
+  remotes:
+    - name: upstream
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: upstream
+      revision: e201b84b04e4fab1844658e71da0b7e340f1cc82
+      path: zephyr
