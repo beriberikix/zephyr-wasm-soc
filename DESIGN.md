@@ -168,6 +168,12 @@ followed, and `asyncify-asserts` does not add a bounds check. The port places
 the buffer at the top of the stack object so an overflow runs into the next
 guard rather than into live thread state.
 
+Kernel stacks need the same reservation as thread stacks. The idle thread and
+the system work queue run on `K_KERNEL_STACK` objects and suspend like any
+other thread, so `ARCH_KERNEL_STACK_RESERVED` matches
+`ARCH_THREAD_STACK_RESERVED`; without it their Asyncify buffers land in
+whatever follows the stack.
+
 Thread stacks have to be sized with the reservation in mind. The default main
 stack of 1024 bytes is smaller than the 4096-byte buffer reservation, which
 makes the split run off the bottom of the object, so `wasm_node_defconfig`

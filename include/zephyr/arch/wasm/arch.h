@@ -31,6 +31,13 @@ extern "C" {
  */
 #define ARCH_THREAD_STACK_RESERVED (CONFIG_WASM_ASYNCIFY_BUFFER_SIZE)
 
+/* Kernel stacks need the same reservation. The idle thread and the system
+ * work queue run on K_KERNEL_STACK objects, and they suspend exactly like any
+ * other thread, so without this their Asyncify buffers would be written into
+ * whatever memory happens to follow the stack.
+ */
+#define ARCH_KERNEL_STACK_RESERVED (CONFIG_WASM_ASYNCIFY_BUFFER_SIZE)
+
 #define ARCH_EXCEPT_REASON_OFFSET 0
 
 static ALWAYS_INLINE unsigned int arch_irq_lock(void)

@@ -144,6 +144,12 @@ class Host {
     this.currentSp = this.ex.__stack_pointer.value;
     this.resumeSame = idle;
     this.pendingFatal = fatal;
+    /* Remember the buffer actually unwound into. The guest names the
+     * outgoing thread's buffer in the switch block, and that is what must be
+     * rewound later; keying the context by anything else would rewind from a
+     * buffer the frames were never written to, which replays garbage call
+     * indices and traps as a signature mismatch. */
+    this.unwoundInto = fromBuf;
     this.ex.asyncify_start_unwind(fromBuf);
   }
 
@@ -242,6 +248,13 @@ class Host {
     if (this.pendingFatal) return false;
 
     c.sp = this.currentSp;
+    if (this.unwoundInto !== undefined && this.unwoundInto !== c.buf) {
+      if (this.opts.traceSwitches) {
+        process.stderr.write(`[fixup] context buf 0x${c.buf.toString(16)} ` +
+          `unwound into 0x${this.unwoundInto.toString(16)}\n`);
+      }
+      c.buf = this.unwoundInto;
+    }
     this.contexts.set(c.buf, c);
 
     if (this.resumeSame) {

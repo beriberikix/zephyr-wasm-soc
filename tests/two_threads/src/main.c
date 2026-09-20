@@ -11,7 +11,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#define STACKSIZE 2048
+#define STACKSIZE 8192
 #define PRIORITY  7
 
 static K_SEM_DEFINE(sem_a, 1, 1);   /* a runs first */
@@ -75,8 +75,9 @@ int main(void)
 
 	/* thread_a is stuck in PRESTART. Does starting it by hand help, and
 	 * does thread_b, which is already queued, ever get the processor? */
-	printk("main: starting thread_a by hand\n");
+	printk("main: starting both threads by hand\n");
 	k_thread_start(thread_a);
+	k_thread_start(thread_b);
 
 	printk("main: sleeping so the lower-priority threads can run\n");
 	k_msleep(200);
