@@ -33,13 +33,32 @@ The issue starts at Phase 1. It lists "the kernel evidence is one test suite"
 under risks and then never schedules it. Everything above the kernel stands on
 the kernel, so this comes first.
 
-- [ ] **Run the rest of `tests/kernel`.** One semaphore suite is the whole of
-      the evidence today. `common`, `threads`, `sched`, `mutex`, `workq`,
-      `timer`, `msgq`, `fifo`, `lifo`, `stack`, `queue`, `poll`, `mem_slab`,
-      `mem_heap`, `sleep`, `timeout`, `condvar`, `events`, `context`,
-      `pending`, `early_sleep`. Each failure is a port bug, a missing section
-      family, or a kernel feature this port cannot support; all three are worth
-      knowing before a learner trips over one.
+- [x] **Run the rest of `tests/kernel`.** Done, and it was worth doing: 25
+      suites and 441 passing cases, against one suite before. 16 pass
+      outright, 4 finish with failures, 5 do not finish.
+      `scripts/kernel_tests.json` records each one and
+      `scripts/check_kernel.py` re-runs them, so it stays true.
+
+      It found a section-shim bug that silently emptied an application's
+      iterable lists, a missing timer symbol, and a harness that could hang
+      for ever on a guest that never suspends -- all three fixed. It also
+      found two things that are not bugs to fix:
+
+      - Wasm type-checks indirect calls, so a thread entry that is not
+        exactly `void (*)(void *, void *, void *)` traps. Every other target
+        tolerates the cast. `DESIGN.md` D8b has the detail. This is a real
+        bound on "runs unmodified", and the most upstreamable thing found
+        here: the entries are UB on every target and cost nothing to correct.
+      - `DEVICE_API_IS()` on an extended class is wrong, which patch 0007
+        says it would be. Now demonstrated by `tests/kernel/device` rather
+        than predicted.
+- [ ] **The three suites that do not finish for unknown reasons**:
+      `threads/thread_apis`, `sched/schedule_api` and `mem_heap/k_heap_api`,
+      the last of which is also the only evidence about the heap.
+- [ ] **Timer accuracy.** `common`, `timer/timer_api` and
+      `tickless/tickless_concept` all fail on how long something took, which
+      is one question wearing three hats: a slice ends at the next safepoint
+      rather than on the tick.
 - [ ] **The manifest and the score**, as above.
 - [ ] **Twister.** It builds for this board but cannot find the module's SoC,
       because it takes a `--board-root` and no `--soc-root` and relies on
@@ -169,6 +188,12 @@ fails silently by never suspending.
 **Determinism is a gate, not a preference.** CI requires two byte-identical
 runs. Anything that reads a clock, a random number or a user is either seeded,
 scripted, or off by default.
+
+**"Unmodified" has a hard edge, and it is not the section shim.** Wasm
+type-checks indirect calls, so upstream code that casts a thread entry to
+`k_thread_entry_t` traps where every other target shrugs. That is not
+fixable here and not worth working around: the honest answer is to fix those
+entry points upstream, where the cast is undefined behaviour anyway.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk and it is the right one. Two of its failure modes

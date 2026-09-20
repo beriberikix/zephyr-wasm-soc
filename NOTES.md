@@ -134,3 +134,60 @@ evidence rather than a claim.
 It still says nothing about engine neutrality. Chromium is V8, the same
 engine as Node; that claim rests on the wasmtime host and always did.
 
+
+### Tick 34 — the rest of tests/kernel, which was the point
+
+The kernel's evidence was one suite. It is now 25 suites and 441 passing
+cases, recorded in `scripts/kernel_tests.json` and re-run by
+`scripts/check_kernel.py`: 16 pass outright, 4 finish with failures, 5 do
+not finish. That is a considerably better kernel than one suite suggested
+and a considerably worse one than "the kernel works" would have implied,
+which is exactly why it was worth running.
+
+Four things came out of it.
+
+**An application's section entries could go missing if its filename
+collided.** The generator scans what is about to be linked by extracting
+every archive in the build tree, into one directory. Member names collide --
+a test's source is usually named after the thing it exercises, so
+`tests/kernel/common` has a `bitarray.c` and so does Zephyr -- and one
+overwrote the other. The loser's iterable-section entries vanished from the
+scan, the family was then classified as referenced-but-never-defined, and
+the weak zero-length fallback that earns its keep for genuinely absent
+families suppressed wasm-ld's real bounds instead. The list read empty for
+ever after.
+
+What it looked like from the outside: a parameterised test suite ran once
+with a null parameter rather than seven times with its values, printed
+"divisor 0", and divided by it. One directory per archive; that suite went
+from 7 passing and a trap to 77 passing.
+
+**A guest that never suspends could hang the harness for ever.** Both hosts
+bound a run by guest time and by wall clock, and both checks sat between
+steps -- which a spinning guest never reaches the end of. The message about
+a guest running without suspending could not be printed in the one case it
+exists for. `tests/kernel/device` prints its whole verdict and then sits
+there; it was still alive seven minutes later. The check now also runs from
+`safepoint_tick`, which such a guest calls by construction, and stops it by
+throwing out of the import.
+
+**`DEVICE_API_IS()` really is wrong on an extended class.** Patch 0007 says
+so in as many words and calls it a limitation rather than an equivalence.
+`tests/kernel/device` fails exactly the four cases that test it. Predicted
+and now demonstrated, which is a better place to argue from.
+
+**And the one that is not ours to fix.** Wasm checks the signature at an
+indirect call and traps on a mismatch, where every other target ignores the
+extra arguments and carries on. A thread entry declared
+`void thread_05(struct k_sem *, struct k_sem *)` and cast to
+`k_thread_entry_t`, or declared `void task_low(void)` and handed to
+`K_THREAD_DEFINE`, traps the moment the thread runs.
+`tests/kernel/mutex/mutex_api` and `tests/kernel/pending` both die on their
+first case for this reason; correcting the signatures makes all 11 of the
+mutex suite pass.
+
+That one is worth dwelling on, because it is the first hard bound found on
+"runs unmodified" that has nothing to do with the section shim, and because
+the fix belongs upstream rather than here: those casts are undefined
+behaviour on every target, and wasm is only the first one to say so.
+

@@ -23,7 +23,9 @@ log, including what did not work. `BRIEF.md` is the original task.
 
 * `samples/hello_world` boots and exits cleanly.
 * `samples/synchronization` alternates two threads with `k_msleep` honoured.
-* `tests/kernel/semaphore/semaphore` passes all 32 tests under ztest.
+* 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
+  `scripts/kernel_tests.json` records every suite tried, including the nine
+  that do not pass and why.
 * Two runs in virtual time produce byte-identical output.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
@@ -273,6 +275,8 @@ To run those checks locally against a staged site:
 ```sh
 node zephyr-wasm/scripts/check_site.mjs        # every build, under Node
 node zephyr-wasm/scripts/check_browser.mjs     # every build, in Chromium
+zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
+python3 zephyr-wasm/scripts/check_kernel.py    # Zephyr's kernel suites
 ```
 
 The browser check needs Playwright (`npm install --no-save playwright && npx
@@ -292,6 +296,7 @@ scripts/              offsets and section generators, build and check scripts
 scripts/apps.json     the applications the demo is built from, and what each
                       one must print; the single source for the page's menu,
                       the staged manifest and what CI asserts
+scripts/kernel_tests.json  how each Zephyr kernel suite does here, and why
 host/core.mjs         the engine-neutral driver loop and host ABI
 host/run.mjs          the Node front-end
 host/run_wasmtime.py  a separate implementation, for wasmtime

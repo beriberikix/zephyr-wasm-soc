@@ -242,6 +242,34 @@ dummy thread and is an ordinary returning function.
 The rule generalises: no Zephyr API declared noreturn may contain a suspension
 point on this port.
 
+### D8b. Indirect calls are type-checked, so a mis-cast entry point traps
+
+Wasm checks the signature at an indirect call against the type recorded for
+the table entry, and a mismatch is a trap, not a coercion. Every other
+Zephyr target tolerates a function pointer called through the wrong
+prototype: the extra arguments are ignored and the call goes through.
+
+So a thread entry that is not exactly `void (*)(void *, void *, void *)`
+traps at the point the thread first runs. Both spellings occur upstream:
+
+```c
+static void thread_05(struct k_sem *wait, struct k_sem *done);   /* two */
+k_thread_create(..., (k_thread_entry_t)thread_05, ...);
+
+void task_low(void);                                             /* none */
+K_THREAD_DEFINE(TASK_LOW, STACK, task_low, NULL, NULL, NULL, ...);
+```
+
+`tests/kernel/mutex/mutex_api` is the first and `tests/kernel/pending` the
+second. Both trap on their first case; giving the entries the signature
+`k_thread_entry_t` actually has makes all 11 of the mutex suite pass.
+
+Nothing in the port can fix this, and nothing should: the cast is undefined
+behaviour in C and wasm is simply the first target that enforces it. It is
+recorded here because it bounds what "runs unmodified" can mean, and because
+it is the most upstreamable thing this port has found -- the fix is to give
+those entries the right signature, which costs nothing on any target.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,
@@ -280,6 +308,24 @@ Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 | `GEN_ABSOLUTE_SYM_KCONFIG` | Not a Kconfig, but recorded here: made a no-op by patch 0001. Its callers pass names that are themselves macros, which only works with the stringifying assembly form. Nothing reads the resulting symbols at run time. |
 
 All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
+
+## 4a. What the kernel test suites say
+
+`scripts/kernel_tests.json` records how each of Zephyr's own kernel suites
+does here and `scripts/check_kernel.py` re-runs them, so this stops being a
+number taken once. At the time of writing, 25 suites and 441 passing cases:
+16 pass outright, 4 finish with failures, and 5 do not finish.
+
+The four that fail cluster into two causes and one unknown. `device` fails
+exactly the four cases that exercise `DEVICE_API_IS()` on an extended class,
+which is patch 0007's documented approximation demonstrated rather than
+predicted. `common` and `timer/timer_api` both fail on timer duration
+accuracy, and `tickless/tickless_concept` on slice length: a slice ends at
+the next safepoint rather than on the tick, so slicing works but its timing
+is approximate.
+
+Of the five that do not finish, two are D8b above and are not the port's to
+fix. The other three are open.
 
 ## 5. Changes to the Zephyr tree
 
