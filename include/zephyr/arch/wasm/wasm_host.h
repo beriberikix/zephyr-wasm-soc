@@ -33,6 +33,19 @@ WASM_HOST_IMPORT(wait_for_event) void wasm_host_wait_for_event(void);
  */
 WASM_HOST_IMPORT(switch_to) void wasm_host_switch_to(void);
 
+/* Progress report from a safepoint.
+ *
+ * Under virtual time the clock only moves when the kernel idles, so a thread
+ * that spins without calling into the kernel freezes time and can never be
+ * preempted: the host has no opportunity to raise the timer interrupt. This
+ * import gives it one. Safepoints call it every so often, and the host
+ * advances virtual time and raises any deadline that has passed.
+ *
+ * Not a suspension point: it returns immediately, and whatever it makes
+ * pending is taken at the next safepoint.
+ */
+WASM_HOST_IMPORT(safepoint_tick) void wasm_host_safepoint_tick(void);
+
 /* Unrecoverable error. The host prints a diagnosis and stops the instance.
  * This is an import rather than a trap because a trap gives the host nothing
  * to report and no way back in.

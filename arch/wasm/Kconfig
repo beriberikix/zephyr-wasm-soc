@@ -44,6 +44,32 @@ config WASM_ASYNCIFY_BUFFER_SIZE
 	  this buffer: overflowing it corrupts whatever follows, silently and
 	  without a trap, so the default is deliberately generous.
 
+config WASM_SAFEPOINTS
+	bool "Check for pending interrupts at loop back-edges"
+	default y
+	help
+	  Nothing preempts a running wasm function, so without this a thread
+	  that never yields cannot be interrupted at all, and time slicing
+	  does not work.
+
+	  With it, a post-link pass inserts a call to z_wasm_safepoint at the
+	  top of every loop body. The cost is one load and branch per
+	  iteration of every loop in the image.
+
+config WASM_SAFEPOINTS_PER_TICK
+	int "Safepoints between progress reports to the host"
+	default 20000
+	depends on WASM_SAFEPOINTS
+	help
+	  Under virtual time the clock only advances when the kernel idles, so
+	  a thread that spins without calling the kernel would freeze it. Every
+	  this many safepoints, the guest gives the host a chance to advance
+	  time and raise a deadline.
+
+	  Lower is more responsive and slower; higher is the reverse. This is
+	  the knob that decides how coarse preemption is for code that never
+	  calls into the kernel.
+
 config WASM_IRQ_LINES
 	int "Number of host interrupt lines"
 	default 16

@@ -28,6 +28,12 @@ const CLAMP_NS = 100_000_000_000n;
  * each round costs one suspension, not one tick. */
 const QUIESCENT_ROUNDS = 2;
 
+/* Virtual time charged per safepoint progress report. With the default of
+ * 20000 safepoints between reports this makes a spinning thread advance the
+ * clock at a plausible rate rather than a meaningful one; what matters is
+ * that it advances at all, so deadlines can expire. */
+const SAFEPOINT_TICK_NS = 100_000n;
+
 /* Must match arch/wasm/core/fatal.c and Zephyr's k_fatal_error reasons. */
 const FATAL_REASONS = [
   'CPU exception', 'spurious interrupt', 'stack overflow', 'kernel oops',
@@ -122,6 +128,20 @@ class Host {
             return;
           }
           self.suspend({ idle: false });
+        },
+
+        safepoint_tick() {
+          /* A spinning thread reports progress. Nothing in the guest can tell
+           * us how long it took, so under virtual time we charge a fixed
+           * amount per report: the guest is busy, and time should move. */
+          if (!self.opts.realtime) {
+            self.nowNs += SAFEPOINT_TICK_NS;
+          }
+          if (self.alarmNs !== null && self.timeNs >= self.alarmNs) {
+            self.alarmNs = null;
+            self.quiescentRounds = 0;
+            self.raiseIrq(0);
+          }
         },
 
         fatal(reason, arg) {
