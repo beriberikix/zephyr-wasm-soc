@@ -8,6 +8,7 @@ config WASM
 	select USE_SWITCH
 	select USE_SWITCH_SUPPORTED
 	select ARCH_HAS_CUSTOM_BUSY_WAIT
+	select IRQ_OFFLOAD_NESTED if IRQ_OFFLOAD
 	help
 	  WebAssembly architecture. The kernel runs freestanding in a single
 	  wasm32 linear memory; the host supplies devices as imported

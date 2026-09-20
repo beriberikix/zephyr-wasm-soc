@@ -1,0 +1,69 @@
+diff --git a/subsys/testsuite/ztest/include/zephyr/ztest_test.h b/subsys/testsuite/ztest/include/zephyr/ztest_test.h
+index a738c13674e..9496ad7de7b 100644
+--- a/subsys/testsuite/ztest/include/zephyr/ztest_test.h
++++ b/subsys/testsuite/ztest/include/zephyr/ztest_test.h
+@@ -63,8 +63,17 @@ struct ztest_expected_result_entry {
+ 	enum ztest_expected_result expected_result; /**< The expectation */
+ };
+ 
+-extern struct ztest_expected_result_entry _ztest_expected_result_entry_list_start[];
+-extern struct ztest_expected_result_entry _ztest_expected_result_entry_list_end[];
++/* These lists are populated with STRUCT_SECTION_ITERABLE, so their bounds
++ * belong to that abstraction too. Naming the symbols directly assumes the
++ * linker-script spelling, which is not what every target uses: on wasm there
++ * is no linker script and the bounds are whatever the linker synthesises for
++ * the renamed section. Going through the macros is correct everywhere and
++ * changes nothing for existing targets.
++ */
++#define _ztest_expected_result_entry_list_start TYPE_SECTION_START(ztest_expected_result_entry)
++TYPE_SECTION_START_EXTERN(struct ztest_expected_result_entry, ztest_expected_result_entry);
++#define _ztest_expected_result_entry_list_end TYPE_SECTION_END(ztest_expected_result_entry)
++TYPE_SECTION_END_EXTERN(struct ztest_expected_result_entry, ztest_expected_result_entry);
+ 
+ #define __ZTEST_EXPECT(_suite_name, _test_name, expectation)                                       \
+ 	static const STRUCT_SECTION_ITERABLE(                                                      \
+@@ -168,10 +177,14 @@ struct ztest_param_inst {
+ 	const struct ztest_param_values *values;
+ };
+ 
+-extern struct ztest_unit_test _ztest_unit_test_list_start[];
+-extern struct ztest_unit_test _ztest_unit_test_list_end[];
+-extern struct ztest_param_inst _ztest_param_inst_list_start[];
+-extern struct ztest_param_inst _ztest_param_inst_list_end[];
++#define _ztest_unit_test_list_start TYPE_SECTION_START(ztest_unit_test)
++TYPE_SECTION_START_EXTERN(struct ztest_unit_test, ztest_unit_test);
++#define _ztest_unit_test_list_end TYPE_SECTION_END(ztest_unit_test)
++TYPE_SECTION_END_EXTERN(struct ztest_unit_test, ztest_unit_test);
++#define _ztest_param_inst_list_start TYPE_SECTION_START(ztest_param_inst)
++TYPE_SECTION_START_EXTERN(struct ztest_param_inst, ztest_param_inst);
++#define _ztest_param_inst_list_end TYPE_SECTION_END(ztest_param_inst)
++TYPE_SECTION_END_EXTERN(struct ztest_param_inst, ztest_param_inst);
+ /** Number of registered unit tests */
+ #define ZTEST_TEST_COUNT (_ztest_unit_test_list_end - _ztest_unit_test_list_start)
+ /** Number of registered value-parameterized test instantiations */
+@@ -266,8 +279,10 @@ struct ztest_suite_node {
+ 	struct ztest_suite_stats *const stats;
+ };
+ 
+-extern struct ztest_suite_node _ztest_suite_node_list_start[];
+-extern struct ztest_suite_node _ztest_suite_node_list_end[];
++#define _ztest_suite_node_list_start TYPE_SECTION_START(ztest_suite_node)
++TYPE_SECTION_START_EXTERN(struct ztest_suite_node, ztest_suite_node);
++#define _ztest_suite_node_list_end TYPE_SECTION_END(ztest_suite_node)
++TYPE_SECTION_END_EXTERN(struct ztest_suite_node, ztest_suite_node);
+ 
+ /** Number of registered test suites */
+ #define ZTEST_SUITE_COUNT (_ztest_suite_node_list_end - _ztest_suite_node_list_start)
+@@ -863,8 +878,10 @@ struct ztest_test_rule {
+ 		.after_each = (after_each_fn),                                                     \
+ 	}
+ 
+-extern struct ztest_test_rule _ztest_test_rule_list_start[];
+-extern struct ztest_test_rule _ztest_test_rule_list_end[];
++#define _ztest_test_rule_list_start TYPE_SECTION_START(ztest_test_rule)
++TYPE_SECTION_START_EXTERN(struct ztest_test_rule, ztest_test_rule);
++#define _ztest_test_rule_list_end TYPE_SECTION_END(ztest_test_rule)
++TYPE_SECTION_END_EXTERN(struct ztest_test_rule, ztest_test_rule);
+ 
+ /**
+  * @brief A 'before' function to use in test suites that just need to start 1cpu

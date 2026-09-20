@@ -1,57 +1,35 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 20 done  |  Last commit: the stack split bug  |  Blocker: none
+Tick: 21 done  |  Last commit: ztest passes  |  Blocker: none
 
-**`samples/synchronization` works.** Two threads alternate correctly, sleeps
-are honoured, static threads start on their own, and two runs in virtual time
-produce byte-identical output.
+**Three of the four Milestone 2 criteria now pass.**
+`tests/kernel/semaphore/semaphore` runs under ztest and all 32 tests pass,
+with nothing failed or skipped:
 
-    *** Booting Zephyr OS build e201b84b04e4 ***
-    thread_a: Hello World from cpu 0 on wasm_node!
-    thread_b: Hello World from cpu 0 on wasm_node!
-    thread_a: Hello World from cpu 0 on wasm_node!
-    thread_b: Hello World from cpu 0 on wasm_node!
+    Running TESTSUITE semaphore
+     PASS - test_k_sem_define in 0.000 seconds
+    ...
+    PROJECT EXECUTION SUCCESSFUL
 
-hello_world still passes and exits cleanly. That is the second of the four
-Milestone 2 criteria, and the fourth is demonstrated although it still needs
-the script the brief asks for.
+`scripts/check_determinism.sh` exists and passes on all three builds,
+including the 143 lines of ztest output.
 
-Next:
+Remaining for Milestone 2: `README.md` with the acceptance commands, verified
+from a clean build directory. That is criterion 1's "with commands written up
+in README.md" and is the last thing between here and a complete Milestone 2.
 
-1. Write `scripts/check_determinism.sh`, which the brief requires as its own
-   deliverable. Two runs, byte-compare, non-zero exit on difference.
-2. `tests/kernel/semaphore/semaphore` under ztest, the third criterion.
-3. Write `README.md` with the acceptance commands, and verify them from a
-   clean build directory.
-4. Tidy: `tests/two_threads` still prints its thread table, which was
-   debugging scaffolding. Keep the test, drop the table, or keep it behind a
-   Kconfig.
+After that, and in the brief's order: Milestone 3 is optional, and the final
+report in NOTES.md is required. Given how much has been learned, the report is
+worth more than any stretch goal; do it before attempting preemption.
 
-### Tick 19 — the trap is a corrupted timeout callback
+Tidy-ups worth doing while writing the README:
 
-Three checks, and the third one found it.
-
-The failing function contains exactly one indirect call, and disassembling it
-is unambiguous: it loads a function pointer from offset 16 of a structure and
-calls it with that structure as the argument. That is Zephyr's timeout
-callback shape, which means the kernel is announcing ticks, finding the
-sleeping thread's expired timeout, and calling a handler that is not a valid
-function.
-
-The other two checks framed it. The host confirms the failing entry is a
-rewind, not a fresh call, and that the Asyncify cursor is well inside its
-buffer at 60 bytes of 16 KB. So the Asyncify state is healthy and the
-suspension machinery is doing its job; what is wrong is the data the kernel
-reads afterwards.
-
-That reframes the whole problem. This is not a context-switching bug and never
-was. Something is overwriting a timeout structure, and timeout structures live
-inside `struct k_thread`, which sits near the stack objects this port carves
-in two. The next step is to stop reasoning about the split and simply print
-every thread's stack base, stack pointer, buffer base and buffer end, and look
-for the overlap.
-
+* `tests/two_threads` still prints its thread table, which was debugging
+  scaffolding.
+* The timer driver still carries the `isr_count`/`announced_ticks` counters
+  and their export. They were useful; either keep them behind a Kconfig or
+  remove them.
 
 ### Tick 20 — one bug, both symptoms
 
@@ -78,3 +56,28 @@ The lesson is the one that has held for several ticks now. Two symptoms that
 looked like separate scheduling faults were one memory bug, and the thing that
 found it was printing four numbers per thread rather than reasoning about what
 the reservation ought to do.
+
+
+### Tick 21 — ztest, and a second upstream-shaped patch
+
+ztest needed one patch and one missing arch function.
+
+**The patch is the same shape as the ztest-independent ones before it.** ztest
+places its unit tests, suites and rules with `STRUCT_SECTION_ITERABLE`, and
+then names the list bounds directly, as `_ztest_unit_test_list_start` and so
+on. That spelling is what a linker script produces. There is no linker script
+here, so those symbols do not exist; patch 0004 makes the bounds resolve to
+what wasm-ld synthesises for the renamed section. Routing the declarations
+through `TYPE_SECTION_START` and friends fixes it and produces identical
+symbols on every existing target. It is worth fixing upstream on its own
+merits: a list placed by an abstraction should take its bounds from that
+abstraction.
+
+**IRQ offload was the missing function.** ztest uses it to run code in
+interrupt context. There is no way to raise a real interrupt here and none is
+needed: interrupts are already delivered by calling handlers from a safepoint,
+so running the routine with the nesting count raised is exactly what the
+dispatcher does. Eight lines.
+
+All 32 semaphore tests pass, and the 143 lines of output are byte-identical
+across runs.

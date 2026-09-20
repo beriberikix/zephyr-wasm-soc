@@ -51,3 +51,16 @@ declare them `static`. The patch makes the storage class conditional, so only
 
 Nothing points *at* an init entry, so copying them is safe; what matters is
 only that the entries are reachable and in order.
+
+## 0005-ztest-bounds-through-the-section-macros.patch
+
+ztest places its unit tests with `STRUCT_SECTION_ITERABLE` but then names the
+list bounds directly, as `_ztest_unit_test_list_start` and friends. That
+spelling is the one a linker script produces. On wasm there is no linker
+script, and patch 0004 makes the bounds resolve to the symbols wasm-ld
+synthesises for the renamed section, so the hardcoded names do not exist.
+
+The patch routes the declarations through `TYPE_SECTION_START` and friends,
+which is what the rest of Zephyr does and which produces the identical symbols
+on every existing target. Worth fixing upstream for its own sake: a list
+placed by the abstraction should have its bounds taken from the abstraction.
