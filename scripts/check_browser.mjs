@@ -223,16 +223,42 @@ if (stepper) {
       fail('pause', `the guest kept running while paused: ${held} then ${stillHeld} switches`);
     }
 
-    await page.click('#step');
-    await page.waitForTimeout(500);
+    /* Stepping forward, and then back to exactly where it started. The
+     * clock and the current thread are checked as well as the counter,
+     * because restoring a counter is easy and restoring the kernel is the
+     * claim. */
+    const before = await page.evaluate(() => {
+      const st = window.zephyrState();
+      return { sw: st.switches, now: st.nowMs,
+               cur: (st.threads.find((t) => t.current) || {}).name ?? '?' };
+    });
+    for (let i = 0; i < 3; i++) {
+      await page.click('#step');
+      await page.waitForTimeout(350);
+    }
     const stepped = await page.evaluate(() => window.zephyrState().switches);
-    if (stepped <= stillHeld) {
-      fail('step', `a step did not advance the run: still ${stepped} switches`);
+    if (stepped <= before.sw) {
+      fail('step', `stepping did not advance the run: still ${stepped} switches`);
     } else {
-      const names = await page.evaluate(() =>
-        window.zephyrState().threads.map((t) => t.name).filter(Boolean));
-      console.log(`  ok    kernel    ${names.length} threads listed, pause holds, ` +
-                  `step advances (${stillHeld} -> ${stepped})`);
+      for (let i = 0; i < 3; i++) {
+        await page.click('#back');
+        await page.waitForTimeout(350);
+      }
+      const after = await page.evaluate(() => {
+        const st = window.zephyrState();
+        return { sw: st.switches, now: st.nowMs,
+                 cur: (st.threads.find((t) => t.current) || {}).name ?? '?' };
+      });
+      if (after.sw !== before.sw || after.now !== before.now || after.cur !== before.cur) {
+        fail('back', 'stepping back did not restore the kernel: ' +
+             `${JSON.stringify(before)} then ${JSON.stringify(after)}`);
+      } else {
+        const names = await page.evaluate(() =>
+          window.zephyrState().threads.map((t) => t.name).filter(Boolean));
+        console.log(`  ok    kernel    ${names.length} threads listed, pause holds, ` +
+                    `${before.sw} -> ${stepped} -> back to ${after.sw} switches ` +
+                    `at ${after.now} ms on ${after.cur}`);
+      }
     }
     await page.click('#stop').catch(() => {});
   } catch (err) {

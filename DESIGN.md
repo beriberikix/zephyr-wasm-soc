@@ -380,6 +380,28 @@ safepoint granularity would mean making `safepoint_tick` suspend, which
 costs a full unwind on every loop iteration, and is a different feature
 rather than a finer setting of this one.
 
+### D8g. Stepping backwards is a memcpy
+
+The issue is right that this is the thing hardware cannot offer, and it is
+worth saying how little it costs here. The whole machine is one linear
+memory plus a couple of globals: a module is about 128 KB of memory, so a
+snapshot is a copy of that and a restore is a write.
+
+What is not in that buffer is the host's own bookkeeping -- the virtual
+clock, the alarm and its clamp flag, the quiescence count, the switch
+counter, the entropy state, the pending input, the GPIO levels, and the map
+of which Asyncify buffer belongs to which context. All of it has to be
+copied alongside, and the context map rebuilt rather than shared, since
+restoring must not hand back objects the run has gone on mutating.
+
+Asyncify needs nothing special. Its buffers are in linear memory and so are
+captured with everything else, and a snapshot is only ever taken between
+steps, where its state is `NORMAL`.
+
+Snapshots are taken only while paused, and bounded. Copying 128 KB on every
+suspension would be thousands of copies a second in service of nothing;
+copying it when a person asks for a step is free.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

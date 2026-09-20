@@ -125,6 +125,7 @@
   <div id="kernel">
     <div class="bar">
       <button id="pause">Pause</button>
+      <button id="back" disabled>&larr; Back</button>
       <button id="step" disabled>Step</button>
       <span id="kstat"></span>
     </div>
@@ -134,7 +135,9 @@
     </table>
   </div>
   <div id="status">Pick a build and press Run. For the shell, click the output
-    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and
+    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Pause the
+    kernel and you can step forward one context switch at a time, and back
+    again. Blinky and
     the philosophers run at their own pace, and the speed control changes how
     fast that is without changing what they do.</div>
 </main>
@@ -158,6 +161,7 @@ const kstatEl = document.getElementById('kstat');
 const threadsEl = document.getElementById('threads');
 const pauseEl = document.getElementById('pause');
 const stepEl = document.getElementById('step');
+const backEl = document.getElementById('back');
 
 let worker = null;
 let running = false;
@@ -309,6 +313,12 @@ function showKernel(state) {
   paused = state.paused;
   pauseEl.textContent = paused ? 'Resume' : 'Pause';
   stepEl.disabled = !paused;
+  /* Backwards is only offered where it is real: a step that was taken while
+   * paused, and so has a snapshot behind it. */
+  backEl.disabled = !paused || !state.canStepBack;
+  backEl.title = state.canStepBack
+    ? `${state.canStepBack} step${state.canStepBack === 1 ? '' : 's'} to go back through`
+    : 'take a step first';
 
   const bits = [`${state.nowMs} ms`, `${state.switches} switches`];
   if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
@@ -372,6 +382,7 @@ function start() {
   threadsEl.innerHTML = '';
   paused = false;
   pauseEl.textContent = 'Pause';
+  backEl.disabled = true;
 
   setRunning(true);
   statusEl.textContent = interactive
@@ -402,6 +413,7 @@ clearEl.onclick = () => term.clear();
 pauseEl.onclick = () =>
   worker?.postMessage({ type: paused ? 'resume' : 'pause' });
 stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
+backEl.onclick = () => worker?.postMessage({ type: 'back' });
 speedEl.onchange = () =>
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 
@@ -437,6 +449,7 @@ window.zephyrLeds = () => {
 window.zephyrState = () => lastState;
 window.zephyrPause = () => worker?.postMessage({ type: 'pause' });
 window.zephyrStep = () => worker?.postMessage({ type: 'step', count: 1 });
+window.zephyrBack = () => worker?.postMessage({ type: 'back' });
 window.zephyrPress = (pin, level) => {
   if (!running || !worker) return false;
   worker.postMessage({ type: 'gpio-in', port: 0, pin, level });

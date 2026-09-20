@@ -83,6 +83,7 @@ self.onmessage = async (event) => {
   if (msg.type === 'pause') { host?.pause(); return; }
   if (msg.type === 'resume') { host?.resume(); return; }
   if (msg.type === 'step') { host?.stepOnce(msg.count ?? 1); return; }
+  if (msg.type === 'back') { host?.stepBack(); return; }
 
   if (msg.type === 'speed') {
     /* Applies to the next wait, which is at most a few hundred milliseconds

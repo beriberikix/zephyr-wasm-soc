@@ -136,6 +136,92 @@ export class Host {
      * iteration. */
     this.paused = !!opts.paused;
     this.stepsLeft = 0;
+    /* Bounded: each entry is a copy of linear memory, and nobody steps back
+     * further than this by hand. */
+    this.history = [];
+    this.historyMax = opts.historyMax ?? 64;
+  }
+
+  /* Snapshot and restore, which is what makes stepping backwards possible.
+   *
+   * The whole machine is one linear memory plus a couple of globals, so a
+   * snapshot is a copy and a restore is a write. That is the part the issue
+   * is right to call out: on hardware this is a research project, and here
+   * it is a memcpy of 128 KB.
+   *
+   * What is not in that buffer is the host's own bookkeeping -- the virtual
+   * clock, the alarm, which context is current and where each one's stack
+   * and Asyncify buffer are -- so that has to be copied alongside, and the
+   * context map has to be rebuilt rather than shared, or restoring would
+   * hand back objects the run has since mutated.
+   *
+   * Only taken while paused. Doing it on every suspension would mean
+   * thousands of copies a second to no purpose.
+   */
+  snapshot() {
+    const contexts = new Map();
+    let current = null;
+    for (const [buf, c] of this.contexts) {
+      const copy = { ...c };
+      contexts.set(buf, copy);
+      if (c === this.current) current = copy;
+    }
+    if (current === null) current = { ...this.current };
+
+    return {
+      mem: new Uint8Array(this.mem.buffer.slice(0)),
+      sp: this.ex.__stack_pointer.value,
+      nowNs: this.nowNs,
+      alarmNs: this.alarmNs,
+      alarmIsClamp: this.alarmIsClamp,
+      quiescentRounds: this.quiescentRounds,
+      switches: this.switches,
+      exitCode: this.exitCode,
+      randState: this.randState,
+      externalIrqs: this.externalIrqs,
+      input: this.input.slice(),
+      gpio: this.gpio.map((g) => ({ ...g })),
+      contexts,
+      current,
+      resumeSame: this.resumeSame,
+      currentSp: this.currentSp,
+      unwoundInto: this.unwoundInto,
+    };
+  }
+
+  restore(snap) {
+    new Uint8Array(this.mem.buffer).set(snap.mem);
+    this.ex.__stack_pointer.value = snap.sp;
+    this.nowNs = snap.nowNs;
+    this.alarmNs = snap.alarmNs;
+    this.alarmIsClamp = snap.alarmIsClamp;
+    this.quiescentRounds = snap.quiescentRounds;
+    this.switches = snap.switches;
+    this.exitCode = snap.exitCode;
+    this.randState = snap.randState;
+    this.externalIrqs = snap.externalIrqs;
+    this.input = snap.input.slice();
+    this.gpio = snap.gpio.map((g) => ({ ...g }));
+    this.contexts = new Map();
+    let current = null;
+    for (const [buf, c] of snap.contexts) {
+      const copy = { ...c };
+      this.contexts.set(buf, copy);
+      if (c === snap.current) current = copy;
+    }
+    this.current = current ?? { ...snap.current };
+    this.resumeSame = snap.resumeSame;
+    this.currentSp = snap.currentSp;
+    this.unwoundInto = snap.unwoundInto;
+  }
+
+  /* One step back, if there is one. Returns whether anything happened. */
+  stepBack() {
+    const snap = this.history.pop();
+    if (!snap) return false;
+    this.restore(snap);
+    this.paused = true;
+    return true;
   }
 
   pause() { this.paused = true; }
@@ -478,6 +564,7 @@ export class Host {
       pending: new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0],
       switches: this.switches,
       paused: this.paused,
+      canStepBack: this.history.length,
     });
   }
 
@@ -551,7 +638,12 @@ export class Host {
         await this.platform.wait(50);
       }
       if (this.done) break;
-      if (this.stepsLeft > 0) this.stepsLeft--;
+      if (this.stepsLeft > 0) {
+        /* Remember where this step started from, so it can be undone. */
+        this.history.push(this.snapshot());
+        if (this.history.length > this.historyMax) this.history.shift();
+        this.stepsLeft--;
+      }
 
       try {
         this.checkDeadline();

@@ -169,7 +169,7 @@ way. See the note on what "unmodified" can mean, below.
 
 ## Phase 2 — see the kernel working
 
-Mostly done.
+Done, apart from saying what a pending thread is pending on.
 
 - [x] **The thread table**: names, priorities, states, which one holds the
       CPU, and the stack pointer, updated as the run goes. The page does not
@@ -183,12 +183,12 @@ Mostly done.
 - [x] **Slow motion**, which came out of phase 1's pacing: a quarter speed
       to twenty times, changed while the thing is running.
 - [x] **Next deadline and pending interrupts**, shown beside the table.
-- [ ] **Step backwards.** The whole machine is one buffer plus a few globals,
-      so a snapshot is a copy of linear memory and a restore is a write. The
-      awkward part is the host's own bookkeeping, which is not in that
-      buffer: the context map, the alarm, the virtual clock. All of it is
-      small and none of it is hard, and nothing about it needs a kernel
-      change.
+- [x] **Step backwards.** A module is about 128 KB of linear memory, so a
+      snapshot is a copy of that plus the host's own bookkeeping, and a
+      restore is a write. Stepping forward three switches and back three
+      returns the clock, the switch counter and the thread holding the CPU
+      to exactly where they were, which the browser check asserts.
+      `DESIGN.md` D8g.
 - [ ] **Which thread is waiting on what.** The table says `pending`, not
       what it is pending on, and the kernel knows.
 

@@ -416,3 +416,36 @@ without assertions; the ownership simply is not tracked there. And
 `samples/basic/sys_heap` runs, so whatever this is, it is not that the heap
 does not work.
 
+
+### Tick 41 — backwards
+
+The last thing on the phase 2 list, and the one the issue is most right
+about: on hardware, stepping a kernel backwards is a research project; here
+it is a memcpy. A module is about 128 KB of linear memory, so a snapshot is
+a copy of that, and a restore is a write.
+
+Three steps forward and three back, in Chromium, on the philosophers:
+
+```
+start    97 switches, 1850 ms, idle holding the CPU
+forward 100 switches, 1950 ms, Philosopher 4 holding the CPU
+back     97 switches, 1850 ms, idle holding the CPU
+```
+
+The clock goes backwards too, which is the part that would be hard
+anywhere else.
+
+What took the thought was not the memory. It was everything that is not in
+it: the virtual clock, the alarm and whether it was a clamp, the quiescence
+count, the switch counter, the entropy state, pending input, the GPIO
+levels, and the map of which Asyncify buffer belongs to which context. All
+of that lives in the host and has to be copied alongside -- and the context
+map rebuilt rather than shared, because restoring must not hand back
+objects the run has since gone on mutating. That last one would have been a
+long afternoon if the check had only compared a counter, which is why it
+compares the clock and the current thread as well.
+
+Asyncify needed nothing. Its buffers are in linear memory, so they come
+along, and a snapshot is only ever taken between steps where its state is
+normal.
+
