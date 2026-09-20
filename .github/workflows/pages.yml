@@ -33,15 +33,32 @@ jobs:
           path: zephyr-wasm
 
       - name: Install the toolchain
+        env:
+          LLVM_VERSION: '21'
         run: |
+          set -e
           sudo apt-get update
-          # clang and lld must be the same version: the driver spawns wasm-ld
-          # by name. binaryen gives wasm-opt for Asyncify, wabt gives the
+          # binaryen gives wasm-opt for Asyncify; wabt gives the
           # wasm2wat/wat2wasm pair the safepoint pass round-trips through.
           sudo apt-get install -y --no-install-recommends \
-            clang lld binaryen wabt ninja-build cmake python3-pip
-          clang --version | head -1
-          wasm-ld --version
+            binaryen wabt ninja-build cmake python3-pip lsb-release wget software-properties-common gnupg
+
+          # Ubuntu's own clang is 18, and this port is developed against 23.
+          # Pin a recent LLVM from apt.llvm.org rather than quietly testing a
+          # toolchain the README does not claim to support: on 18 the linker
+          # leaves the iterable-section bounds undefined, so the renaming half
+          # of the section scheme silently stops working.
+          #
+          # clang and lld must be the same version, because the clang driver
+          # spawns wasm-ld by name.
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y --no-install-recommends "lld-$LLVM_VERSION"
+
+          echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
+          "/usr/lib/llvm-$LLVM_VERSION/bin/clang" --version | head -1
+          "/usr/lib/llvm-$LLVM_VERSION/bin/wasm-ld" --version
           wasm-opt --version
 
       - uses: actions/setup-node@v4
