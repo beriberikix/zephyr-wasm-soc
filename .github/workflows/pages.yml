@@ -89,6 +89,14 @@ jobs:
       - name: Check two runs are identical
         run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000
 
+      # The second engine. run_wasmtime.py is a separate implementation of the
+      # same ABI, so the two agreeing is what the engine-neutrality claim
+      # rests on -- and it was a measurement taken once rather than a check.
+      - name: Check the two engines agree
+        run: |
+          pip install --break-system-packages wasmtime
+          ./zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
+
       # The page is the product, so it is checked in a browser rather than
       # only under Node. Chromium runs every non-interactive build and reads
       # the output back through the page's own terminal.
