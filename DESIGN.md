@@ -77,6 +77,18 @@ Traps kill the instance and cannot be recovered from: a Wasm trap unwinds to
 the host with no way back into the module. Fatal errors therefore go through
 the `fatal` import, not through a trap, so the host can print a diagnosis.
 
+### D5a. Deciding a run has finished
+
+Under virtual time the host is the only thing that can decide a program has
+finished, so it has to be careful about what the guest actually said. The
+kernel never sends a "never" sentinel: with no near deadline it clamps to one
+about two days out. Reading that as "no alarm" ends runs early, because the
+kernel idles between being woken and programming its next real deadline.
+
+The host keeps a clamped deadline as a real deadline and flags it. A run ends
+only after the kernel wakes from a clamped deadline, does nothing, and asks
+for another, twice in a row. Waking from a real deadline counts as progress.
+
 ### D6. Linker sections: renaming where order is free, generation where it is not
 
 Spike A (`spikes/a-sections/`) showed wasm-ld synthesises `__start_`/`__stop_`

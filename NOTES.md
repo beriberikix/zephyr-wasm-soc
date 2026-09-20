@@ -1,61 +1,34 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 11 done  |  Last commit: timer path verified  |  Blocker: none
+Tick: 12 done  |  Last commit: clamp handling  |  Blocker: none
 
-The timer path is proven correct with real numbers. Instrumenting the ISR and
-`sys_clock_set_timeout` shows the whole chain working:
+Waking now works. The trace shows a full sleep-and-wake cycle:
 
-    [set_timeout] ticks=5001 -> deadline=500100000
-    [isr] now=100000000 last=0 ticks=1000
-    [set_timeout] ticks=5001 -> deadline=600100000
-    [isr] now=600100000 last=100000000 ticks=5001
+    [switch #3] -> buf=0xc9e0 fresh        (idle)
+    [idle] alarm=600100000 now=100000000 isr=1
+    [switch #4] -> buf=0x49c0 resume       (thread_a wakes)
+    [switch #5] -> buf=0xc9e0 resume       (back to idle)
 
-Deadlines are right, ticks announced are right, and with that instrumentation
-in place `thread_a` prints repeatedly instead of once.
+So the timer fires, the timeout expires, and a sleeping thread is resumed.
+That was the open question from tick 10 and it is answered.
 
-**Remove the instrumentation and the sample stops after one line.** That is a
-timing-dependent failure, and the shape of it points somewhere specific.
+What remains is narrower than it looked: **thread_b is never created.** Only
+three contexts ever exist across the whole run, and they are main, thread_a
+and idle. The sample creates thread_b with `k_thread_create` from main, so
+either main never reaches that call or the created thread is never made
+runnable.
 
-The hypothesis to test first: `advanceToNextDeadline()` in the host consumes
-the alarm, setting `alarmNs` back to null when it fires. If the kernel idles
-again before it has reprogrammed a deadline, the host sees no alarm, concludes
-nothing can ever happen, and ends the run. Printing from inside the ISR
-changes that interleaving enough to hide it. Note also that the kernel does
-sometimes pass the clamp value, roughly `INT32_MAX` ticks, meaning "nothing
-soon", and the driver turns that into no alarm at all.
+Next:
 
-So the host is very likely ending the run while a timeout is still pending.
-Concretely: stop treating "no alarm armed" as the end of the run on its own.
-Require that the kernel has idled with no alarm *and* nothing pending *and*
-that it has had a chance to reprogram since the last announce. A simple fix
-is to only end the run after seeing that state twice in a row with no
-intervening interrupt.
-
-### Tick 10 — three fixes, and the sample still stops
-
-Three things were wrong and are now right. None of them was the thing that
-stops the sample, which is worth saying plainly.
-
-**The interrupt lock was global, and it is per-thread state.** A thread that
-blocks while holding it left every other thread, idle included, running with
-interrupts masked, so the dispatcher could never run and nothing could ever
-wake. The trace showed exactly that: `masked=1` during the first idle. The
-switch now saves the mask into the outgoing thread and restores it from the
-incoming one, and a new thread starts unmasked.
-
-**`arch_cpu_irqs_are_enabled` was declared and never defined.** It had been
-sitting as a warning since the arch was written.
-
-**Interrupt dispatch was not a reschedule point.** On hardware, returning from
-an interrupt is itself one. Here the dispatcher is an ordinary call, and
-anything it makes ready is deferred because `arch_is_in_isr()` is true while
-it runs, so idle went straight back to idling. `arch_cpu_idle` now gives the
-scheduler the chance it would otherwise have had.
-
-All three are real and all three are keepers. The sample still emits one line
-and stops, so something else is holding the threads.
-
+1. Confirm by printing the thread count, or by watching for a fourth fresh
+   context. `CONFIG_THREAD_NAME` would make the trace self-explanatory and is
+   worth turning on while debugging.
+2. If main never reaches the call, find out what it blocks on first.
+3. If the thread is created but never scheduled, suspect `arch_new_thread`:
+   in particular whether `switch_handle` is published in a state the scheduler
+   accepts, since that is the one part of the switch contract this port has
+   never verified against what the kernel expects.
 
 ### Tick 11 — the timer is right, the host's stop condition is not
 
@@ -85,3 +58,29 @@ Worth stating as a general point about virtual time: the host decides when
 time passes, so the host also decides what "nothing left to do" means, and
 getting that wrong ends a run early rather than hanging it. A hang would have
 been easier to notice.
+
+
+### Tick 12 — the kernel's clamp is not "never"
+
+The host had been reading the kernel's clamped timeout as "no alarm at all".
+It is not. When the kernel has no near deadline it does not send a sentinel;
+it clamps to a deadline roughly two days out. Treating that as "never" ended
+runs early, because the kernel idles briefly between being woken and
+programming its next real deadline, and in that window the host concluded
+nothing could ever happen again.
+
+The host now keeps a clamped deadline as a real one and simply flags it. Time
+still advances to it, the kernel still gets its chance to reprogram, and
+quiescence is decided by watching what the kernel does next: waking from a
+clamped deadline and immediately asking for another, twice in a row, means
+there is no work left. Waking from a real deadline is progress and resets the
+count.
+
+That distinction is the interesting part. Under virtual time the host is the
+only thing that can decide a program has finished, and the guest's own
+"nothing soon" is not the same statement as "nothing ever". Conflating them
+ends runs early, which is harder to spot than a hang because the exit status
+looks like success.
+
+With this in place a full sleep-and-wake cycle works: the timer fires, the
+timeout expires, and the sleeping thread is resumed.

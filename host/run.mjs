@@ -18,6 +18,16 @@ import process from 'node:process';
 
 const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
 
+/* Anything at or beyond this is the kernel saying "nothing soon" rather than
+ * naming a deadline it cares about. It clamps to roughly INT32_MAX ticks. */
+const CLAMP_NS = 100_000_000_000n;
+
+/* How many times in a row the kernel may wake from a clamped deadline, do
+ * nothing and ask for another before the run is called finished. Two is
+ * enough to distinguish "still working" from "quiescent" and cheap, because
+ * each round costs one suspension, not one tick. */
+const QUIESCENT_ROUNDS = 2;
+
 /* Must match arch/wasm/core/fatal.c and Zephyr's k_fatal_error reasons. */
 const FATAL_REASONS = [
   'CPU exception', 'spurious interrupt', 'stack overflow', 'kernel oops',
@@ -63,6 +73,8 @@ class Host {
     this.contexts = new Map();
     this.pending = null;         // the switch the guest just asked for
     this.resumeSame = false;     // set by an idle suspension
+    this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
+    this.quiescentRounds = 0;
   }
 
   get timeNs() {
@@ -82,7 +94,17 @@ class Host {
         time_now_ns() { return self.timeNs; },
 
         set_alarm_ns(deadline) {
-          /* INT64_MAX means "nothing to wake for". */
+          /* The kernel does not send a "never" sentinel; when it has no near
+           * timeout it clamps to a deadline about two days out. Recording
+           * that as "no alarm" is what ended runs early: the kernel idles
+           * between being woken and programming its next real deadline, and
+           * the host concluded nothing could ever happen again.
+           *
+           * So a clamp is kept as a real deadline and merely flagged. Time
+           * still advances to it, the kernel still gets to reprogram, and
+           * quiescence is decided by watching what it does next.
+           */
+          self.alarmIsClamp = deadline >= CLAMP_NS;
           self.alarmNs = deadline >= 0x7fffffffffffffffn ? null : deadline;
         },
 
@@ -139,6 +161,10 @@ class Host {
    * next deadline. With no deadline there is nothing left to wait for. */
   advanceToNextDeadline() {
     if (this.alarmNs === null) return false;
+    /* Waking from a clamped deadline having done nothing is the signal that
+     * the kernel has run out of work. Waking from a real one is progress. */
+    this.quiescentRounds = this.alarmIsClamp ? this.quiescentRounds + 1 : 0;
+    if (this.quiescentRounds > QUIESCENT_ROUNDS) return false;
     if (this.alarmNs > this.nowNs) this.nowNs = this.alarmNs;
     this.alarmNs = null;
     this.raiseIrq(0);               // line 0 is the system timer
