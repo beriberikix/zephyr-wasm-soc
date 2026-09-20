@@ -1,53 +1,33 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 28 done  |  Last commit: twister builds  |  Blocker: none
+Tick: 29 done  |  Last commit: second engine  |  Blocker: none
 
-Twister now selects the board, resolves the SoC, uses the right toolchain and
-**builds the test successfully**. It then fails inside twister itself:
+**The module runs unchanged on wasmtime**, and produces byte-identical output
+to V8. `host/run_wasmtime.py` implements the same `zephyr_host` ABI and the
+same Asyncify driver loop in about 200 lines, leaving out everything
+interactive.
 
-    ERROR - General exception: Magic number does not match
+| | Node (V8) | wasmtime |
+|---|---|---|
+| hello_world | passes | passes |
+| synchronization | passes | passes |
+| ztest semaphore | 32 passed | 32 passed |
+| ztest output | 143 lines | 143 lines, identical |
 
-That is twister parsing the built image as ELF to discover test cases. The
-image is a wasm module, so there is no ELF magic to match. This is not
-something the port can work around: it is twister assuming the artifact is
-ELF, the same assumption that shows up in `gen_offset_header.py` and the
-output steps, and it is recorded in the final report as such.
+That is worth more than the determinism check alone. Two runs on one engine
+show the host is not leaking wall-clock time into the guest; two engines
+agreeing shows the guest is not leaking engine behaviour into its results
+either. Virtual time is doing what it was built to do.
 
-Everything before that point works, and the four things it took are worth
-knowing for anyone trying this:
+One real difference between the engines turned up: JavaScript ignores a
+surplus argument to an exported function, and wasmtime rejects it. The Node
+harness had been calling `z_wasm_boot` with an argument it does not take, and
+only the stricter engine noticed.
 
-1. `ZEPHYR_EXTRA_MODULES` has to be in the **environment**, not passed with
-   `-x`. Twister's module discovery reads the variable directly; the `-x`
-   form only reaches CMake, by which point board discovery has already
-   failed. This replaces tick 25's guess that the workspace needed
-   restructuring: it did not.
-2. `ZEPHYR_TOOLCHAIN_VARIANT` likewise, or twister filters the platform out
-   for having no matching toolchain, silently and as a "static filter".
-3. `west` has to be importable by the Python running twister, or CMake falls
-   back to "Zephyr default modules (Zephyr base)" and finds no board.
-4. The module needs its own `dts/bindings/vendor-prefixes.txt`. An
-   undeclared prefix is only a warning in an ordinary build, and twister
-   builds with warnings as errors.
-
-The brief is complete. Everything beyond this point is new scope.
-
-
-### Tick 27 — documentation, and one number that moved
-
-Folding the Milestone 3 work into `README.md` and the final report, and
-running every command in the README again.
-
-One thing worth recording. The time slicing test printed spin counts one apart
-across two runs, which looked like determinism breaking under preemption. It
-was not: the two runs were different binaries, because the UART work had
-landed in between. Within one binary the counts are reproducible, and
-`check_determinism.sh` confirms it. The README no longer quotes exact counts
-as if they were stable across builds, since what matters is that both threads
-get a large and roughly equal share.
-
-That is a small example of the habit this project rewarded throughout: when a
-number looks wrong, find out what actually changed before explaining why.
+Browsers are still untested and still out of scope. The obstacle there is not
+the module, which is now demonstrably engine-neutral, but the driver loop:
+it runs synchronously until the guest suspends, which would freeze a page.
 
 
 ### Tick 28 — twister, as far as it goes
@@ -78,3 +58,25 @@ produces by grouping a class's section with those of classes extending it.
 Grouping sections is exactly what wasm-ld cannot do, so the port uses the end
 of the class's own section, which is exact only while nothing extends the
 class. Recorded as a limitation rather than presented as equivalent.
+
+
+### Tick 29 — a second engine
+
+Writing a wasmtime host took about 200 lines and an hour of nothing going
+wrong, which is the interesting part. The module needed no change at all.
+
+Both engines produce byte-identical output on the 143 lines of ztest. That is
+a stronger claim than the determinism script makes on its own: two runs on one
+engine show the host is not leaking wall-clock time into the guest, while two
+engines agreeing shows the guest is not leaking engine behaviour into its
+results. It is the clearest evidence so far that virtual time works.
+
+The one genuine difference found: JavaScript ignores a surplus argument to an
+exported function and wasmtime rejects it. The Node harness had been passing
+an argument to `z_wasm_boot`, which takes none, and had been getting away with
+it. A stricter engine is a better test.
+
+What this does not show is anything about browsers. The module would run
+there, but the harness would not: the driver loop is synchronous and blocks
+until the guest suspends, which on a page's main thread freezes the tab. That
+is a harness rewrite around a Worker, not a kernel change.

@@ -187,6 +187,26 @@ zephyr-wasm/scripts/build.sh build-hello zephyr/samples/hello_world
 ninja -C build-hello run
 ```
 
+## A second engine
+
+`host/run.mjs` runs on Node, which is V8. `host/run_wasmtime.py` implements
+the same ABI and the same driver loop against wasmtime, to show that neither
+the port nor its determinism depends on one engine:
+
+```sh
+python3 -m venv /tmp/wtenv && /tmp/wtenv/bin/pip install wasmtime
+/tmp/wtenv/bin/python zephyr-wasm/host/run_wasmtime.py --max-time 60000 \
+    build-sem/zephyr/zephyr.wasm
+```
+
+It produces byte-identical output to the Node harness, including all 143 lines
+of the ztest run. It is not interactive: no UART input, no tracing.
+
+Browsers are untested and out of scope. The module would run in one; the
+harness would not, because the driver loop is synchronous and blocks until the
+guest suspends, which on a page's main thread would freeze the tab. That needs
+a Worker and an inside-out driver loop, not a kernel change.
+
 ## Host options
 
 `host/run.mjs` takes the module and:
