@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 identifier: wasm_node
 name: WebAssembly on a Node.js host
 type: sim

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Host-side driver for spike C: run several wasm "threads" round-robin by
 // unwinding one Asyncify stack and rewinding another.
 //

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Produce zephyr/offsets.h for the wasm arch.
 
 Zephyr's own scripts/build/gen_offset_header.py reads SHN_ABS symbols out of an

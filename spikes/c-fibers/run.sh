@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Spike C: Asyncify fibers.
 #
 # Shows several "threads", each with its own shadow-stack region and its own

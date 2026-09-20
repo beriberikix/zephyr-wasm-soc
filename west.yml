@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # West manifest for the arch/wasm Zephyr proof of concept.
 #
 # This repo (zephyr-wasm) is both the manifest repo and the out-of-tree

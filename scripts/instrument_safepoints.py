@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Insert a safepoint call at the top of every loop body.
 
 Nothing preempts a running wasm function. A thread that spins without calling

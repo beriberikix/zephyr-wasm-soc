@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Cross-check the generated offsets.h against the layout the wasm32 compiler
 // actually produces. Names follow Zephyr's own convention: GEN_OFFSET_SYM(S,M)
 // makes __<S>_<M>_OFFSET, so a typedef already starting with _ yields three

@@ -5,6 +5,8 @@
  * split in two: the low part is the C shadow stack that __stack_pointer walks,
  * the high part is the Asyncify buffer that holds the unwound wasm frames.
  * The host swaps both when it switches.
+  *
+ * SPDX-License-Identifier: Apache-2.0
  */
 #define NTHREADS      4
 #define STACK_BYTES   2048

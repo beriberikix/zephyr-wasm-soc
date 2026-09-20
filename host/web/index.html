@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <title>Zephyr on WebAssembly</title>
 <style>
   :root {
@@ -56,11 +57,11 @@
 
   <div class="bar">
     <select id="build">
-      <option value="/build-hello/zephyr/zephyr.wasm">hello_world</option>
-      <option value="/build-sync/zephyr/zephyr.wasm">synchronization</option>
-      <option value="/build-sem/zephyr/zephyr.wasm">ztest: kernel semaphore</option>
-      <option value="/build-slice/zephyr/zephyr.wasm">timeslice: two spinners</option>
-      <option value="/build-shell/zephyr/zephyr.wasm" data-interactive="1">shell (type into the output)</option>
+      <option value="./m/hello.wasm">hello_world</option>
+      <option value="./m/sync.wasm">synchronization</option>
+      <option value="./m/sem.wasm">ztest: kernel semaphore</option>
+      <option value="./m/slice.wasm">timeslice: two spinners</option>
+      <option value="./m/shell.wasm" data-interactive="1">shell (type into the output)</option>
     </select>
     <button id="run" class="primary">Run</button>
     <button id="stop" disabled>Stop</button>

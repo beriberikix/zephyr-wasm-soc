@@ -2,6 +2,10 @@
 
 Zephyr with WebAssembly as a real architecture.
 
+**[Try it in your browser](https://beriberikix.github.io/zephyr-wasm-soc/)** —
+boot the kernel, run its test suite, or type into the Zephyr shell. Nothing to
+install.
+
 This is not native_sim built with a Wasm toolchain. The kernel runs
 freestanding in a single `wasm32` linear memory, using Zephyr's own libc and
 scheduler. The host plays the part of a SoC: instead of memory-mapped
@@ -193,16 +197,20 @@ The same module runs in Chrome. The guest lives in a Worker, because the
 driver loop blocks its thread between suspensions and would otherwise freeze
 the tab; output and keystrokes cross by message.
 
+The published copy is at
+<https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI from a bare
+runner. To do the same locally:
+
 ```sh
-zephyr-wasm/scripts/serve_web.sh 8777
-# then open http://127.0.0.1:8777/zephyr-wasm/host/web/index.html
+zephyr-wasm/scripts/stage_site.sh      # builds five applications into _site/
+zephyr-wasm/scripts/serve_web.sh 8777  # then open http://127.0.0.1:8777/
 ```
 
 Pick a build and press Run. For the shell, click the output area and type;
-<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. The page needs a server because
-`file://` blocks both Workers and `fetch`; it is bound to the loopback address
-and serves the workspace, so one server covers the harness and every
-`build-*/` directory.
+<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. A server is needed because `file://`
+blocks both Workers and `fetch`; this one is bound to the loopback address.
+`stage_site.sh` is what CI runs too, so what you see locally is what is
+published.
 
 Verified in Chrome: hello_world, synchronization, the 32-test ztest suite, the
 time slicing test, and the shell answering `kernel version` and `demo ping`.
@@ -245,6 +253,14 @@ a Worker and an inside-out driver loop, not a kernel change.
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
 
+## Continuous integration
+
+`.github/workflows/pages.yml` starts from a bare Ubuntu runner, installs the
+toolchain, clones Zephyr, applies the seven patches, builds five applications,
+runs three of them under Node, checks two runs are byte-identical, and only
+then publishes. It is the reproducibility check for everything above: if it is
+green, these instructions work on a machine that is not the author's.
+
 ## Layout
 
 ```
@@ -263,5 +279,18 @@ spikes/               the Milestone 0 experiments, each with a run.sh
 tests/two_threads/    a minimal two-thread reproducer
 tests/timeslice/      two spinners that only run if preemption works
 tests/safepoint_cost/ fixed compute, for measuring what safepoints cost
-patches/              the five Zephyr changes, each explained
+patches/              the seven Zephyr changes, each explained
+.github/workflows/    builds from scratch and publishes the demo
 ```
+
+## Licence
+
+Apache-2.0, matching Zephyr. See `LICENSE`. The files under `patches/` are
+diffs against Zephyr and carry Zephyr's licence, which is the same.
+
+## Feedback
+
+The interesting parts to argue with are `patches/README.md`, which explains
+each change to Zephyr and why, and the final report at the end of `NOTES.md`,
+which covers what the approach costs and what it would take to upstream any of
+it. Neither needs a build to read.

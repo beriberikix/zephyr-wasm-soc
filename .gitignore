@@ -8,3 +8,4 @@ __pycache__/
 spikes/**/out/
 spikes/**/*.o
 spikes/**/out.log
+spikes/*/out/

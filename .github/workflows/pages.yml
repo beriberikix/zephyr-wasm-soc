@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build the port from scratch and publish the browser demo.
+#
+# This is also the honest reproducibility check: the workflow starts from a
+# bare Ubuntu runner with none of the author's machine, applies the patches,
+# builds five applications, runs three of them under Node, and only then
+# publishes. If it is green, the README's instructions work.
+name: build and publish demo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the module
+        uses: actions/checkout@v4
+        with:
+          path: zephyr-wasm
+
+      - name: Install the toolchain
+        run: |
+          sudo apt-get update
+          # clang and lld must be the same version: the driver spawns wasm-ld
+          # by name. binaryen gives wasm-opt for Asyncify, wabt gives the
+          # wasm2wat/wat2wasm pair the safepoint pass round-trips through.
+          sudo apt-get install -y --no-install-recommends \
+            clang lld binaryen wabt ninja-build cmake python3-pip
+          clang --version | head -1
+          wasm-ld --version
+          wasm-opt --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up the west workspace
+        run: |
+          pip install --break-system-packages west
+          west init -l zephyr-wasm
+          # Blobless and shallow: the tree is large and only one commit is used.
+          west update --narrow -o=--filter=blob:none
+          pip install --break-system-packages -r zephyr/scripts/requirements-base.txt
+
+      - name: Apply the patches to Zephyr
+        run: ./zephyr-wasm/scripts/apply_patches.sh
+
+      - name: Build the demo
+        run: ./zephyr-wasm/scripts/stage_site.sh
+
+      - name: Check the builds actually run
+        run: |
+          set -e
+          fail() { echo "::error::$1"; exit 1; }
+
+          out=$(node zephyr-wasm/host/run.mjs _site/m/hello.wasm)
+          echo "$out"
+          echo "$out" | grep -q 'Hello World' || fail "hello_world did not greet"
+
+          out=$(node zephyr-wasm/host/run.mjs --max-time 2000 _site/m/sync.wasm || true)
+          echo "$out"
+          echo "$out" | grep -q 'thread_b' || fail "synchronization did not alternate"
+
+          out=$(node zephyr-wasm/host/run.mjs --max-time 60000 _site/m/sem.wasm)
+          echo "$out" | tail -5
+          echo "$out" | grep -q 'PROJECT EXECUTION SUCCESSFUL' || fail "ztest did not pass"
+          n=$(echo "$out" | grep -c '^ PASS' || true)
+          [ "$n" -ge 32 ] || fail "expected at least 32 ztest passes, got $n"
+
+          echo "all three ran; $n ztest cases passed"
+
+      - name: Check two runs are identical
+        run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000
+
+      - name: Upload the site
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

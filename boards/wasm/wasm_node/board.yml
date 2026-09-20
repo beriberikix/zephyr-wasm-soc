@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 board:
   name: wasm_node
   full_name: WebAssembly on a Node.js host

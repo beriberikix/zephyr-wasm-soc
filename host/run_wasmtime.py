@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """A second host, on a second engine.
 
 `host/run.mjs` is the real harness. This one exists to answer a narrower

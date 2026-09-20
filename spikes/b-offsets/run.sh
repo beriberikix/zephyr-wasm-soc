@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Spike B: produce offsets.h without ELF.
 #
 # Zephyr generates offsets.h by reading SHN_ABS symbols from an ELF object,

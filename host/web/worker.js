@@ -13,7 +13,9 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-import { Host } from '../core.mjs';
+/* Flat in the staged site: scripts/stage_site.sh copies core.mjs next to
+ * this file, so local and published layouts are the same thing. */
+import { Host } from './core.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let interrupt = null;

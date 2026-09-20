@@ -1,6 +1,8 @@
 /* Stands in for arch/wasm/core/offsets/offsets.c. Exercises both shapes:
  * file scope (what most arch offsets.c files use) and inside
- * GEN_ABS_SYM_BEGIN/END (what kernel_offsets.h uses). */
+ * GEN_ABS_SYM_BEGIN/END (what kernel_offsets.h uses).  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 typedef struct { void *sp; void *asyncify_buf; } _callee_saved_t;
 typedef struct { void *current; unsigned int nested; char *irq_stack; } _cpu_t;
 typedef struct { _callee_saved_t callee_saved; void *init_data; char prio; unsigned char flags; } _thread_t;

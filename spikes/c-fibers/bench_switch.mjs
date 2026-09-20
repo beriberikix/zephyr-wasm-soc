@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // How fast is one context switch? Each iteration is a full unwind of one
 // thread's wasm stack and a rewind of another's.
 import { makeScheduler } from './driver.mjs';

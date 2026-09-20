@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Spike A: what does wasm-ld do with sections?
 #
 # Zephyr places things with a linker script: iterable sections

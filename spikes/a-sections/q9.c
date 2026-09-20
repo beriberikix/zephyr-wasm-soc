@@ -1,6 +1,8 @@
 /* kernel/init.c walks levels[level] .. levels[level+1], so every init level
  * must be contiguous in memory and in level order. If a generated file
- * defines the per-level arrays adjacently in one TU, do they land contiguous? */
+ * defines the per-level arrays adjacently in one TU, do they land contiguous?  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 struct init_entry { int fn; int dev; };
 #define SEC __attribute__((section("z_init"), used, aligned(4)))
 

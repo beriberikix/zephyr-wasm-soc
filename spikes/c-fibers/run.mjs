@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Spike C entry point: prove the switching works, then measure what Asyncify costs.
 import { makeScheduler } from './driver.mjs';
 

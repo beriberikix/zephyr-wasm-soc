@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Build the spike C modules.
 #
 # Note: link with wasm-ld directly, not through the clang driver. The driver

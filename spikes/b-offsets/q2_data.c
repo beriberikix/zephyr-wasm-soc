@@ -1,7 +1,9 @@
 /* Wasm-native GEN_ABSOLUTE_SYM: the symbol name carries the offset name and
  * the value sits in a data segment the build can read back. Matches Zephyr's
  * calling convention, where S is a typedef name and GEN_OFFSET_STRUCT takes
- * a struct tag. */
+ * a struct tag.  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 typedef struct { char a; int b; void *c; long long d; } k_thread_t;
 struct arch_esf { int pc; int sp; };
 

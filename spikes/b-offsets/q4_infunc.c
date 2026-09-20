@@ -1,5 +1,7 @@
 /* kernel_offsets.h wraps everything in GEN_ABS_SYM_BEGIN/END, which opens a
- * function body, so the wasm form of GEN_ABSOLUTE_SYM must work there too. */
+ * function body, so the wasm form of GEN_ABSOLUTE_SYM must work there too.  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 typedef struct { char a; int b; void *c; long long d; } k_thread_t;
 #define GEN_ABSOLUTE_SYM(name, value) \
 	static __attribute__((section("z_offsets"), used)) const long name = (long)(value)

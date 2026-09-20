@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Run a module twice in virtual time and require byte-identical output.
 #
 # Virtual time is the point of the default host mode: the clock only advances

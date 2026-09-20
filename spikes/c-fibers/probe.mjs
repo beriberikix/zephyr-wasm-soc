@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // A correctly instrumented module unwinds on the FIRST yield, so host_yield
 // is entered exactly once for yielding(3). An uninstrumented one keeps
 // running and enters it three times.

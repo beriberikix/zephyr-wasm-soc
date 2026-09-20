@@ -1,5 +1,7 @@
 /* Zephyr's kernel/init.c reads `extern const struct init_entry __init_EARLY_start[]`.
- * wasm-ld gives us __start_z_init_EARLY. Can --defsym bridge the two? */
+ * wasm-ld gives us __start_z_init_EARLY. Can --defsym bridge the two?  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 struct init_entry { int prio; int marker; };
 __attribute__((section("z_init_EARLY"), used)) const struct init_entry a = { 1, 0xAA };
 __attribute__((section("z_init_EARLY"), used)) const struct init_entry b = { 2, 0xBB };

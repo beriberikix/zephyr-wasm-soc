@@ -4,7 +4,9 @@
  * priority encoded in the name, then see whether ordering is recoverable.
  *
  * Here three SYS_INIT-like entries land in ONE identifier-named section, in
- * an order that does not match their priority. */
+ * an order that does not match their priority.  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 struct init_entry { int prio; int marker; };
 
 __attribute__((section("z_init_POST_KERNEL"), used))

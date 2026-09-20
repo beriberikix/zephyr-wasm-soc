@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Print the contents of the zsec/zord array as the linked module sees it.
 import fs from 'node:fs';
 const [, , file, label] = process.argv;

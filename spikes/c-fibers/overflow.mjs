@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // What happens when a thread's Asyncify buffer is too small for its stack?
 // This matters because the buffer is half of the thread stack object, so
 // getting the split wrong has to fail in a way the port can reason about.

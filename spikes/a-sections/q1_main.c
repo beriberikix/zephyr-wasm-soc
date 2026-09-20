@@ -1,4 +1,6 @@
-/* Does wasm-ld synthesise these, the way an ELF linker does? */
+/* Does wasm-ld synthesise these, the way an ELF linker does?  *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 extern const int __start_zsec;
 extern const int __stop_zsec;
 int start_addr(void) { return (int)(long)&__start_zsec; }

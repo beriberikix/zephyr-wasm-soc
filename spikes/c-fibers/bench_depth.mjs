@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Asyncify copies the live wasm frames into the buffer on every unwind, so the
 // time per switch and the bytes needed both grow with how deep the stack is
 // when a thread yields. That is what sizes the Asyncify half of a thread stack.

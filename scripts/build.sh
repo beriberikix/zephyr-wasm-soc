@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Build an application for the wasm_node board.
 #
 # The flags below have to be passed on every build: the module supplies its own

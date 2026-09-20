@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // The yield now happens inside a function reached through the indirect table,
 // which is how Zephyr thread entries and init handlers are reached. A variant
 // that skipped instrumenting indirect callees will run straight past it.

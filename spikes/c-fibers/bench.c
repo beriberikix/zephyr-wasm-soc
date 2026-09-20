@@ -4,6 +4,8 @@
  * SYS_INIT entries, device API pointers, thread entry points, the ISR table.
  * Asyncify cannot see through them, so it must assume any indirect call might
  * reach the yield import. That assumption is what the onlylist exists to undo.
+  *
+ * SPDX-License-Identifier: Apache-2.0
  */
 extern void host_yield(void);
 

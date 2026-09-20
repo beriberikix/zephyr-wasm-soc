@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 import fs from 'node:fs';
 let ex, bufPtr = 0;
 const m = await WebAssembly.instantiate(fs.readFileSync('fibers.async.wasm'), {

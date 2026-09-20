@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // compute() never yields, but under a full asyncify pass it is instrumented
 // anyway because the indirect table can reach one function that does. This
 // measures what that costs on ordinary work.

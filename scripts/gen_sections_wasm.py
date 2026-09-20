@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Build the linker-section symbols the kernel needs, without a linker script.
 
 Zephyr places three kinds of thing with linker-script magic that wasm-ld has no

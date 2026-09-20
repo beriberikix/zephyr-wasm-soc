@@ -1,1 +1,0 @@
-wasm-ld: error: unknown argument: --defsym=__init_EARLY_start=__start_z_init_EARLY

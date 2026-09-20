@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Apply the patches this port needs to the Zephyr tree. Idempotent: a patch
 # that is already applied is skipped, not reapplied.
 set -euo pipefail

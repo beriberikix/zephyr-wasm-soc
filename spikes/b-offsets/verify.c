@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 typedef struct { void *sp; void *asyncify_buf; } _callee_saved_t;
 typedef struct { void *current; unsigned int nested; char *irq_stack; } _cpu_t;
 typedef struct { _callee_saved_t callee_saved; void *init_data; char prio; unsigned char flags; } _thread_t;

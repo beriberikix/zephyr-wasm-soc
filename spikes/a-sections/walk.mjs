@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 // Walk the generated init table exactly the way z_sys_init_run_level does.
 import fs from 'node:fs';
 const m = await WebAssembly.instantiate(fs.readFileSync(process.argv[2]), {});
