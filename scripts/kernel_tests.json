@@ -52,6 +52,6 @@
     {"path": "sched/schedule_api", "status": "does-not-finish", "passes": 11,
      "note": "test_time_slicing_preemptible fails, then test_lock_preemptible panics. Not yet diagnosed."},
     {"path": "mem_heap/k_heap_api", "status": "does-not-finish", "passes": 14,
-     "note": "Panics after 14 cases. The heap is otherwise untried on this port."}
+     "note": "Panics at test_k_heap_alloc_size[sizes/0] on ASSERTION FAIL [z_spin_lock_valid(l)]: the heap's spinlock is still recorded as held by this CPU when that case takes it. That case allocates one byte from a 2048-byte heap and never blocks, so an earlier case left it that way. Not the obvious candidate: a blocking allocation that times out, on its own, leaves the lock perfectly usable, so that hypothesis is ruled out. Only CONFIG_SPIN_VALIDATE notices, and it is on whenever CONFIG_ASSERT is, so what this says about builds without assertions is unknown. samples/basic/sys_heap runs, so the heap itself works."}
   ]
 }

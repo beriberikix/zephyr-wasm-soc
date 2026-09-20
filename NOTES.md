@@ -388,3 +388,31 @@ and a restore is a write. What makes it fiddly is the host's own
 bookkeeping, which is not in that buffer -- the context map, the alarm, the
 clock.
 
+
+### Tick 40 — a diagnosis that got as far as ruling something out
+
+`tests/kernel/mem_heap/k_heap_api` was one of the three suites recorded as
+not finishing for reasons nobody had looked into. It is now one of three
+that does not finish for a reason described precisely, which is not the same
+as fixed but is a great deal better than "panics".
+
+It panics at `test_k_heap_alloc_size[sizes/0]` on
+`ASSERTION FAIL [z_spin_lock_valid(l)]`: the heap's spinlock is still
+recorded as held by this CPU when that case tries to take it. The case
+itself allocates one byte from a 2048-byte heap and cannot block, so
+whatever left the lock in that state happened in an earlier case.
+
+The obvious suspect is the blocking path: `k_heap_alloc` with a timeout
+hands its lock to `z_pend_curr`, which releases it across the switch and
+re-acquires it on waking, and this port's switch is an Asyncify unwind that
+returns from the host much later. A thirty-line reproducer of exactly that
+-- allocate, allocate something too big with a timeout, allocate again --
+runs perfectly. So that is ruled out, and the reproducer is not kept,
+because a test that passes is not a reproducer.
+
+Worth noting for whoever picks it up: only `CONFIG_SPIN_VALIDATE` notices,
+and that is on whenever `CONFIG_ASSERT` is. Nothing is claimed about builds
+without assertions; the ownership simply is not tracked there. And
+`samples/basic/sys_heap` runs, so whatever this is, it is not that the heap
+does not work.
+
