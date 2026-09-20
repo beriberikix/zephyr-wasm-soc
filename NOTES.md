@@ -1,48 +1,9 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 30 done  |  Last commit: browser  |  Blocker: none
-
-**It runs in Chrome**, including the shell, typed into interactively.
-
-| In the browser | Result |
-|---|---|
-| hello_world | banner and greeting, exit 0 |
-| synchronization | threads alternating |
-| ztest semaphore | 32 passed, execution successful |
-| timeslice | both spinners ran, same counts as Node |
-| shell | `kernel version` and `demo ping` answered |
-
-No console errors. The ztest output is byte-identical to the Node run once
-carriage returns are accounted for: the page's terminal consumes them, as a
-terminal should.
-
-This says nothing new about engine neutrality, because Chrome is V8, the same
-engine Node uses. That claim still rests on wasmtime. What the browser adds is
-that the harness is portable to somewhere with no filesystem, no stdio and no
-blocking main thread.
-
-
-### Tick 29 — a second engine
-
-Writing a wasmtime host took about 200 lines and an hour of nothing going
-wrong, which is the interesting part. The module needed no change at all.
-
-Both engines produce byte-identical output on the 143 lines of ztest. That is
-a stronger claim than the determinism script makes on its own: two runs on one
-engine show the host is not leaking wall-clock time into the guest, while two
-engines agreeing shows the guest is not leaking engine behaviour into its
-results. It is the clearest evidence so far that virtual time works.
-
-The one genuine difference found: JavaScript ignores a surplus argument to an
-exported function and wasmtime rejects it. The Node harness had been passing
-an argument to `z_wasm_boot`, which takes none, and had been getting away with
-it. A stricter engine is a better test.
-
-What this does not show is anything about browsers. The module would run
-there, but the harness would not: the driver loop is synchronous and blocks
-until the guest suspends, which on a page's main thread freezes the tab. That
-is a harness rewrite around a Worker, not a kernel change.
+Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
+from a bare Ubuntu runner. See the tick 31 entry for what publishing turned
+up.
 
 
 ### Tick 30 — in a browser
@@ -73,3 +34,37 @@ page being a terminal rather than the guest behaving differently.
 
 What this does not show is a third engine. Chrome is V8. The browser tests the
 environment, not the engine, and the write-up says so.
+
+
+### Tick 31 — publishing, and what a second machine found
+
+The repo is public at <https://github.com/beriberikix/zephyr-wasm-soc> under
+Apache-2.0, matching Zephyr, and CI builds everything from scratch on each
+push and publishes the demo to Pages.
+
+Putting the build on a machine that is not this laptop found three things in
+three runs, which is the point of doing it:
+
+**The offsets generator was missing a force-included header.** Zephyr pushes
+two headers into every compile, and the generator only passed one. The missing
+one supplies the `__UINT32_C` family, which clang 23 defines itself and clang
+18 does not. Correct all along on this machine, broken anywhere older.
+
+**The safepoint pass loses the module's feature list.** Going through the text
+format drops the `target_features` section, so the tools downstream fall back
+to their own defaults. Newer Binaryen enables enough to hide it; the version
+on the runner rejected `i32.extend8_s` outright. The features are now named
+explicitly, which is more honest anyway about what the module needs. The first
+attempt at a fix, wabt's `--enable-all`, was worse: it also turns on
+wabt-only extensions that Binaryen then cannot parse.
+
+**Ubuntu's clang is 18, and on 18 the linker leaves the iterable-section
+bounds undefined.** Simple applications still built; ztest did not link. CI
+now pins LLVM 21 from apt.llvm.org rather than quietly testing a toolchain the
+README disclaims. What the true minimum version is remains open, and is worth
+answering: the renaming half of the section scheme depends on a linker feature
+whose history I have not pinned down.
+
+That last one is the most interesting for anyone evaluating this. The section
+approach rests on `__start_`/`__stop_` synthesis, and that support is newer
+than I had assumed.

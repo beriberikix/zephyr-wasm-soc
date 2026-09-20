@@ -61,12 +61,17 @@ The acceptance suite shows no perceptible change.
 
 | Tool | Version used | Notes |
 |---|---|---|
-| clang | 23.1.1 | needs the wasm32 target |
-| wasm-ld | 23.1.1 | Homebrew ships this in the separate `lld` formula |
+| clang | 23.1.1 | needs the wasm32 target; CI uses 21 |
+| wasm-ld | 23.1.1 | must match clang; Homebrew ships it in the separate `lld` formula |
 | wasm-opt | 132 | Binaryen |
 | wasm-objdump | 1.0.42 | wabt |
 | Node.js | 26 | 20 or newer should do |
 | west, cmake, ninja | | with Zephyr's Python dependencies |
+
+**Version matters more than it should.** On clang 18 the linker leaves the
+iterable-section bounds undefined and ztest will not link, so the section
+scheme quietly stops working while simpler applications still build. 21 and 23
+are known good; the true minimum is not established.
 
 On macOS:
 
