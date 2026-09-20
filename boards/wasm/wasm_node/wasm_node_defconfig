@@ -15,3 +15,11 @@ CONFIG_GEN_ISR_TABLES=n
 CONFIG_DEVICE_DEPS=n
 # Reads the linked ELF's symbol table.
 CONFIG_CHECK_INIT_PRIORITIES=n
+
+# Every thread stack object gives ARCH_THREAD_STACK_RESERVED bytes to the
+# Asyncify buffer, so the defaults have to clear that reservation with room
+# left for an actual stack. See DESIGN.md D8.
+CONFIG_MAIN_STACK_SIZE=16384
+CONFIG_IDLE_STACK_SIZE=8192
+CONFIG_ISR_STACK_SIZE=8192
+CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=16384

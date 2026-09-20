@@ -172,8 +172,12 @@ def render(init_entries, iterables, iter_refs) -> str:
     out.append(" * them contiguous and in declaration order, which is what lets")
     out.append(" * z_sys_init_run_level() walk from one level's start to the next. */")
     for level in LEVELS:
-        n = max(len(by_level[level]), 1)
-        out.append(f"struct init_entry __init_{level}_start[{n}];")
+        # A level with no entries must be zero-length, so its start coincides
+        # with the next level's. Rounding up to one leaves a zeroed entry in
+        # the walked range, and calling its null init_fn is an indirect call
+        # to table slot 0, which traps as a signature mismatch rather than
+        # faulting the way it would on hardware.
+        out.append(f"struct init_entry __init_{level}_start[{len(by_level[level])}];")
     out.append("struct init_entry __init_end[1];")
     out.append("")
 

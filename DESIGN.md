@@ -143,6 +143,12 @@ followed, and `asyncify-asserts` does not add a bounds check. The port places
 the buffer at the top of the stack object so an overflow runs into the next
 guard rather than into live thread state.
 
+Thread stacks have to be sized with the reservation in mind. The default main
+stack of 1024 bytes is smaller than the 4096-byte buffer reservation, which
+makes the split run off the bottom of the object, so `wasm_node_defconfig`
+raises the defaults. Every thread pays for a buffer whether or not it ever
+suspends deeply.
+
 The port uses the **full** Asyncify pass, not `ignore-indirect` and not an
 onlylist. Both narrowing options break the case Zephyr depends on: a yield
 reached through an indirect call, which is how thread entries, init handlers

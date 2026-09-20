@@ -1,22 +1,27 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 6 done  |  Last commit: section shim  |  Blocker: none
+Tick: 7 done  |  Last commit: empty levels and stack sizing  |  Blocker: none
 
-**The kernel boots and prints its banner.**
+The signature-mismatch trap is fixed and the kernel gets further: it boots,
+switches to the main thread, and reaches `bg_thread_main`. It does not reach
+the greeting.
 
-    *** Booting Zephyr OS build e201b84b04e4 ***
+Two things to chase next, in order:
 
-That means the section shim works, the init levels run in order, the console
-driver binds and printk reaches the host.
+1. **`bg_thread_main` appears to run twice.** The banner prints twice with one
+   switch between. Note that the banner goes to stdout and the trace to
+   stderr, so their relative order in a terminal is not evidence; the doubling
+   is. Most likely the host re-enters a fresh context instead of rewinding, or
+   the switch block is read when it holds stale values.
+2. **Then a kernel panic.** Worth confirming whether it is a consequence of
+   the first or independent.
 
-Next, and the one thing in the way of hello_world: shortly after the banner an
-indirect call traps with `function signature mismatch`, in wasm function 26
-called from 14. Wasm checks indirect call signatures exactly, where every
-other target tolerates a cast. Somewhere a function pointer is being called
-through a type it was not defined with. Worth finding precisely rather than
-guessing: it is likely to be a genuine portability finding, not a bug in the
-shim.
+The prime suspect for both is `z_wasm_switch` recovering the outgoing thread
+with `CONTAINER_OF(switched_from, struct k_thread, switch_handle)`. If that is
+not what the kernel passes, `from_buf` is garbage and the unwind writes over
+whatever it points at. Verify that before anything else: add a trace of
+`from_buf`/`to_buf` per switch and check both against the real thread objects.
 
 ### Tick 5 — Asyncify step and the host harness
 
@@ -97,3 +102,28 @@ shape rather than a conditional one.
 Patch 0003 was also needed: `SYS_INIT` declares its entries `static`, and the
 generated copy has to name them. The patch makes the storage class conditional
 so only wasm changes.
+
+
+### Tick 7 — two real bugs, and how wasm reports them
+
+**An empty init level was being walked.** The generator rounded every level's
+array up to one element, so a level with no entries left a zeroed entry inside
+the range `z_sys_init_run_level` walks, and the kernel called a null function
+pointer. On hardware that faults at a null address. In wasm a null function
+pointer is table slot 0, so the call is an indirect call with the wrong type
+and the engine reports `function signature mismatch`, which points at the
+callee rather than at the null. Empty levels are now genuinely zero-length, so
+a level's start coincides with the next level's.
+
+This is worth keeping as a portability note. Wasm checks indirect call
+signatures exactly, where other targets tolerate a cast, so a class of
+mistakes that would be a wild jump elsewhere surfaces here as a type error at
+the call site.
+
+**The Asyncify reservation was larger than the default stacks.** Every thread
+stack object yields `ARCH_THREAD_STACK_RESERVED` bytes to its Asyncify buffer,
+and the default main stack is 1024 bytes against a 4096-byte reservation, so
+the split ran off the bottom of the object. The board now sets stack sizes
+that clear the reservation with room left over. This is a real cost of the
+approach and belongs in the final report: on this port every thread pays for
+an Asyncify buffer whether or not it ever suspends deeply.
