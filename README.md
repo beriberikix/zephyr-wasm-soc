@@ -293,6 +293,13 @@ patches/              the seven Zephyr changes, each explained
 Apache-2.0, matching Zephyr. See `LICENSE`. The files under `patches/` are
 diffs against Zephyr and carry Zephyr's licence, which is the same.
 
+## Where this is going
+
+[Issue #1](https://github.com/beriberikix/zephyr-wasm-soc/issues/1) sets out
+the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
+Progress is measured in upstream Zephyr samples that run unmodified, which is
+three today.
+
 ## Feedback
 
 The interesting parts to argue with are `patches/README.md`, which explains
