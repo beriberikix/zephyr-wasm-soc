@@ -37,6 +37,14 @@ void z_wasm_switch(void *switch_to, void **switched_from)
 	 */
 	struct k_thread *from = CONTAINER_OF(switched_from, struct k_thread, switch_handle);
 
+	/* The interrupt lock is per-thread state, not global. A thread that
+	 * blocks while holding it must not leave every other thread, and the
+	 * idle loop in particular, running with interrupts masked: the
+	 * dispatcher would never run and nothing would ever wake.
+	 */
+	from->arch.irq_lock_key = z_wasm_irq_masked;
+	z_wasm_irq_masked = to->arch.irq_lock_key;
+
 	z_wasm_switch_block.from_buf = from->callee_saved.asyncify_buf;
 	z_wasm_switch_block.to_sp = to->callee_saved.sp;
 	z_wasm_switch_block.to_buf = to->callee_saved.asyncify_buf;

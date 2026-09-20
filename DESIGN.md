@@ -44,6 +44,19 @@ safepoints. `arch_irq_lock()` masks delivery rather than disabling anything in
 the engine. Minimum safepoint is `arch_cpu_idle()`; loop back-edges come later
 via an instrumentation pass (Milestone 3).
 
+### D4a. The interrupt lock is per-thread
+
+`arch_irq_lock()` masks delivery by writing a word, but that word is per-thread
+state, not global. A thread that blocks while holding the lock must not leave
+the rest of the system, and the idle loop in particular, running masked: the
+dispatcher would never run and nothing would ever wake. `arch_switch()` saves
+the mask into the outgoing thread and restores it from the incoming one.
+
+Interrupt dispatch is also not a reschedule point here, the way returning from
+an interrupt is on hardware. The dispatcher is an ordinary call and
+`arch_is_in_isr()` is true while it runs, so anything it makes ready is
+deferred; `arch_cpu_idle()` reschedules explicitly afterwards.
+
 ### D5. Determinism by default
 The host runs on virtual time. When the kernel idles, the host jumps straight
 to the next deadline. `--realtime` opts out.

@@ -47,7 +47,7 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	thread->callee_saved.asyncify_buf = (uint32_t)buf;
 	thread->callee_saved.asyncify_end = (uint32_t)end;
 	thread->callee_saved.fresh = 1U;
-	thread->arch.irq_lock_key = 0U;
+	thread->arch.irq_lock_key = 0U;   /* starts with interrupts unmasked */
 	thread->arch.entry = (void (*)(void *, void *, void *))entry;
 	thread->arch.arg1 = p1;
 	thread->arch.arg2 = p2;

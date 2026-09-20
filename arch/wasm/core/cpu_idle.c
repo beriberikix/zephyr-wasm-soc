@@ -6,6 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/arch/wasm/wasm_host.h>
 #include <kernel_arch_func.h>
+#include <ksched.h>
 
 void z_wasm_irq_dispatch(void);
 
@@ -28,6 +29,13 @@ void arch_cpu_idle(void)
 	if (z_wasm_irq_pending != 0U) {
 		z_wasm_irq_dispatch();
 	}
+
+	/* On hardware, returning from an interrupt is itself a reschedule
+	 * point. Here the dispatcher is an ordinary call, and anything it made
+	 * ready was deferred because arch_is_in_isr() was true while it ran.
+	 * Give the scheduler the chance it would otherwise have had.
+	 */
+	z_reschedule_unlocked();
 }
 
 void arch_cpu_atomic_idle(unsigned int key)

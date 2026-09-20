@@ -51,6 +51,11 @@ static ALWAYS_INLINE bool arch_irq_unlocked(unsigned int key)
 	return key == 0U;
 }
 
+static ALWAYS_INLINE bool arch_cpu_irqs_are_enabled(void)
+{
+	return z_wasm_irq_masked == 0U;
+}
+
 static ALWAYS_INLINE void arch_nop(void)
 {
 	/* Nothing to emit: wasm has no nop worth keeping. */
