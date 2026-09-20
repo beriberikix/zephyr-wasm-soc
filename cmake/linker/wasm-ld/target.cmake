@@ -49,7 +49,10 @@ function(toolchain_ld_link_elf)
     -nostdlib
     ${LINKERFLAGPREFIX},--no-entry
     ${LINKERFLAGPREFIX},--export-dynamic
-    ${LINKERFLAGPREFIX},--allow-undefined
+    # Deliberately NOT --allow-undefined: wasm-ld turns unresolved symbols
+    # into imports from a module named env, which then fails at instantiation
+    # with a message that says nothing about which symbol was missing. Let the
+    # link fail instead, where the name is printed.
     ${LINKERFLAGPREFIX},-z,stack-size=${CONFIG_MAIN_STACK_SIZE}
     ${LINKERFLAGPREFIX},--export=__stack_pointer
     ${LINKERFLAGPREFIX},--export=__heap_base

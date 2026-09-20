@@ -58,3 +58,14 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	 */
 	thread->switch_handle = thread;
 }
+
+/*
+ * No coprocessors, no lazy FPU state: wasm locals are saved by Asyncify along
+ * with everything else. The kernel calls this on every abort, so it has to
+ * exist even though it has nothing to do.
+ */
+int arch_coprocessors_disable(struct k_thread *thread)
+{
+	ARG_UNUSED(thread);
+	return 0;
+}

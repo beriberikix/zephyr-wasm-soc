@@ -1,10 +1,22 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 4 done  |  Last commit: M1 builds  |  Blocker: none
-The kernel now compiles and links into a real wasm module with the intended
-host ABI. Next: the post-link `wasm-opt --asyncify` step, then `host/run.mjs`,
-aiming at the hello_world banner.
+Tick: 5 done  |  Last commit: asyncify step + host harness  |  BUILD IS RED
+The red is deliberate and is the next task, not a regression. Dropping
+`--allow-undefined` exposed the twelve linker-section symbols the kernel needs
+and that wasm-ld cannot invent. Spike A already decided how to supply them.
+
+Next: the section shim. Exactly twelve symbols, in three families:
+  * init levels, ordered and contiguous, needing the generated sorted array
+    from spike A's decision:
+      __init_EARLY_start __init_PRE_KERNEL_1_start __init_PRE_KERNEL_2_start
+      __init_POST_KERNEL_start __init_APPLICATION_start __init_end
+  * static threads, order irrelevant, bounds only:
+      __static_thread_data_list_start/_end
+  * kernel init entries, order irrelevant, bounds only:
+      _k_kernel_init_pre_entry_list_start/_end
+      _k_kernel_init_post_entry_list_start/_end
+After that, hello_world should reach the banner.
 
 Build command (until README.md is written):
   west build -b wasm_node -d build-hello zephyr/samples/hello_world -- \
@@ -18,7 +30,7 @@ Build command (until README.md is written):
 - [x] M0-C fibers spike ... numbers recorded
 - [x] M1 toolchain+board configure (west build --cmake-only)
 - [x] M1 compile and link (a real wasm module; post-link wasm-opt still to wire)
-- [ ] M1 host/run.mjs boots to banner
+- [ ] M1 section shim (12 symbols), then host/run.mjs boots to banner
 - [ ] M1 threads switch (synchronization sample)
 - [ ] M1 timer + k_msleep, virtual time
 - [ ] M2-1 hello_world
@@ -376,3 +388,39 @@ single-threaded linear memory.
 Two more Kconfigs forced off, both because they read a linked ELF:
 `CHECK_INIT_PRIORITIES`, and the map-file copy needed `--Map` passing through
 to wasm-ld, which it does support.
+
+
+### Tick 5 — Asyncify step and the host harness
+
+The post-link step is wired and `zephyr.wasm` is produced: 300285 bytes in,
+317629 out, so Asyncify costs 1.06x on the real kernel. That sits below the
+1.22x spike C measured on a synthetic module, which makes sense, since the
+real kernel has proportionally more code that cannot reach a suspending
+import.
+
+One ordering trap. The name of the final link target is only decided near the
+end of Zephyr's top-level `CMakeLists.txt`, long after a SoC file is read, so
+the obvious `DEPENDS` on it silently depends on nothing and the transform runs
+*before* the link, on a stale file. The step now hangs off a deferred call
+that runs once that directory has been processed.
+
+`host/run.mjs` is written. It supplies the six imports, owns the clock, raises
+interrupts and drives the Asyncify loop, with `--realtime`, `--trace-switches`
+and `--max-time`. Two details worth recording.
+
+Rewinding must re-enter through the same export that first entered, so the
+host keeps a small table of live contexts keyed by Asyncify buffer address,
+each remembering its entry point and argument. And the kernel boots on a dummy
+thread with no stack object, so there is no buffer to unwind into at the first
+switch. Nothing needs saving, but Asyncify still writes while unwinding, so
+the arch now exports a scratch buffer used exactly once.
+
+**Dropping `--allow-undefined` was the most useful change of the tick.**
+Without it wasm-ld turns every unresolved symbol into an import from a module
+named `env`, the link succeeds, and the failure surfaces at instantiation as
+`Import #6 "env": module is not an object or function`, which names neither
+the symbol nor the reason. That had been masking a missing kernel hook and,
+behind it, the twelve section symbols. Failing at link time prints the names.
+
+So the build is red on purpose, at exactly the point spike A predicted it
+would be.
