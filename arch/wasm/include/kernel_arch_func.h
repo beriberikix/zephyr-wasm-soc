@@ -34,11 +34,12 @@ static ALWAYS_INLINE bool arch_is_in_isr(void)
 	return _kernel.cpus[0].nested != 0U;
 }
 
-FUNC_NORETURN void z_wasm_switch_to_main_thread(struct k_thread *main_thread,
-						char *stack_ptr,
-						k_thread_entry_t entry);
-
-#define arch_switch_to_main_thread z_wasm_switch_to_main_thread
+/* No arch_switch_to_main_thread here. Zephyr declares it FUNC_NORETURN, and
+ * Asyncify cannot suspend inside a function that never returns: the unwind
+ * needs a point to resume into, and there is none past a call the compiler
+ * has been told never comes back. The kernel's generic path, which goes
+ * through arch_switch() from the dummy thread, works unchanged.
+ */
 
 #ifdef __cplusplus
 }

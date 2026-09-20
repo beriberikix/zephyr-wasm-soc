@@ -1,108 +1,41 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 7 done  |  Last commit: empty levels and stack sizing  |  Blocker: none
+Tick: 8 done  |  Last commit: generic swap-to-main  |  Blocker: none
 
-The signature-mismatch trap is fixed and the kernel gets further: it boots,
-switches to the main thread, and reaches `bg_thread_main`. It does not reach
-the greeting.
+Boot now reaches two switches: to the main thread, then to the idle thread.
+It then loops in idle forever.
 
-Two things to chase next, in order:
+Trace, with `--trace-switches`:
 
-1. **`bg_thread_main` appears to run twice.** The banner prints twice with one
-   switch between. Note that the banner goes to stdout and the trace to
-   stderr, so their relative order in a terminal is not evidence; the doubling
-   is. Most likely the host re-enters a fresh context instead of rewinding, or
-   the switch block is read when it holds stale values.
-2. **Then a kernel panic.** Worth confirming whether it is a consequence of
-   the first or independent.
+    [enter] z_wasm_boot(0x0) sp=0x4000
+    *** Booting Zephyr OS build e201b84b04e4 ***
+    [switch #1] -> buf=0xa100 sp=0xa100 fresh
+    [enter] z_wasm_thread_entry(0xd300) sp=0xa100
+    *** Booting Zephyr OS build e201b84b04e4 ***
+    [switch #2] -> buf=0xc100 sp=0xc100 fresh
+    [enter] z_wasm_thread_entry(0xd270) sp=0xc100
+    [enter] z_wasm_thread_entry(0xd270) sp=0xc100   <- idle, round and round
 
-The prime suspect for both is `z_wasm_switch` recovering the outgoing thread
-with `CONTAINER_OF(switched_from, struct k_thread, switch_handle)`. If that is
-not what the kernel passes, `from_buf` is garbage and the unwind writes over
-whatever it points at. Verify that before anything else: add a trace of
-`from_buf`/`to_buf` per switch and check both against the real thread objects.
+Three things to chase, in this order:
 
-### Tick 5 — Asyncify step and the host harness
+1. **Idle never wakes.** The host advances virtual time and sets the pending
+   bit, but nothing runs. Check in order: is IRQ line 0 enabled by the time
+   idle first suspends; is `z_wasm_irq_masked` zero when the dispatcher runs;
+   does the timer ISR actually call `sys_clock_announce`. A trace of the
+   pending word and the mask across a suspension will say which.
+2. **The banner still prints twice**, once inside `z_wasm_boot` and once
+   inside the main thread. Removing the custom swap-to-main did not change
+   that, so the cause is elsewhere. Find where the banner is actually printed
+   in this Zephyr version before theorising further; it is not in
+   `kernel/init.c`.
+3. **`arch_cpu_irqs_are_enabled` is declared but never defined**, which shows
+   up as a warning. Implement it.
 
-The post-link step is wired and `zephyr.wasm` is produced: 300285 bytes in,
-317629 out, so Asyncify costs 1.06x on the real kernel. That sits below the
-1.22x spike C measured on a synthetic module, which makes sense, since the
-real kernel has proportionally more code that cannot reach a suspending
-import.
-
-One ordering trap. The name of the final link target is only decided near the
-end of Zephyr's top-level `CMakeLists.txt`, long after a SoC file is read, so
-the obvious `DEPENDS` on it silently depends on nothing and the transform runs
-*before* the link, on a stale file. The step now hangs off a deferred call
-that runs once that directory has been processed.
-
-`host/run.mjs` is written. It supplies the six imports, owns the clock, raises
-interrupts and drives the Asyncify loop, with `--realtime`, `--trace-switches`
-and `--max-time`. Two details worth recording.
-
-Rewinding must re-enter through the same export that first entered, so the
-host keeps a small table of live contexts keyed by Asyncify buffer address,
-each remembering its entry point and argument. And the kernel boots on a dummy
-thread with no stack object, so there is no buffer to unwind into at the first
-switch. Nothing needs saving, but Asyncify still writes while unwinding, so
-the arch now exports a scratch buffer used exactly once.
-
-**Dropping `--allow-undefined` was the most useful change of the tick.**
-Without it wasm-ld turns every unresolved symbol into an import from a module
-named `env`, the link succeeds, and the failure surfaces at instantiation as
-`Import #6 "env": module is not an object or function`, which names neither
-the symbol nor the reason. That had been masking a missing kernel hook and,
-behind it, the twelve section symbols. Failing at link time prints the names.
-
-So the build is red on purpose, at exactly the point spike A predicted it
-would be.
-
-
-### Tick 6 — the section shim, and the banner
-
-The kernel boots. That took two mechanisms, matching the split spike A called
-for, and the split held up.
-
-**Renaming, for lists where order carries no meaning.** Patch 0004 makes
-`TYPE_SECTION_ITERABLE` use a C identifier for the section name on wasm and
-makes the bounds macros resolve to `__start_`/`__stop_`, which wasm-ld
-synthesises. No generated code at all for these.
-
-**Generation, for the init entries.** They must form one contiguous block
-ordered by level and then priority, which no amount of renaming achieves.
-`scripts/gen_sections_wasm.py` reads the compiled objects, recovers each
-entry's level and priority from the segment name Zephyr already encodes, and
-emits per-level arrays that are filled at boot by copying each entry into its
-sorted place. Copying is safe because nothing holds a pointer to an init
-entry, and the arrays are sized at build time, so boot does a fixed sequence
-of assignments with no sorting and no allocation.
-
-Three things about this were not obvious.
-
-**Pay-per-use lists break the renaming half.** Several iterable lists exist
-only if their subsystem is linked; a build that never uses mailboxes has no
-mailbox entry. Under a linker script that yields an empty range. wasm-ld
-instead fails on a reference to the bounds of a section nothing defines. The
-generator now emits a weak, zero-length definition for every family named
-anywhere in the objects: where the section exists wasm-ld's strong symbols
-win, and where it does not, start and end coincide and the list reads as
-empty. An anchor member was tried first and rejected, because an anchor in a
-list of static threads would be a bogus thread.
-
-**Those fallbacks need a file of their own.** Put beside the init arrays they
-conflict, because that file includes Zephyr headers which declare some of the
-same symbols with real element types.
-
-**The generator sees more than the linker keeps.** It scans every compiled
-object, including ones the link discards, so a family can look populated and
-still be absent from the image. That is what makes the weak fallback the right
-shape rather than a conditional one.
-
-Patch 0003 was also needed: `SYS_INIT` declares its entries `static`, and the
-generated copy has to name them. The patch makes the storage class conditional
-so only wasm changes.
-
+Also worth fixing in the harness: `--max-time` is checked between
+suspensions, so a guest that never suspends is never interrupted. The wall
+clock guard added this tick has the same flaw. Bounding a spinning guest needs
+the safepoint instrumentation from Milestone 3, or an external timeout.
 
 ### Tick 7 — two real bugs, and how wasm reports them
 
@@ -127,3 +60,30 @@ the split ran off the bottom of the object. The board now sets stack sizes
 that clear the reservation with room left over. This is a real cost of the
 approach and belongs in the final report: on this port every thread pays for
 an Asyncify buffer whether or not it ever suspends deeply.
+
+
+### Tick 8 — Asyncify cannot suspend in a function that never returns
+
+This is the finding of the tick, and it is a real constraint rather than a
+bug.
+
+`arch_switch_to_main_thread` is declared `FUNC_NORETURN`, and this port
+implemented it by filling the switch block and calling the host's `switch_to`
+import. That cannot work. Asyncify instruments a call site so control can
+resume there later, and there is no "later" past a call the compiler has been
+told never comes back: the caller's chain is not instrumented, so the unwind
+returns through frames that then carry on executing.
+
+The fix was to stop selecting `CONFIG_ARCH_HAS_CUSTOM_SWAP_TO_MAIN` and let
+the kernel's generic path reach the main thread through `arch_switch()` from
+the dummy thread, which is an ordinary returning function. That works, and it
+is also less arch code.
+
+The general rule this implies is worth carrying into the final report: on this
+port a suspension point can only appear in a function that can return. Any
+Zephyr API declared noreturn cannot contain one.
+
+A second, smaller lesson: the host's `--max-time` is checked between
+suspensions, so a guest that spins without suspending is never interrupted.
+Bounding that needs the safepoint instrumentation from Milestone 3. Until
+then, a hang has to be killed from outside.

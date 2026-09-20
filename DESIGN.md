@@ -162,6 +162,22 @@ The measured cost is 1.22x code size on a kernel-shaped module, and no
 measurable throughput cost on code that does not yield. A switch is about
 200 ns plus 12 ns per live frame.
 
+### D8a. No suspension inside a function that never returns
+
+Asyncify instruments a call site so control can resume there later. Past a
+call the compiler has been told never returns there is no resume point, so the
+callers are not instrumented and an unwind returns through frames that then
+keep executing.
+
+That rules out implementing `arch_switch_to_main_thread` as a suspension
+point, since Zephyr declares it `FUNC_NORETURN`. The port therefore does not
+select `CONFIG_ARCH_HAS_CUSTOM_SWAP_TO_MAIN` and reaches the main thread
+through the kernel's generic path, which goes through `arch_switch()` from the
+dummy thread and is an ordinary returning function.
+
+The rule generalises: no Zephyr API declared noreturn may contain a suspension
+point on this port.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

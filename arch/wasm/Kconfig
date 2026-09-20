@@ -7,7 +7,6 @@ config WASM
 	select ATOMIC_OPERATIONS_BUILTIN
 	select USE_SWITCH
 	select USE_SWITCH_SUPPORTED
-	select ARCH_HAS_CUSTOM_SWAP_TO_MAIN
 	select ARCH_HAS_CUSTOM_BUSY_WAIT
 	help
 	  WebAssembly architecture. The kernel runs freestanding in a single

@@ -49,26 +49,7 @@ void z_wasm_boot(void)
 }
 
 /*
- * ARCH_HAS_CUSTOM_SWAP_TO_MAIN: the dummy thread the kernel boots on has no
- * Asyncify state to save, so switching away from it is a one-way trip rather
- * than a swap. Hand the host a fresh-thread start instead.
+ * The dummy thread the kernel boots on owns no stack object, so its Asyncify
+ * buffer is zero. The host treats that as "unwind into the boot scratch and
+ * throw it away", which is right: nothing ever switches back to it.
  */
-FUNC_NORETURN void z_wasm_switch_to_main_thread(struct k_thread *main_thread,
-						char *stack_ptr, k_thread_entry_t entry)
-{
-	ARG_UNUSED(stack_ptr);
-	ARG_UNUSED(entry);
-
-	/* Unwinding the dummy thread has nowhere real to go; the host points
-	 * this at the boot scratch buffer and throws the result away.
-	 */
-	z_wasm_switch_block.from_buf = 0U;
-	z_wasm_switch_block.to_sp = main_thread->callee_saved.sp;
-	z_wasm_switch_block.to_buf = main_thread->callee_saved.asyncify_buf;
-	z_wasm_switch_block.to_fresh = 1U;
-	z_wasm_switch_block.to_arg = (uint32_t)(uintptr_t)main_thread;
-	main_thread->callee_saved.fresh = 0U;
-
-	wasm_host_switch_to();
-	CODE_UNREACHABLE;
-}

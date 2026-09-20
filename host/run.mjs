@@ -173,6 +173,15 @@ class Host {
         this.exitCode = 2;
         break;
       }
+      /* Virtual time only advances when the kernel idles, so a guest that
+       * spins without ever suspending would never trip the guest-time check.
+       * Bound the wall clock as well, generously, so a hang is reported
+       * rather than sat through. */
+      if (Number(process.hrtime.bigint() - this.startedAt) / 1e6 > this.opts.maxTimeMs * 3) {
+        process.stderr.write('\n*** gave up: the guest ran without suspending ***\n');
+        this.exitCode = 2;
+        break;
+      }
       if (!this.step()) break;
     }
     return this.exitCode;
@@ -189,6 +198,9 @@ class Host {
     }
     c.fresh = false;
 
+    if (this.opts.traceSwitches) {
+      process.stderr.write(`[enter] ${c.entry}(0x${c.arg.toString(16)}) sp=0x${(this.ex.__stack_pointer.value).toString(16)}\n`);
+    }
     this.ex[c.entry](c.arg);
 
     if (this.ex.asyncify_get_state() !== ASYNCIFY_UNWINDING) {
@@ -227,7 +239,10 @@ class Host {
     } else {
       const known = this.contexts.get(blk.toBuf);
       if (!known) throw new Error(`asked to resume unknown context buf=0x${blk.toBuf.toString(16)}`);
-      known.sp = blk.toSp;
+      /* Deliberately keep the stack pointer the host saved when this context
+       * unwound. The guest's to_sp is only meaningful for a thread that has
+       * never run; for a resume it still holds the value from thread
+       * creation, and rewinding onto that would drop the whole stack. */
       this.current = known;
     }
     return true;
