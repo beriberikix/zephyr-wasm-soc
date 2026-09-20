@@ -53,31 +53,8 @@ static void report(const struct k_thread *thread, void *user_data)
 
 int main(void)
 {
-	/* Does the spacing between entries match what the kernel iterates by? */
-	{
-		const struct _static_thread_data *prev = NULL;
-
-		printk("sizeof(_static_thread_data) = %u\n",
-		       (unsigned)sizeof(struct _static_thread_data));
-		STRUCT_SECTION_FOREACH(_static_thread_data, td) {
-			printk("  entry at %p", (void *)td);
-			if (prev != NULL) {
-				printk("  stride %d", (int)((const char *)td - (const char *)prev));
-			}
-			printk("  prio %d delay %lld\n", (int)td->init_prio,
-			       (long long)td->init_delay.ticks);
-			prev = td;
-		}
-	}
-
 	/* What does the kernel think exists, and in what state? */
 	k_thread_foreach(report, NULL);
-
-	/* thread_a is stuck in PRESTART. Does starting it by hand help, and
-	 * does thread_b, which is already queued, ever get the processor? */
-	printk("main: starting both threads by hand\n");
-	k_thread_start(thread_a);
-	k_thread_start(thread_b);
 
 	printk("main: sleeping so the lower-priority threads can run\n");
 	k_msleep(200);

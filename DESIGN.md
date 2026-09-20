@@ -159,6 +159,14 @@ the high part is the Asyncify buffer holding unwound wasm frames. A switch
 swaps both, because Asyncify saves the wasm frames but does not touch
 `__stack_pointer`. wasm-ld exports that global and the host can write it.
 
+The buffer is carved from **below** `stack_ptr`, not above it.
+`ARCH_THREAD_STACK_RESERVED` is supposed to make the kernel hand over a
+`stack_ptr` that already excludes the reserved bytes; measured, it does not,
+and `stack_ptr` arrives at the top of the stack object. A buffer placed above
+it lands in the next thread's stack object, so unwinding one thread overwrites
+another thread's `k_thread` structure. Taking it from below keeps it inside
+the thread's own object either way.
+
 Sizing comes from the measurements: the buffer needs about 88 bytes plus 32
 per frame live at the moment of the yield. The reserved split will be a
 Kconfig with a conservative default, because a buffer that is too small does
