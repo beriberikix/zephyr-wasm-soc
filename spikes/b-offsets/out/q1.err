@@ -1,0 +1,55 @@
+fatal error: error in backend: __k_thread_b_OFFSET: absolute addressing not supported!
+PLEASE submit a bug report to https://github.com/Homebrew/homebrew-core/issues and include the crash backtrace and dumped files.
+Stack dump:
+0.	Program arguments: clang --target=wasm32-unknown-unknown -O2 -nostdlib -c q1_elfstyle.c -o out/q1.o
+1.	<eof> parser at end of file
+2.	Code generation
+ #0 0x0000000115b872f8 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x1472f8)
+ #1 0x0000000115b86a34 llvm::sys::CleanupOnSignal(unsigned long) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x146a34)
+ #2 0x0000000119dd8974 (anonymous namespace)::CrashRecoveryContextImpl::HandleCrash(int, unsigned long) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x4398974)
+ #3 0x0000000119dd890c llvm::CrashRecoveryContext::HandleExit(int) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x439890c)
+ #4 0x0000000115b82da0 llvm::sys::Process::Exit(int, bool) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x142da0)
+ #5 0x0000000102c12164 LLVMErrorHandler(void*, char const*, bool) (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x10000e164)
+ #6 0x0000000115acf48c llvm::report_fatal_error(llvm::Twine const&, bool) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x8f48c)
+ #7 0x000000011a211ad8 (anonymous namespace)::WasmObjectWriter::writeOneObject(llvm::MCAssembler&, (anonymous namespace)::WasmObjectWriter::DwoMode) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x47d1ad8)
+ #8 0x000000011a20ce54 (anonymous namespace)::WasmObjectWriter::writeObject() (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x47cce54)
+ #9 0x00000001176cf2a8 llvm::MCObjectStreamer::finishImpl() (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x1c8f2a8)
+#10 0x000000011656f650 llvm::AsmPrinter::doFinalization(llvm::Module&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0xb2f650)
+#11 0x0000000115d62334 llvm::FPPassManager::doFinalization(llvm::Module&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x322334)
+#12 0x0000000115d58ce4 llvm::legacy::PassManagerImpl::run(llvm::Module&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x318ce4)
+#13 0x000000010858f734 (anonymous namespace)::EmitAssemblyHelper::TimeCodegenPasses(llvm::function_ref<void ()>) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x11ef734)
+#14 0x00000001085815e0 clang::emitBackendOutput(clang::CompilerInstance&, clang::CodeGenOptions&, llvm::StringRef, llvm::Module*, clang::BackendAction, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>, std::__1::unique_ptr<llvm::raw_pwrite_stream, std::__1::default_delete<llvm::raw_pwrite_stream>>, clang::BackendConsumer*) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x11e15e0)
+#15 0x00000001087c6668 clang::BackendConsumer::HandleTranslationUnit(clang::ASTContext&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1426668)
+#16 0x0000000107569854 clang::ParseAST(clang::Sema&, bool, bool) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1c9854)
+#17 0x0000000108e14050 clang::FrontendAction::Execute() (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1a74050)
+#18 0x0000000108db9520 clang::CompilerInstance::ExecuteAction(clang::FrontendAction&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1a19520)
+#19 0x0000000108e6bfe0 clang::ExecuteCompilerInvocation(clang::CompilerInstance*) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1acbfe0)
+#20 0x0000000102c09380 cc1_main(llvm::ArrayRef<char const*>, char const*, void*) (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x100005380)
+#21 0x0000000102c07508 ExecuteCC1Tool(llvm::SmallVectorImpl<char const*>&, llvm::ToolContext const&, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem>) (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x100003508)
+#22 0x0000000102c08c80 int llvm::function_ref<int (llvm::SmallVectorImpl<char const*>&)>::callback_fn<clang_main(int, char**, llvm::ToolContext const&)::$_0>(long, llvm::SmallVectorImpl<char const*>&) (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x100004c80)
+#23 0x0000000108aa5e20 void llvm::function_ref<void ()>::callback_fn<clang::driver::CC1Command::Execute(llvm::ArrayRef<std::__1::optional<llvm::StringRef>>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>*, bool*) const::$_0>(long) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x1705e20)
+#24 0x0000000115ac271c llvm::CrashRecoveryContext::RunSafely(llvm::function_ref<void ()>) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libLLVM.23.1.dylib+0x8271c)
+#25 0x0000000108aa57a0 clang::driver::CC1Command::Execute(llvm::ArrayRef<std::__1::optional<llvm::StringRef>>, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>*, bool*) const (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x17057a0)
+#26 0x0000000108a6ea4c clang::driver::Compilation::ExecuteCommand(clang::driver::Command const&, clang::driver::Command const*&, bool) const (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x16cea4c)
+#27 0x0000000108a6ee4c clang::driver::Compilation::ExecuteJobs(clang::driver::JobList const&, llvm::SmallVectorImpl<std::__1::pair<int, clang::driver::Command const*>>&, bool) const (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x16cee4c)
+#28 0x0000000108a8c3d4 clang::driver::Driver::ExecuteCompilation(clang::driver::Compilation&, llvm::SmallVectorImpl<std::__1::pair<int, clang::driver::Command const*>>&) (/opt/homebrew/Cellar/llvm/23.1.1/lib/libclang-cpp.23.1.dylib+0x16ec3d4)
+#29 0x0000000102c06484 clang_main(int, char**, llvm::ToolContext const&) (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x100002484)
+#30 0x0000000102c10a4c main (/opt/homebrew/Cellar/llvm/23.1.1/bin/clang-23+0x10000ca4c)
+#31 0x000000019a81fe80
+clang: error: clang frontend command failed with exit code 70 (use -v to see invocation)
+Homebrew clang version 23.1.1
+Target: wasm32-unknown-unknown
+Thread model: posix
+InstalledDir: /opt/homebrew/Cellar/llvm/23.1.1/bin
+clang: note: diagnostic msg: 
+********************
+
+PLEASE ATTACH THE FOLLOWING CRASH REPRODUCER FILES TO THE BUG REPORT:
+clang: note: diagnostic msg: /var/folders/5t/0nkk7c013x51lbsn7389mstw0000gn/T/q1_elfstyle-608f52.c
+clang: note: diagnostic msg: /var/folders/5t/0nkk7c013x51lbsn7389mstw0000gn/T/q1_elfstyle-608f52.sh
+clang: note: diagnostic msg: Crash backtrace is located in
+clang: note: diagnostic msg: /Users/jberi/Library/Logs/DiagnosticReports/clang-23_<YYYY-MM-DD-HHMMSS>_<hostname>.crash
+clang: note: diagnostic msg: (choose the .crash file that corresponds to your crash)
+clang: note: diagnostic msg: 
+
+********************

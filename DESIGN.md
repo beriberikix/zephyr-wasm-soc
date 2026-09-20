@@ -101,6 +101,25 @@ encoded in the section name, and wasm-ld keeping declaration order within a
 translation unit. Both are stable in practice, and both fail loudly rather
 than silently if they change.
 
+### D7. Offsets header: constants as data, read from assembly
+
+Wasm has no absolute symbols, and the inline-asm `.equ` that every other
+architecture uses for `GEN_ABSOLUTE_SYM` is a hard LLVM backend failure, not a
+graceful one (spike B). The port emits each constant as real data in a
+`z_offsets` section and recovers the value from the compiler's assembly
+output, where it is a label followed by `.int32`. `scripts/gen_offsets_wasm.py`
+replaces `scripts/build/gen_offset_header.py`, substituted by redefining
+`zephyr_constants_library` from `arch/wasm/CMakeLists.txt`, which the root
+`CMakeLists.txt` reaches before it declares the offsets library.
+
+Reading assembly rather than the object was chosen deliberately: it is one
+regex over output the compiler is obliged to produce, where the alternatives
+are scraping two `wasm-objdump` reports or writing a wasm binary parser.
+
+Struct layout has to come from the target compiler. For one representative
+struct the host reports 32 bytes and wasm32 reports 16, so compiling
+`offsets.c` natively, as the brief warns, would be wrong by a factor of two.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
@@ -118,4 +137,12 @@ Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 ## 5. Changes to the Zephyr tree
 
 The Zephyr tree is read-only. Anything unavoidable becomes a numbered patch in
-`patches/` with a comment. Currently: none.
+`patches/` with a comment, applied by `scripts/apply_patches.sh`.
+
+**0001-toolchain-gen-absolute-sym-for-wasm.patch.** `GEN_ABSOLUTE_SYM` in
+`include/zephyr/toolchain/gcc.h` is a per-architecture chain ending in
+`#error processor architecture not supported`. There is no generic fallback and
+no out-of-tree hook, so a new architecture cannot compile `offsets.c` without
+being listed in that file. The patch adds a `CONFIG_WASM` branch that emits the
+constant as data. Worth fixing upstream by giving the macro a generic
+data-emitting default.

@@ -1,15 +1,15 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 0 done  |  Last commit: 812dd17 spike A  |  Blocker: none
-Next: spike B (offsets header). Spike A's object-introspection finding
-(wasm-objdump -x gives symbol -> segment name, llvm-nm gives data offsets)
-is the likely basis for it.
+Tick: 1 done  |  Last commit: spike B  |  Blocker: none
+Next: spike C (Asyncify fibers). Two or more threads with their own shadow
+stack and Asyncify buffer, switching under a host driver loop, plus code-size
+and speed numbers for wasm-opt --asyncify.
 
 ### Checklist
 - [x] T0 tools installed, workspace created
 - [x] M0-A sections spike ... decision recorded
-- [ ] M0-B offsets spike ... decision recorded
+- [x] M0-B offsets spike ... decision recorded
 - [ ] M0-C fibers spike ... numbers recorded
 - [ ] M1 toolchain+board configure (west build --cmake-only)
 - [ ] M1 link zephyr.elf -> zephyr.wasm (post-link wasm-opt)
@@ -154,3 +154,51 @@ end            offset 56
 
 That is a generated file the kernel accepts as-is, with no patch to
 `kernel/init.c`.
+
+
+### Tick 1 — spike B: the offsets header
+
+Reproduce with `spikes/b-offsets/run.sh`.
+
+Zephyr builds `offsets.h` by compiling `offsets.c` and reading `SHN_ABS`
+symbols out of the resulting ELF object. Every architecture creates those
+symbols the same way, with an inline-asm `.equ`. On wasm that is not merely
+unsupported, it is a hard backend failure:
+
+```
+fatal error: error in backend: __k_thread_b_OFFSET: absolute addressing not supported!
+```
+
+So the mechanism has to change, not just the parser.
+
+What works is emitting each constant as real data in a section named
+`z_offsets`, then reading the value back from the compiler's own assembly
+output, where it always appears as a label followed by a width directive:
+
+```
+__k_thread_t_b_OFFSET:
+        .int32  4
+```
+
+Reading the assembly beats reading the object. It is one regex over text the
+compiler must emit, instead of scraping two different `wasm-objdump` reports
+or writing a wasm binary parser.
+
+`scripts/gen_offsets_wasm.py` does this. Spike B checks all eleven constants
+it produces against the layout a real wasm32 program reports, and every one
+matches, covering both shapes that appear in practice: file scope, which most
+`offsets.c` files use, and inside `GEN_ABS_SYM_BEGIN`, which
+`kernel_offsets.h` uses and where clang mangles the name onto the enclosing
+function. The generator strips that prefix.
+
+The brief's warning about host compilation is worth quantifying. For the same
+struct, the host says 32 bytes with the `prio` member at offset 24; wasm32
+says 16 bytes with `prio` at 12. Native compilation would have been wrong by
+a factor of two.
+
+This is the port's first and so far only change to the Zephyr tree,
+`patches/0001-toolchain-gen-absolute-sym-for-wasm.patch`. It is unavoidable:
+`GEN_ABSOLUTE_SYM` is a chain of per-architecture branches ending in `#error`,
+with no generic fallback and no out-of-tree hook, so a new architecture cannot
+compile `offsets.c` without appearing in that file. `scripts/apply_patches.sh`
+applies it and is idempotent.

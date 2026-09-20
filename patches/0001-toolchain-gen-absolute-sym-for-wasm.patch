@@ -1,0 +1,32 @@
+diff --git a/include/zephyr/toolchain/gcc.h b/include/zephyr/toolchain/gcc.h
+index 699a7503e3d..cc226615e31 100644
+--- a/include/zephyr/toolchain/gcc.h
++++ b/include/zephyr/toolchain/gcc.h
+@@ -619,6 +619,27 @@ do {                                                                    \
+ 		"\n\t.equ\t" #name "," #value        \
+ 		"\n\t.type\t" #name ",#object")
+ 
++#elif defined(CONFIG_WASM)
++
++/* WebAssembly has no absolute symbols. The .equ form used by every other
++ * architecture above makes the LLVM wasm backend fail outright with
++ * "absolute addressing not supported", so the constant is emitted as real
++ * data in a section named z_offsets, and the build reads the value back out
++ * of the compiler's assembly output. See scripts/gen_offsets_wasm.py in the
++ * zephyr-wasm module.
++ *
++ * GEN_ABS_SYM_BEGIN opens a function body, so the definition has to be valid
++ * at block scope as well as at file scope; `static` covers both, and the
++ * generator strips the name clang mangles onto function-scope statics.
++ */
++#define GEN_ABSOLUTE_SYM(name, value)                \
++	static __attribute__((section("z_offsets"), used))   \
++	const long name = (long)(value)
++
++#define GEN_ABSOLUTE_SYM_KCONFIG(name, value)        \
++	static __attribute__((section("z_offsets"), used))   \
++	const long name = (long)(value)
++
+ #else
+ #error processor architecture not supported
+ #endif
