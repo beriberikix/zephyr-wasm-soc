@@ -43,6 +43,10 @@ SKIP_EXPORTS = (
     "z_wasm_safepoint",
     "z_wasm_irq_dispatch",
     "z_wasm_switch",
+    # Walks the thread list for the host, between steps. A safepoint in here
+    # would dispatch interrupts and reschedule from a call the kernel never
+    # made, while the host is holding the Asyncify state.
+    "z_wasm_inspect_threads",
 )
 
 # Every name above must be exported, or the skip silently protects nothing:

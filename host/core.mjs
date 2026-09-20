@@ -72,6 +72,19 @@ const PACE_MAX_NS = 5_000_000_000n;
  * that it advances at all, so deadlines can expire. */
 const SAFEPOINT_TICK_NS = 100_000n;
 
+/* struct wasm_thread_info: nine 32-bit fields, in the order the header
+ * declares them. The guest fills it; the host only reads it, and learns no
+ * Zephyr struct offsets in the process. */
+const THREAD_INFO_WORDS = 9;
+const THREAD_INFO_MAX = 24;
+
+/* _THREAD_* in kernel_structs.h, lowest bit first. A thread with no bits set
+ * is runnable. */
+const THREAD_STATE_BITS = [
+  'dummy', 'pending', 'sleeping', 'dead',
+  'suspended', 'aborting', 'suspending', 'queued',
+];
+
 /* Must match arch/wasm/core/fatal.c and Zephyr's k_fatal_error reasons. */
 const FATAL_REASONS = [
   'CPU exception', 'spurious interrupt', 'stack overflow', 'kernel oops',
@@ -116,7 +129,21 @@ export class Host {
      * requires two runs of a build to be byte-identical. --true-random opts
      * out for anyone who wants the platform's own randomness. */
     this.randState = (opts.seed ?? DEFAULT_SEED) >>> 0 || DEFAULT_SEED;
+    /* Stepping. A step is one suspension: the guest runs until it switches
+     * threads or idles, which is the granularity the driver loop already
+     * works in and so costs nothing to offer. Finer than that would mean
+     * suspending at every safepoint, which is a full unwind per loop
+     * iteration. */
+    this.paused = !!opts.paused;
+    this.stepsLeft = 0;
   }
+
+  pause() { this.paused = true; }
+
+  resume() { this.paused = false; }
+
+  /* Let the guest run to its next suspension, then stop again. */
+  stepOnce(n = 1) { this.stepsLeft += n; this.paused = true; }
 
   nextRandomByte() {
     let x = this.randState;
@@ -291,6 +318,63 @@ export class Host {
     return false;
   }
 
+  /* What threads does the kernel have, and which one holds the CPU?
+   *
+   * Only safe between steps, which is where run() calls it: the guest is
+   * fully unwound, Asyncify is NORMAL, and nothing is mid-switch. The walk
+   * runs on a stack of its own so it does not spend the headroom of whatever
+   * thread happens to be suspended, which means saving and restoring
+   * __stack_pointer around the call.
+   *
+   * Returns null when the module was not built with CONFIG_WASM_INSPECT.
+   */
+  snapshotThreads() {
+    if (typeof this.ex.z_wasm_inspect_threads !== 'function') return null;
+    if (this.infoAddr === undefined) {
+      /* Borrow the top of the inspect stack for the records themselves: it
+       * is the one region known to belong to nothing else. */
+      const top = this.ex.z_wasm_inspect_stack_top();
+      this.infoAddr = (top - THREAD_INFO_MAX * THREAD_INFO_WORDS * 4) & ~15;
+    }
+
+    const savedSp = this.ex.__stack_pointer.value;
+    let count;
+    try {
+      this.ex.__stack_pointer.value = this.infoAddr;
+      count = this.ex.z_wasm_inspect_threads(this.infoAddr, THREAD_INFO_MAX);
+    } finally {
+      this.ex.__stack_pointer.value = savedSp;
+    }
+
+    const words = new Uint32Array(this.mem.buffer, this.infoAddr, count * THREAD_INFO_WORDS);
+    const bytes = new Uint8Array(this.mem.buffer);
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+      const at = i * THREAD_INFO_WORDS;
+      const state = words[at + 1];
+      let name = '';
+      let p = words[at + 3];
+      if (p) {
+        const start = p;
+        while (bytes[p] !== 0 && p - start < 64) p++;
+        name = new TextDecoder().decode(bytes.subarray(start, p));
+      }
+      rows.push({
+        thread: words[at],
+        state,
+        states: THREAD_STATE_BITS.filter((_, b) => state & (1 << b)),
+        current: words[at + 2] === 1,
+        name,
+        prio: new Int32Array(this.mem.buffer, this.infoAddr + (at + 4) * 4, 1)[0],
+        stackBase: words[at + 5],
+        stackSize: words[at + 6],
+        sp: words[at + 7],
+        asyncifyBuf: words[at + 8],
+      });
+    }
+    return rows;
+  }
+
   /* Has this run gone on too long?
    *
    * The two limits below used to be checked between steps, which is no help
@@ -373,6 +457,30 @@ export class Host {
     return true;
   }
 
+  /* Tell the platform what the kernel looks like now, if it is listening.
+   *
+   * Throttled: a run switches threads thousands of times a second and a page
+   * cannot draw that, nor does anyone want it to. Paused, it always reports,
+   * because then every step is one the viewer asked for.
+   */
+  report() {
+    if (!this.platform.onState) return;
+    const nowMs = Number(this.timeNs / 1_000_000n);
+    if (!this.paused && this.lastReportAt !== undefined &&
+        Date.now() - this.lastReportAt < 100) {
+      return;
+    }
+    this.lastReportAt = Date.now();
+    this.platform.onState({
+      threads: this.snapshotThreads(),
+      nowMs,
+      alarmMs: this.alarmNs === null ? null : Number(this.alarmNs / 1_000_000n),
+      pending: new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0],
+      switches: this.switches,
+      paused: this.paused,
+    });
+  }
+
   /* Input, if the platform offers any. Bytes arrive through the callback
    * and are served to the guest's UART by uart_poll_in. An interrupt key
    * belongs to the platform too, since the guest has no notion of one. */
@@ -436,6 +544,15 @@ export class Host {
     let pacedFrom = this.nowNs;
 
     while (!this.done) {
+      /* Paused between steps, which is where the guest is unwound and the
+       * kernel's state is consistent enough to be looked at. */
+      while (this.paused && this.stepsLeft === 0 && !this.done) {
+        this.report();
+        await this.platform.wait(50);
+      }
+      if (this.done) break;
+      if (this.stepsLeft > 0) this.stepsLeft--;
+
       try {
         this.checkDeadline();
         /* Anything raised from outside since the last step. The guest is
@@ -453,6 +570,8 @@ export class Host {
         this.exitCode = 2;
         break;
       }
+      this.report();
+
       if (paced) {
         const advanced = this.nowNs - pacedFrom;
         pacedFrom = this.nowNs;

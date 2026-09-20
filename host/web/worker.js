@@ -70,10 +70,19 @@ const browserPlatform = {
   gpioOut(port, values) {
     self.postMessage({ type: 'gpio', port, values });
   },
+
+  /* The kernel's state, as often as the core decides is worth sending. */
+  onState(state) {
+    self.postMessage({ type: 'state', state });
+  },
 };
 
 self.onmessage = async (event) => {
   const msg = event.data;
+
+  if (msg.type === 'pause') { host?.pause(); return; }
+  if (msg.type === 'resume') { host?.resume(); return; }
+  if (msg.type === 'step') { host?.stepOnce(msg.count ?? 1); return; }
 
   if (msg.type === 'speed') {
     /* Applies to the next wait, which is at most a few hundred milliseconds

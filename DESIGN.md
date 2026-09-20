@@ -338,6 +338,48 @@ forward without the guest being able to tell. An advance longer than
 deadline about two days out, and sitting through that would be a hang rather
 than pacing.
 
+### D8e. The host asks rather than reads
+
+A page that shows the kernel's threads needs the kernel's thread list, and
+the obvious way to get it is to hand the host the generated struct offsets.
+That would be a mistake worth naming: the offsets are generated per build
+precisely because they are not stable, and a host that knew them would go
+quietly wrong whenever a struct moved rather than failing.
+
+So the guest answers questions instead. `z_wasm_inspect_threads()` walks
+`_kernel.threads` and fills an array of `struct wasm_thread_info`, which is
+nine 32-bit fields in a fixed order and the only Zephyr shape the host
+knows. Adding a field costs an edit on each side, which is the usual price
+of an ABI and cheap at this size.
+
+Three rules make the call safe, and all three come from where it happens.
+The host calls it between steps, where the guest is fully unwound, Asyncify
+is `NORMAL`, nothing is mid-switch and `_kernel.cpus[0].current` already
+names the thread that will run next. It takes no lock, because there is one
+CPU and nothing else is running. It must not suspend, because a suspension
+outside the driver loop would corrupt the Asyncify state the host is
+holding. And it must not be instrumented, because a safepoint inside the
+walk would dispatch interrupts and reschedule from a call the kernel never
+made -- so it is in the safepoint pass's skip list, which now refuses to run
+if it cannot find a name it was told to skip.
+
+It runs on a stack of its own rather than spending the headroom of whichever
+thread happens to be suspended when the host asks.
+
+### D8f. A step is a suspension
+
+Pausing and stepping are nearly free here, and it is worth being clear about
+why: the driver loop is already one step per suspension, so "stopped between
+two context switches" is a state the host is in thousands of times a second
+anyway. Offering it costs a flag.
+
+That also sets the granularity. A step is one suspension -- the guest runs
+until it switches threads or idles -- which is exactly the unit a learner
+wants when watching a scheduler hand off. Stepping at instruction or
+safepoint granularity would mean making `safepoint_tick` suspend, which
+costs a full unwind on every loop iteration, and is a different feature
+rather than a finer setting of this one.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

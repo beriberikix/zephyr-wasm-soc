@@ -89,6 +89,31 @@ WASM_HOST_IMPORT(safepoint_tick) void wasm_host_safepoint_tick(void);
 WASM_HOST_IMPORT(fatal) void wasm_host_fatal(int32_t reason, int32_t arg);
 
 /*
+ * What the host is told about a thread.
+ *
+ * The host is deliberately ignorant of Zephyr's struct layout -- it reads
+ * linear memory and a handful of exported addresses and nothing else -- and
+ * that is worth keeping, because a host that knew the offsets would go wrong
+ * quietly whenever a struct moved. So inspection does not hand over offsets;
+ * it hands over this, which the guest fills in and both sides agree on.
+ *
+ * Laid out for a host reading it as a Uint32Array: every field is four bytes
+ * and the array is a plain stride. Adding a field means adding it here and
+ * in the host's reader, which is the usual cost of an ABI.
+ */
+struct wasm_thread_info {
+	uint32_t thread;      /* the k_thread *, as an identifier */
+	uint32_t state;       /* _THREAD_* bits, as the kernel holds them */
+	uint32_t is_current;  /* 1 for the thread holding the CPU */
+	uint32_t name;        /* pointer to a NUL-terminated name, or 0 */
+	int32_t prio;
+	uint32_t stack_base;
+	uint32_t stack_size;
+	uint32_t sp;          /* the saved shadow-stack pointer */
+	uint32_t asyncify_buf;
+};
+
+/*
  * The switch request block.
  *
  * Switching cannot happen inside the module: Asyncify unwinds to the host, and

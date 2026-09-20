@@ -32,15 +32,18 @@ cd "$topdir"
 # name and application path for each build, in the order the page lists them.
 while IFS=$'\t' read -r name app; do
   build="build-site-$name"
-  if [ ! -f "$build/zephyr/zephyr.wasm" ]; then
-    echo "building $name from $app"
-    # Quiet on success, but show everything on failure: a build log that is
-    # thrown away is no use when the failure is on someone else's machine.
-    if ! "$module/scripts/build.sh" "$build" "$app" > "$build.log" 2>&1; then
-      echo "--- build of $name failed ---"
-      cat "$build.log"
-      exit 1
-    fi
+  # Always build, rather than skipping when the module is already there.
+  # west and ninja do nothing when nothing changed, so the cost is seconds;
+  # skipping cost an hour once, when the page was staged with modules built
+  # before the change being tested and the browser was the only thing that
+  # could tell.
+  #
+  # Quiet on success, but show everything on failure: a build log that is
+  # thrown away is no use when the failure is on someone else's machine.
+  if ! "$module/scripts/build.sh" "$build" "$app" > "$build.log" 2>&1; then
+    echo "--- build of $name failed ---"
+    cat "$build.log"
+    exit 1
   fi
   cp "$build/zephyr/zephyr.wasm" "$site/m/$name.wasm"
   printf "  %-6s %s\n" "$name" "$(du -h "$site/m/$name.wasm" | cut -f1)"

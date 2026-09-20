@@ -223,7 +223,11 @@ zephyr-wasm/scripts/serve_web.sh 8777  # then open http://127.0.0.1:8777/
 ```
 
 Pick a build and press Run. For the shell, click the output area and type;
-<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. A server is needed because `file://`
+<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and the philosophers run at
+their own pace, with a speed control that does not change what they do, and
+the kernel's thread table is shown underneath: who exists, who holds the CPU,
+and what the rest are waiting for. Pause stops the guest between two context
+switches and Step lets exactly one through. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.
@@ -266,6 +270,7 @@ under wasmtime. The kernel is the same module in all three.
 | `--realtime` | follow the wall clock instead of virtual time |
 | `--paced` | let virtual time pass at the rate it claims, so a sample that blinks once a second can be watched. The guest sees the same clock either way, so the output is unchanged |
 | `--time-scale <n>` | with `--paced`, divide the waiting: 10 is ten times faster than real, 0.1 is slow motion |
+| `--threads` | print the kernel's thread table to stderr as it changes |
 | `--trace-gpio` | log every GPIO output change to stderr |
 | `--gpio <ms>:<pin>=<0\|1>` | move an input pin at a given guest time, repeatable |
 | `--trace-switches` | log every context switch and idle to stderr |

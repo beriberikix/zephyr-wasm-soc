@@ -17,7 +17,7 @@ function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
                  interactive: false, traceGpio: false, gpio: [],
                  clock: 'virtual', timeScale: 1,
-                 seed: undefined, trueRandom: false, wasm: null };
+                 seed: undefined, trueRandom: false, threads: false, wasm: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--realtime') opts.realtime = true;
@@ -25,6 +25,7 @@ function parseArgs(argv) {
     else if (a === '--time-scale') opts.timeScale = Number(argv[++i]);
     else if (a === '--seed') opts.seed = Number(argv[++i]);
     else if (a === '--true-random') opts.trueRandom = true;
+    else if (a === '--threads') opts.threads = true;
     else if (a === '--trace-switches') opts.traceSwitches = true;
     else if (a === '--trace-gpio') opts.traceGpio = true;
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
@@ -69,6 +70,7 @@ function usage() {
                      repeatable sequence
   --true-random      take entropy from the platform instead, which ends
                      reproducibility
+  --threads          print the kernel's thread table to stderr as it changes
   --trace-gpio       log every GPIO output change to stderr
   --gpio <ms>:<pin>=<0|1>
                      move an input pin at a given guest time, repeatable.
@@ -123,6 +125,24 @@ const nodePlatform = {
   wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
+/* --threads prints the kernel's thread table to stderr whenever it changes
+ * enough to be worth printing. stderr, so stdout stays the contract that
+ * the determinism and two-engine checks compare. */
+function threadTable(state) {
+  if (!state.threads) {
+    return '[threads] this build has no CONFIG_WASM_INSPECT\n';
+  }
+  const rows = state.threads.map((t) =>
+    `  ${t.current ? '*' : ' '} ${(t.name || '(unnamed)').padEnd(18)} ` +
+    `prio ${String(t.prio).padStart(3)}  ` +
+    `${(t.states.join(',') || 'ready').padEnd(18)} ` +
+    `sp 0x${t.sp.toString(16)}`);
+  return `[threads] at ${state.nowMs} ms, ${state.switches} switches, ` +
+         `pending 0x${state.pending.toString(16)}` +
+         `${state.alarmMs === null ? '' : `, next deadline ${state.alarmMs} ms`}\n` +
+         rows.join('\n') + '\n';
+}
+
 const opts = parseArgs(process.argv.slice(2));
 
 /* Set the code and let Node exit on its own, rather than process.exit().
@@ -134,4 +154,15 @@ const opts = parseArgs(process.argv.slice(2));
  * which is every run inside a shell substitution, a tee, or a checking
  * script. The guest was never at fault and the run had already finished.
  */
+if (opts.threads) {
+  let last = '';
+  nodePlatform.onState = (state) => {
+    const table = threadTable(state);
+    if (table !== last) {
+      last = table;
+      process.stderr.write(table);
+    }
+  };
+}
+
 process.exitCode = await new Host(nodePlatform, opts).run();

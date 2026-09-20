@@ -62,6 +62,18 @@
     font: 11px ui-monospace, monospace; user-select: none;
   }
   .btn:active, .btn.down { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #kernel { margin: 12px 0 0; display: none; }
+  #kernel.on { display: block; }
+  #kstat { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  table.threads { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.threads th, table.threads td {
+    text-align: left; padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.threads th { color: var(--muted); font-weight: 500; }
+  table.threads td.mono { font: 12px ui-monospace, monospace; }
+  table.threads tr.cur td { font-weight: 600; }
+  table.threads tr.cur td:first-child::before { content: "\25B8 "; color: var(--accent); }
   kbd {
     font: 12px ui-monospace, monospace; border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px; background: var(--bg);
@@ -106,6 +118,21 @@
   <div id="board" hidden></div>
 
   <div id="term" tabindex="0" role="log" aria-live="polite"></div>
+
+  <!-- The host brokers every context switch, so it can simply be asked what
+       the kernel looks like between them. Nothing here reads Zephyr struct
+       offsets: the guest answers, through z_wasm_inspect_threads. -->
+  <div id="kernel">
+    <div class="bar">
+      <button id="pause">Pause</button>
+      <button id="step" disabled>Step</button>
+      <span id="kstat"></span>
+    </div>
+    <table class="threads">
+      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th></tr></thead>
+      <tbody id="threads"></tbody>
+    </table>
+  </div>
   <div id="status">Pick a build and press Run. For the shell, click the output
     area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and
     the philosophers run at their own pace, and the speed control changes how
@@ -126,10 +153,16 @@ const stopEl = document.getElementById('stop');
 const clearEl = document.getElementById('clear');
 const speedEl = document.getElementById('speed');
 const speedWrapEl = document.getElementById('speedWrap');
+const kernelEl = document.getElementById('kernel');
+const kstatEl = document.getElementById('kstat');
+const threadsEl = document.getElementById('threads');
+const pauseEl = document.getElementById('pause');
+const stepEl = document.getElementById('step');
 
 let worker = null;
 let running = false;
 let builds = [];
+let lastState = null;
 
 /* The menu comes from the manifest scripts/stage_site.sh writes, which is
  * generated from scripts/apps.json. The page used to carry its own copy of
@@ -263,6 +296,46 @@ function showLeds(values) {
   }
 }
 
+let paused = false;
+
+/* The kernel, as the host sees it between suspensions.
+ *
+ * This is the thing no other Zephyr target can offer: the host brokers every
+ * context switch, so "stopped between two switches" is a state it already
+ * has, and showing it costs a table. */
+function showKernel(state) {
+  lastState = state;
+  kernelEl.classList.add('on');
+  paused = state.paused;
+  pauseEl.textContent = paused ? 'Resume' : 'Pause';
+  stepEl.disabled = !paused;
+
+  const bits = [`${state.nowMs} ms`, `${state.switches} switches`];
+  if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
+  if (state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
+  kstatEl.textContent = bits.join(' · ');
+
+  if (!state.threads) {
+    threadsEl.innerHTML =
+      '<tr><td colspan="4">this build has no CONFIG_WASM_INSPECT</td></tr>';
+    return;
+  }
+  threadsEl.innerHTML = '';
+  for (const t of state.threads) {
+    const tr = document.createElement('tr');
+    if (t.current) tr.className = 'cur';
+    const cells = [t.name || '(unnamed)', String(t.prio),
+                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`];
+    cells.forEach((text, i) => {
+      const td = document.createElement('td');
+      if (i === 3) td.className = 'mono';
+      td.textContent = text;
+      tr.append(td);
+    });
+    threadsEl.append(tr);
+  }
+}
+
 function setRunning(state) {
   running = state;
   runEl.disabled = state;
@@ -279,7 +352,8 @@ function start() {
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
   worker.onmessage = ({ data }) => {
-    if (data.type === 'gpio') showLeds(data.values);
+    if (data.type === 'state') showKernel(data.state);
+    else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
     else if (data.type === 'done') {
@@ -294,6 +368,10 @@ function start() {
 
   showLeds(0);
   boardEl.hidden = false;
+  kernelEl.classList.remove('on');
+  threadsEl.innerHTML = '';
+  paused = false;
+  pauseEl.textContent = 'Pause';
 
   setRunning(true);
   statusEl.textContent = interactive
@@ -321,6 +399,9 @@ loadManifest();
 runEl.onclick = start;
 stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
 clearEl.onclick = () => term.clear();
+pauseEl.onclick = () =>
+  worker?.postMessage({ type: paused ? 'resume' : 'pause' });
+stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
 speedEl.onchange = () =>
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 
@@ -353,6 +434,9 @@ window.zephyrLeds = () => {
   for (const [pin, el] of ledEls) if (el.classList.contains('on')) v |= 1 << pin;
   return v;
 };
+window.zephyrState = () => lastState;
+window.zephyrPause = () => worker?.postMessage({ type: 'pause' });
+window.zephyrStep = () => worker?.postMessage({ type: 'step', count: 1 });
 window.zephyrPress = (pin, level) => {
   if (!running || !worker) return false;
   worker.postMessage({ type: 'gpio-in', port: 0, pin, level });

@@ -338,3 +338,53 @@ so immediately. That is twice now that keeping the second host a genuinely
 separate implementation has caught something that a shared one could not
 have.
 
+
+### Tick 39 — watching the scheduler, which is the point of the whole idea
+
+The issue calls this the affordance no other Zephyr target has, and it is
+right, and it turned out to cost very little. The host brokers every context
+switch already; "stopped between two switches" is a state it is in thousands
+of times a second. Pausing is a flag, and a step is letting exactly one
+suspension through.
+
+Verified in Chromium against `philosophers`: paused, the switch counter held
+at 97 through a second and a half; one click of Step took it to 98. That is
+a learner watching the scheduler pick the next thread, one click at a time.
+
+The thread table was the part with a decision in it. The obvious way to show
+the kernel's threads is to hand the host the generated struct offsets, and
+that is exactly wrong: the offsets are generated per build precisely because
+they are not stable, so a host that knew them would go quietly wrong the day
+a struct moved rather than failing. `z_wasm_inspect_threads` walks the list
+in the guest and fills a fixed record instead. The host learns one shape and
+no offsets.
+
+Under Node, `--threads` prints the same thing to stderr, and it reads well:
+
+```
+[threads] at 600 ms, 5 switches, pending 0x0, next deadline 620 ms
+  * thread_a           prio   7  queued      sp 0x1df0
+    thread_b           prio   7  pending     sp 0x9c0
+    idle               prio  15  ready       sp 0xce70
+[threads] at 700 ms, 7 switches, pending 0x1, next deadline 1100 ms
+    thread_a           prio   7  pending     sp 0x1df0
+    thread_b           prio   7  sleeping    sp 0x9c0
+  * idle               prio  15  ready       sp 0xce70
+```
+
+One thing cost half an hour and was entirely self-inflicted.
+`stage_site.sh` skipped any application whose module was already built,
+which is a sensible optimisation right up to the moment the thing you
+changed is the module rather than the application. The page was staged with
+modules built before the exports existed, the browser was the only thing
+that could see it, and what it saw was a table that never appeared. It
+builds every time now: west and ninja do nothing when nothing changed, so
+the whole staging costs two minutes, and correctness is worth more than
+that.
+
+Stepping backwards is the obvious next thing and is not a kernel problem at
+all: the machine is one buffer plus a few globals, so a snapshot is a copy
+and a restore is a write. What makes it fiddly is the host's own
+bookkeeping, which is not in that buffer -- the context map, the alarm, the
+clock.
+

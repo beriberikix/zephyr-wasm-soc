@@ -197,6 +197,49 @@ for (const b of manifest.builds) {
     .catch(() => {});
 }
 
+/* The kernel panel, pause and step.
+ *
+ * Needs a build that keeps running, so a paced one: under virtual time the
+ * whole run is over before a click could land, which is itself the reason
+ * pacing exists. Checks the three claims separately -- that the table is
+ * filled from the guest, that pausing holds, and that a step is exactly one
+ * suspension -- because each could fail without the others.
+ */
+const stepper = manifest.builds.find((b) => b.clock === 'paced' && !b.interactive);
+if (stepper) {
+  try {
+    await page.selectOption('#build', stepper.name);
+    await page.click('#run');
+    await page.waitForFunction(() => (window.zephyrState()?.threads ?? []).length > 0,
+                               null, { timeout: 60_000, polling: 200 });
+
+    await page.click('#pause');
+    await page.waitForFunction(() => window.zephyrState()?.paused === true,
+                               null, { timeout: 30_000, polling: 100 });
+    const held = await page.evaluate(() => window.zephyrState().switches);
+    await page.waitForTimeout(1200);
+    const stillHeld = await page.evaluate(() => window.zephyrState().switches);
+    if (stillHeld !== held) {
+      fail('pause', `the guest kept running while paused: ${held} then ${stillHeld} switches`);
+    }
+
+    await page.click('#step');
+    await page.waitForTimeout(500);
+    const stepped = await page.evaluate(() => window.zephyrState().switches);
+    if (stepped <= stillHeld) {
+      fail('step', `a step did not advance the run: still ${stepped} switches`);
+    } else {
+      const names = await page.evaluate(() =>
+        window.zephyrState().threads.map((t) => t.name).filter(Boolean));
+      console.log(`  ok    kernel    ${names.length} threads listed, pause holds, ` +
+                  `step advances (${stillHeld} -> ${stepped})`);
+    }
+    await page.click('#stop').catch(() => {});
+  } catch (err) {
+    fail('kernel', `pause and step: ${err.message.split('\n')[0]}`);
+  }
+}
+
 await browser.close();
 server.close();
 

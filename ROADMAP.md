@@ -169,17 +169,28 @@ way. See the note on what "unmodified" can mean, below.
 
 ## Phase 2 — see the kernel working
 
-As the issue has it. One correction: the page should not read kernel structures
-through generated offsets. The host is deliberately ignorant of Zephyr's struct
-layout, and keeping it that way is worth more than the convenience. A small set
-of accessor exports that walk the thread list and fill a fixed record is the
-same information without the coupling, and it stays correct when a struct moves.
+Mostly done.
 
-Single-stepping at suspension granularity — one context switch per click — is
-nearly free, because the driver loop is already one step per suspension.
-Stepping at safepoint granularity is a different proposition: it would mean
-making `safepoint_tick` unconditional and suspending, which costs a full unwind
-on every loop iteration.
+- [x] **The thread table**: names, priorities, states, which one holds the
+      CPU, and the stack pointer, updated as the run goes. The page does not
+      read kernel structures through generated offsets and should not: the
+      guest answers instead, through `z_wasm_inspect_threads`, so nothing
+      goes quietly wrong when a struct moves. `DESIGN.md` D8e.
+- [x] **Pause and single-step**, one context switch at a time. Nearly free,
+      because the driver loop is already one step per suspension: "stopped
+      between two switches" is a state the host is in thousands of times a
+      second anyway. `DESIGN.md` D8f.
+- [x] **Slow motion**, which came out of phase 1's pacing: a quarter speed
+      to twenty times, changed while the thing is running.
+- [x] **Next deadline and pending interrupts**, shown beside the table.
+- [ ] **Step backwards.** The whole machine is one buffer plus a few globals,
+      so a snapshot is a copy of linear memory and a restore is a write. The
+      awkward part is the host's own bookkeeping, which is not in that
+      buffer: the context map, the alarm, the virtual clock. All of it is
+      small and none of it is hard, and nothing about it needs a kernel
+      change.
+- [ ] **Which thread is waiting on what.** The table says `pending`, not
+      what it is pending on, and the kernel knows.
 
 ## Phase 3 — storage
 
