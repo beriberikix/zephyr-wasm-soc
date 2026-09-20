@@ -1,62 +1,31 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 21 done  |  Last commit: ztest passes  |  Blocker: none
+Tick: 22 done  |  Last commit: Milestone 2 complete  |  Blocker: none
 
-**Three of the four Milestone 2 criteria now pass.**
-`tests/kernel/semaphore/semaphore` runs under ztest and all 32 tests pass,
-with nothing failed or skipped:
+**Milestone 2 is complete.** All four acceptance criteria pass, from clean
+build directories, using only the commands written up in `README.md`:
 
-    Running TESTSUITE semaphore
-     PASS - test_k_sem_define in 0.000 seconds
-    ...
-    PROJECT EXECUTION SUCCESSFUL
+1. `samples/hello_world` prints the banner and greeting, exit 0.
+2. `samples/synchronization` alternates two threads with `k_msleep` honoured.
+3. `tests/kernel/semaphore/semaphore` passes all 32 tests under ztest.
+4. Two runs produce byte-identical output; `scripts/check_determinism.sh`
+   checks it.
 
-`scripts/check_determinism.sh` exists and passes on all three builds,
-including the 143 lines of ztest output.
+`scripts/build.sh` wraps the flags every build needs, so the README commands
+are two lines each rather than six.
 
-Remaining for Milestone 2: `README.md` with the acceptance commands, verified
-from a clean build directory. That is criterion 1's "with commands written up
-in README.md" and is the last thing between here and a complete Milestone 2.
+Next, and in this order:
 
-After that, and in the brief's order: Milestone 3 is optional, and the final
-report in NOTES.md is required. Given how much has been learned, the report is
-worth more than any stretch goal; do it before attempting preemption.
-
-Tidy-ups worth doing while writing the README:
-
-* `tests/two_threads` still prints its thread table, which was debugging
-  scaffolding.
-* The timer driver still carries the `isr_count`/`announced_ticks` counters
-  and their export. They were useful; either keep them behind a Kconfig or
-  remove them.
-
-### Tick 20 — one bug, both symptoms
-
-The Asyncify buffer was being placed above `stack_ptr`, in what should have
-been reserved space, and was landing in the next thread's stack object
-instead. Printing the extents made it obvious at a glance: one thread's buffer
-base was exactly the next thread's stack base.
-
-`ARCH_THREAD_STACK_RESERVED` is supposed to make the kernel hand over a
-`stack_ptr` that already excludes the reserved bytes. Measured, it does not:
-`stack_ptr` arrives at the very top of the stack object. Rather than fight
-that, the buffer is now carved out from below `stack_ptr`, which keeps it
-inside the thread's own object whether or not the reservation is applied, at
-the cost of starting the shadow stack that much lower.
-
-The consequence had been that unwinding any thread quietly overwrote another
-thread's `k_thread` structure. That is what corrupted the timeout callback
-found last tick, and it also explains the other symptom that had looked
-unrelated: a static thread stuck in PRESTART. Both were the same bug. With it
-fixed, static threads start on their own and the thread that was stuck reaches
-the ready state.
-
-The lesson is the one that has held for several ticks now. Two symptoms that
-looked like separate scheduling faults were one memory bug, and the thing that
-found it was printing four numbers per thread rather than reasoning about what
-the reservation ought to do.
-
+1. **The final report**, which the brief requires in `NOTES.md`: what works,
+   the linker-section approach and how fragile it is, Asyncify overhead
+   numbers, every kernel feature disabled, what the stack-switching proposal
+   would change, and the biggest obstacles to upstreaming. Everything it needs
+   is already recorded in this log and in `DESIGN.md`; it is a matter of
+   drawing it together rather than new investigation.
+2. Only then Milestone 3, which is explicitly optional. Preemption through
+   safepoint instrumentation is the most valuable of its four items, because
+   without it a thread that never yields cannot be interrupted at all.
 
 ### Tick 21 — ztest, and a second upstream-shaped patch
 
@@ -81,3 +50,20 @@ dispatcher does. Eight lines.
 
 All 32 semaphore tests pass, and the 143 lines of output are byte-identical
 across runs.
+
+
+### Tick 22 — Milestone 2 complete
+
+The last criterion was the write-up, and doing it properly turned up nothing
+new, which is the right outcome at this stage. Every command in `README.md`
+was run from an empty build directory and produces the output shown next to
+it.
+
+One small thing was worth adding: `scripts/build.sh`. Every build needs four
+`-D` flags, because Zephyr finds a toolchain through `TOOLCHAIN_ROOT` rather
+than through the module system, and a README whose every command is six lines
+long is a README nobody follows.
+
+Also removed the debugging scaffolding that had accumulated: the thread table
+the two-thread test printed, and the counters in the timer driver. Both earned
+their keep, and neither belongs in the result.

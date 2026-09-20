@@ -195,7 +195,6 @@ class Host {
     this.irqPendingAddr = this.ex.z_wasm_irq_pending_addr();
     this.scratchBuf = this.ex.z_wasm_boot_scratch_addr();
     this.maskedAddr = this.ex.z_wasm_irq_masked_addr?.();
-    this.timerStatsAddr = this.ex.z_wasm_timer_stats_addr?.();
     this.enabledAddr = this.ex.z_wasm_irq_enabled_addr?.();
 
     /* The first context is the boot path itself. */
@@ -272,10 +271,7 @@ class Host {
         const w = new Uint32Array(this.mem.buffer);
         process.stderr.write(`[idle] pending=0x${w[this.irqPendingAddr >> 2].toString(16)} ` +
           `masked=${w[this.maskedAddr >> 2]} enabled=0x${w[this.enabledAddr >> 2].toString(16)} ` +
-          `alarm=${this.alarmNs} now=${this.nowNs}` +
-          (this.timerStatsAddr
-            ? ` isr=${w[this.timerStatsAddr >> 2]} ticks=${w[(this.timerStatsAddr >> 2) + 1]}`
-            : '') + '\n');
+          `alarm=${this.alarmNs} now=${this.nowNs}` + '\n');
       }
       /* Idle: the same context resumes once something is pending. */
       const pending = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0];

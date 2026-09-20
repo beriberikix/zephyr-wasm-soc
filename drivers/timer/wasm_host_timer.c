@@ -21,16 +21,6 @@
 
 static int64_t last_announced_ns;
 
-/* Debug counters, exported so the host can see whether the timer path runs
- * at all without adding console traffic that would perturb the run. */
-static volatile uint32_t isr_count;
-static volatile uint32_t announced_ticks;
-
-__attribute__((export_name("z_wasm_timer_stats_addr")))
-uint32_t z_wasm_timer_stats_addr(void)
-{
-	return (uint32_t)(uintptr_t)&isr_count;
-}
 
 static inline int64_t now_ns(void)
 {
@@ -45,10 +35,8 @@ static void timer_isr(const void *arg)
 	int64_t elapsed = now - last_announced_ns;
 	int32_t ticks = (int32_t)(elapsed / NSEC_PER_TICK);
 
-	isr_count++;
 	if (ticks > 0) {
 		last_announced_ns += (int64_t)ticks * NSEC_PER_TICK;
-		announced_ticks += (uint32_t)ticks;
 		sys_clock_announce(ticks);
 	}
 }
