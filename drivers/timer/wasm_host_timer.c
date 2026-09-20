@@ -13,6 +13,7 @@
 #include <zephyr/irq.h>
 #include <zephyr/drivers/timer/system_timer.h>
 #include <zephyr/sys_clock.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/arch/wasm/wasm_host.h>
 
 #define NSEC_PER_TICK (NSEC_PER_SEC / CONFIG_SYS_CLOCK_TICKS_PER_SEC)

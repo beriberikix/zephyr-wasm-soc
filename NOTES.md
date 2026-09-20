@@ -1,73 +1,36 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 10 done  |  Last commit: per-thread IRQ mask  |  Blocker: none
+Tick: 11 done  |  Last commit: timer path verified  |  Blocker: none
 
-`samples/synchronization` gets one line out and then both threads block:
+The timer path is proven correct with real numbers. Instrumenting the ISR and
+`sys_clock_set_timeout` shows the whole chain working:
 
-    *** Booting Zephyr OS build e201b84b04e4 ***
-    thread_a: Hello World from cpu 0 on wasm_node!
+    [set_timeout] ticks=5001 -> deadline=500100000
+    [isr] now=100000000 last=0 ticks=1000
+    [set_timeout] ticks=5001 -> deadline=600100000
+    [isr] now=600100000 last=100000000 ticks=5001
 
-What is now known to work: the timer interrupt is enabled and taken, the ISR
-runs, and the alarm is reprogrammed with the right deadlines (100 ms, then
-600.1 ms for a 500 ms sleep, so `sys_clock_announce` is advancing the tick
-count correctly). Interrupts are unmasked during idle. What does not happen is
-a thread becoming runnable again.
+Deadlines are right, ticks announced are right, and with that instrumentation
+in place `thread_a` prints repeatedly instead of once.
 
-Next, in order:
+**Remove the instrumentation and the sample stops after one line.** That is a
+timing-dependent failure, and the shape of it points somewhere specific.
 
-1. **Find out which thread 0xdc60 is.** The trace shows three switches and
-   then only that one context resuming. If it is idle, both sample threads are
-   blocked; if it is thread_b, it is blocked on its first semaphore take. The
-   host can print the thread name: `struct k_thread` has one under
-   `CONFIG_THREAD_NAME`, which is worth turning on for debugging.
-2. **Check whether the timeout actually expires.** Instrument
-   `sys_clock_announce` against `_kernel.timeout_list` rather than inferring
-   from alarms.
-3. **Suspect the switch handle.** `z_wasm_switch` recovers the outgoing thread
-   with `CONTAINER_OF(switched_from, struct k_thread, switch_handle)` and this
-   has never been verified against the thread the kernel actually meant. If it
-   is wrong, a thread can be marked ready and still never be switched to.
+The hypothesis to test first: `advanceToNextDeadline()` in the host consumes
+the alarm, setting `alarmNs` back to null when it fires. If the kernel idles
+again before it has reprogrammed a deadline, the host sees no alarm, concludes
+nothing can ever happen, and ends the run. Printing from inside the ISR
+changes that interleaving enough to hide it. Note also that the kernel does
+sometimes pass the clamp value, roughly `INT32_MAX` ticks, meaning "nothing
+soon", and the driver turns that into no alarm at all.
 
-A caution for whoever picks this up: the `ticks=` figure in the idle trace is
-not trustworthy. The host reads it at a fixed offset past the ISR counter and
-the two are not reliably adjacent. The ISR counter itself agrees with
-everything else and can be believed.
-
-### Tick 9 — hello_world, and three bugs between here and it
-
-Three separate faults stood between the banner and the greeting. Two were mine
-and one is a property of the platform worth keeping.
-
-**Zero-length arrays in a section may not be emitted at all.** The generated
-per-level init arrays were sized to the number of entries, so an empty level
-got a zero-length array. Clang need not emit such an object, which leaves the
-level's symbol pointing at whatever the linker put there instead, and since
-`z_sys_init_run_level` walks from one level's start to the next, one level's
-range silently swallowed another level's entries. That is why the boot banner
-printed twice: it ran at two levels. Every level now gets at least one entry,
-a no-op where it would otherwise be empty, which costs one call and keeps
-every address well defined.
-
-Spike A's conclusion that adjacent definitions stay contiguous still holds. It
-just does not extend to objects the compiler may decline to emit.
-
-**The kernel clamps rather than passing the forever sentinel through.** Asked
-for an unbounded timeout, it sends roughly `INT32_MAX` ticks, not
-`K_TICKS_FOREVER`. The driver only recognised the sentinel, so it armed an
-alarm about two days out in virtual time, the host obligingly jumped there,
-and the run died on its time limit. The driver now treats a request at or near
-the clamp as what it means.
-
-**printk and printf are different hooks.** The console driver installed only
-the printk hook, which is enough for the boot banner and silently discards
-anything written through the C library. hello_world prints with `printf`. Both
-hooks are now installed.
-
-Also: the harness now treats a kernel that idles with no timer armed as a
-clean end of run rather than an error. For a sample that has finished its
-work, nothing can ever happen again, and that is success.
-
+So the host is very likely ending the run while a timeout is still pending.
+Concretely: stop treating "no alarm armed" as the end of the run on its own.
+Require that the kernel has idled with no alarm *and* nothing pending *and*
+that it has had a chance to reprogram since the last announce. A simple fix
+is to only end the run after seeing that state twice in a row with no
+intervening interrupt.
 
 ### Tick 10 — three fixes, and the sample still stops
 
@@ -92,3 +55,33 @@ scheduler the chance it would otherwise have had.
 
 All three are real and all three are keepers. The sample still emits one line
 and stops, so something else is holding the threads.
+
+
+### Tick 11 — the timer is right, the host's stop condition is not
+
+Instrumenting the timer driver answered the question from tick 10 and raised a
+better one.
+
+Everything in the driver is correct. The ISR fires on schedule, announces the
+right number of ticks, and the kernel reprograms sensible deadlines: a 500 ms
+sleep becomes a deadline 500 ms later, to the tick. With that instrumentation
+compiled in, `thread_a` prints over and over, which means the kernel is
+scheduling, sleeping and waking exactly as it should.
+
+Take the instrumentation out and the sample stops after one line. A behaviour
+that depends on printing is a timing bug, and here the timing that changes is
+the host's, not the guest's.
+
+The suspicion falls on the host's stop condition rather than on anything in
+the kernel. The host ends the run when the kernel idles with no alarm armed,
+on the reasoning that nothing can ever happen again. That is true only if the
+kernel has already had the chance to program its next deadline. The host
+consumes the alarm when it fires, so there is a window where the kernel has
+been woken, has not yet reprogrammed, and idles: the host sees no alarm and
+declares the run over. Printing from the ISR widens the window enough to hide
+it.
+
+Worth stating as a general point about virtual time: the host decides when
+time passes, so the host also decides what "nothing left to do" means, and
+getting that wrong ends a run early rather than hanging it. A hang would have
+been easier to notice.
