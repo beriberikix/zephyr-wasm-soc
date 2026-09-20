@@ -22,7 +22,10 @@
   }
   main { max-width: 900px; margin: 0 auto; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  p.sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+  p.sub { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+  p.repo { margin: 0 0 20px; font-size: 14px; }
+  a { color: var(--accent); }
+  a:hover { text-decoration: none; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   select, button {
     font: inherit; padding: 6px 12px; border-radius: 6px;
@@ -53,6 +56,11 @@
     SoC: it provides the <code>zephyr_host</code> imports and drives the
     Asyncify loop that makes context switching possible. The guest runs in a
     Worker, because it blocks its thread between suspensions.
+  </p>
+  <p class="repo">
+    <a href="https://github.com/beriberikix/zephyr-wasm-soc"
+       target="_blank" rel="noopener">Source, design notes and the seven
+      patches to Zephyr &rarr;</a>
   </p>
 
   <div class="bar">
