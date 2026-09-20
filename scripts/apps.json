@@ -62,6 +62,40 @@
       "expect": ["PASS: both threads ran, so preemption works"]
     },
     {
+      "name": "philo",
+      "app": "zephyr/samples/philosophers",
+      "kind": "sample",
+      "title": "philosophers",
+      "upstream": true,
+      "max_time_ms": 20000,
+      "endless": true,
+      "expect": ["Dining Philosophers", "Philosopher 0", "EATING"]
+    },
+    {
+      "name": "logger",
+      "app": "zephyr/samples/subsys/logging/logger",
+      "kind": "sample",
+      "title": "logging",
+      "upstream": true,
+      "max_time_ms": 30000,
+      "expect": [
+        "RUNNING LOGGER DEMO FROM KERNEL THREAD",
+        "<inf> sample_module: log in test_module 11",
+        "Example of hexdump:",
+        "debug level log, 5 arguments: 1 2 3 4 5"
+      ],
+      "deterministic": true
+    },
+    {
+      "name": "heap",
+      "app": "zephyr/samples/basic/sys_heap",
+      "kind": "sample",
+      "title": "sys_heap",
+      "upstream": true,
+      "max_time_ms": 20000,
+      "expect": ["System heap sample", "allocated 156, free 36, max allocated 156, heap size 256"]
+    },
+    {
       "name": "shell",
       "app": "zephyr/samples/subsys/shell/shell_module",
       "kind": "sample",

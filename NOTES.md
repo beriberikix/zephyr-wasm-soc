@@ -191,3 +191,34 @@ That one is worth dwelling on, because it is the first hard bound found on
 the fix belongs upstream rather than here: those casts are undefined
 behaviour on every target, and wasm is only the first one to say so.
 
+
+### Tick 35 — three more samples, none of which needed any work
+
+The score is 6. `samples/philosophers`, `samples/subsys/logging/logger` and
+`samples/basic/sys_heap` all run unmodified, and finding that out took
+longer than making it work did, because none of it needed making.
+
+Logging is the surprise. It was on the phase 0 list as a prerequisite, on
+the reasoning that nearly every sample past `basic/` calls `LOG_INF` and
+that it brings three more iterable families with it, which made it the first
+real test of the section shim under code written with no thought for this
+port. The shim simply handled it: deferred logging, hexdumps, instance-level
+filtering, runtime level changes, all of it, and byte-identical across two
+runs and two engines.
+
+`philosophers` is the one the vision issue wants phase 2 to visualise, and
+it has apparently been running this whole time. `basic/sys_heap` is the
+first thing to exercise the heap successfully, which is worth putting next
+to `mem_heap/k_heap_api` panicking: whatever is wrong there is not that the
+heap does not work.
+
+Two more were tried and are not counted. `basic/minimal` runs and prints
+nothing by design; counting a sample with no observable behaviour would only
+make the number mean less. `basic/hash_map` spins without ever suspending
+and gets given up on, which is the first sample found that does not work for
+a reason nobody has looked into.
+
+The general lesson is that nobody had tried. The port was measured against
+what it was built against, which is the same reason the kernel's evidence
+was one suite.
+

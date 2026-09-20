@@ -9,8 +9,23 @@ Where this disagrees with the issue, this file is the newer document.
 
 ## The measure
 
-**Upstream Zephyr samples that run unmodified.** Score today: **3**
-(`hello_world`, `synchronization`, `shell_module`).
+**Upstream Zephyr samples that run unmodified.** Score today: **6**
+(`hello_world`, `synchronization`, `shell_module`, `philosophers`,
+`subsys/logging/logger`, `basic/sys_heap`).
+
+The last three were not new work. Logging was on this list as a phase 0
+prerequisite on the assumption it would need some; it runs as it is, hexdumps
+and instance-level filtering and all, and its three section families come
+through the shim untouched. `philosophers` is the sample the issue wants
+phase 2 to visualise and it already runs. `basic/sys_heap` is the only thing
+that has ever exercised the heap successfully, which is worth holding next to
+`mem_heap/k_heap_api`, which panics.
+
+Two more were tried and are not counted. `basic/minimal` runs and prints
+nothing by design, so there is no acceptance criterion to give it and
+counting it would only make the number less meaningful. `basic/hash_map`
+spins without ever suspending and is given up on; it is the first sample
+found that does not work for a reason nobody has looked into yet.
 
 The issue proposes the measure but nothing counts it. That is the first thing to
 fix, because a number nobody computes drifts within a week:
@@ -67,11 +82,12 @@ the kernel, so this comes first.
       `boards/wasm/wasm_node/wasm_node.yaml` also has no `supported:` list, so
       twister would filter this board out of every `depends_on` test even once
       it can build them.
-- [ ] **Logging.** `CONFIG_LOG` is a prerequisite dressed as a subsystem:
-      nearly every sample past `basic/` calls `LOG_INF`. It brings three more
-      iterable families with it (`log_const`, `log_backend`, `log_link`), so it
-      is also the first real test of the section shim under something that was
-      not written with this port in mind.
+- [x] **Logging.** Already works. `CONFIG_LOG` was on this list because
+      nearly every sample past `basic/` calls `LOG_INF` and because it brings
+      three more iterable families with it, which made it the first real test
+      of the section shim under something not written with this port in mind.
+      The shim passed: `samples/subsys/logging/logger` runs unmodified and
+      deterministically.
 - [ ] **Make stack overflow loud.** The Asyncify buffer is not bounds-checked
       and a learner will overflow a stack on the first afternoon. Binaryen will
       not add a check, but the host can: the buffer's cursor and limit are two
