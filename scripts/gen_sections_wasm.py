@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 LEVELS = ["EARLY", "PRE_KERNEL_1", "PRE_KERNEL_2", "POST_KERNEL", "APPLICATION"]
@@ -245,14 +247,28 @@ def main() -> int:
     ap.add_argument("--objects-from", type=Path,
                     help="file listing object paths, one per line")
     ap.add_argument("--scan-dir", type=Path,
-                    help="directory to walk for compiled objects")
+                    help="directory to walk for the archives that get linked")
+    ap.add_argument("--ar", default="llvm-ar", help="archiver, for listing archive members")
     args = ap.parse_args()
 
     paths = list(args.objects)
     if args.objects_from and args.objects_from.exists():
         paths += [Path(p) for p in args.objects_from.read_text().split() if p]
+    tmp = None
     if args.scan_dir:
-        paths += sorted(args.scan_dir.rglob("*.obj"))
+        # Scan the archives, not loose object files.
+        #
+        # A build directory keeps objects from sources that are no longer
+        # compiled in: turn a driver off and its old .obj stays on disk.
+        # Scanning those makes the generator emit references to symbols that
+        # are not in the image, and the link fails on them. The archives are
+        # rebuilt from the current source list, so they are the honest view of
+        # what is about to be linked.
+        tmp = tempfile.mkdtemp(prefix="wasm_sections_")
+        for archive in sorted(args.scan_dir.rglob("*.a")):
+            subprocess.run([args.ar, "x", "--output", tmp, str(archive)],
+                           capture_output=True, check=False)
+        paths += sorted(Path(tmp).glob("*.obj")) + sorted(Path(tmp).glob("*.o"))
     paths = [p for p in paths if p.suffix in (".obj", ".o") and p.exists()]
     if not paths:
         sys.stderr.write("gen_sections_wasm: no objects to scan\n")
@@ -263,6 +279,8 @@ def main() -> int:
     args.output.write_text(render(init_entries, iterables, iter_refs))
     bounds = args.output.with_name("wasm_section_bounds.c")
     bounds.write_text(render_bounds(iter_refs))
+    if tmp:
+        shutil.rmtree(tmp, ignore_errors=True)
     print(f"gen_sections_wasm: {len(init_entries)} init entries, {len(iter_refs)} iterable "
           f"families, from {len(paths)} objects")
     return 0

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config UART_WASM_HOST
+	bool "UART over the zephyr_host uart imports"
+	default y
+	depends on DT_HAS_WASM_HOST_UART_ENABLED
+	depends on SERIAL
+	select SERIAL_HAS_DRIVER
+	help
+	  A polled UART. The host reads and writes a byte at a time, which is
+	  enough for the console and for the shell.
+
+	  Polling only: nothing lets the host interrupt the guest, so a receive
+	  interrupt would have nothing to fire it.

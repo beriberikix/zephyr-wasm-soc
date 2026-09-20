@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config WASM_HOST_CONSOLE
-	bool "Console over the zephyr_host console_write import"
-	default y
+	bool "Console straight over the zephyr_host console_write import"
 	depends on WASM
+	depends on !UART_CONSOLE
+	default y if !SERIAL
 	select CONSOLE_HAS_DRIVER
 	help
-	  Routes printk through the host rather than a UART.
+	  Routes printk through the host without going near a UART. Useful for
+	  a build with no serial at all; otherwise UART_CONSOLE over the
+	  host UART is the ordinary path and does the same job.

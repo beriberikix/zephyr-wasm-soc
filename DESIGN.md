@@ -88,6 +88,9 @@ To be filled in as Milestone 1 lands. Sketch:
 | `time_now_ns` | `() -> i64` | monotonic clock |
 | `set_alarm_ns` | `(deadline: i64) -> ()` | program the next timer interrupt |
 | `wait_for_event` | `() -> ()` | idle; suspension point under Asyncify |
+| `uart_poll_out` | `(c: i32) -> ()` | one byte out |
+| `uart_poll_in` | `() -> i32` | one byte in, or -1 when none is waiting |
+| `safepoint_tick` | `() -> ()` | progress report, so time moves while spinning |
 | `fatal` | `(reason: i32, arg: i32) -> ()` | unrecoverable error |
 
 Traps kill the instance and cannot be recovered from: a Wasm trap unwinds to
@@ -240,6 +243,19 @@ The clang driver drops the wasm name section. Nothing in the kernel needs it,
 but Binaryen does: without names an asyncify onlylist silently matches nothing
 and produces a module that never suspends. The toolchain files invoke wasm-ld
 directly so names survive and any future narrowing stays possible.
+
+### D10. The UART is polled
+
+Nothing lets the host interrupt the guest: the only mechanism is the pending
+word, and that is read at safepoints. An interrupt-driven UART would have
+nothing to fire it, so the driver implements `poll_in` and `poll_out` only.
+That costs nothing in practice, because a shell thread blocks between
+characters.
+
+Input also forced a change in the host. It reads stdin through Node's event
+loop, which never got a turn because the Asyncify driver is a synchronous
+loop. It now yields whenever the guest idles, which is when input can matter
+and never on a hot path.
 
 ## 4. Kernel features forced off
 

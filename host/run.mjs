@@ -41,11 +41,13 @@ const FATAL_REASONS = [
 ];
 
 function parseArgs(argv) {
-  const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000, wasm: null };
+  const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
+                 interactive: false, wasm: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--realtime') opts.realtime = true;
     else if (a === '--trace-switches') opts.traceSwitches = true;
+    else if (a === '--interactive') opts.interactive = true;
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -61,7 +63,9 @@ function usage() {
 
   --realtime         follow the wall clock instead of virtual time
   --trace-switches   log every context switch to stderr
-  --max-time <ms>    give up after this much guest time (default 10000)`);
+  --max-time <ms>    give up after this much guest time (default 10000)
+  --interactive      forward this terminal's input to the guest UART, and
+                     do not stop when the guest has nothing left to do`);
 }
 
 class Host {
@@ -81,6 +85,7 @@ class Host {
     this.resumeSame = false;     // set by an idle suspension
     this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
     this.quiescentRounds = 0;
+    this.input = [];             // bytes waiting for the guest's UART
   }
 
   get timeNs() {
@@ -98,6 +103,16 @@ class Host {
         },
 
         time_now_ns() { return self.timeNs; },
+
+        uart_poll_out(c) {
+          process.stdout.write(Buffer.from([c & 0xff]));
+        },
+
+        uart_poll_in() {
+          /* -1 means nothing waiting, which is what Zephyr's polled UART
+           * API expects. */
+          return self.input.length > 0 ? self.input.shift() : -1;
+        },
 
         set_alarm_ns(deadline) {
           /* The kernel does not send a "never" sentinel; when it has no near
@@ -197,6 +212,39 @@ class Host {
     return true;
   }
 
+  startInput() {
+    if (!this.opts.interactive) {
+      return;
+    }
+    const stdin = process.stdin;
+    if (stdin.isTTY) {
+      /* Raw mode so the shell sees keystrokes as they are typed, including
+       * control characters, rather than whole lines. */
+      stdin.setRawMode(true);
+    }
+    stdin.on('data', (chunk) => {
+      for (const b of chunk) {
+        /* Ctrl-C has to be handled here: in raw mode the terminal will not
+         * do it, and the guest has no notion of a signal. */
+        if (b === 3) {
+          this.done = true;
+          return;
+        }
+        this.input.push(b);
+      }
+    });
+    stdin.resume();
+  }
+
+  stopInput() {
+    if (this.opts.interactive) {
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+    }
+  }
+
   async run() {
     const bytes = fs.readFileSync(this.opts.wasm);
     const { instance } = await WebAssembly.instantiate(bytes, this.imports());
@@ -219,6 +267,7 @@ class Host {
 
     /* The first context is the boot path itself. */
     this.current = { entry: 'z_wasm_boot', arg: 0, buf: this.scratchBuf, sp: null, fresh: true };
+    this.startInput();
 
     const deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
     while (!this.done) {
@@ -237,7 +286,15 @@ class Host {
         break;
       }
       if (!this.step()) break;
+      if (this.yieldToHost) {
+        /* The driver loop is synchronous, so Node's event loop never gets a
+         * turn and typed characters would never arrive. Give it one whenever
+         * the guest is idle, which is exactly when input can matter. */
+        this.yieldToHost = false;
+        await new Promise((resolve) => setTimeout(resolve, this.input.length > 0 ? 0 : 1));
+      }
     }
+    this.stopInput();
     return this.exitCode;
   }
 
@@ -295,6 +352,14 @@ class Host {
       }
       /* Idle: the same context resumes once something is pending. */
       const pending = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0];
+      if (this.opts.interactive) {
+        /* Let input arrive before deciding there is nothing to do. */
+        this.yieldToHost = true;
+        if (pending === 0) {
+          this.advanceToNextDeadline();
+        }
+        return true;
+      }
       if (pending === 0 && !this.advanceToNextDeadline()) {
         /* Every thread is idle and no timer is armed, so nothing can ever
          * happen again. For a sample that has finished its work that is the

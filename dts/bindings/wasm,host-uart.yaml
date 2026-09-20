@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+description: Polled UART provided by the host through the zephyr_host imports
+compatible: "wasm,host-uart"
+include: [uart-controller.yaml, base.yaml]

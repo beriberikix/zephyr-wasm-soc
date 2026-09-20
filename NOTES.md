@@ -1,80 +1,29 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 25 done  |  Last commit: run target and twister schema  |  Blocker: none
+Tick: 26 done  |  Last commit: UART and shell  |  Blocker: none
 
-`west build -t run` works and runs the module under the host harness, which is
-the same target twister drives. The twister schema now knows about `wasm`.
+**The shell works.** Interactively, over a polled UART carried by two host
+imports:
 
-Twister itself gets as far as finding the board and then stops:
+    uart:~$ help
+    Available commands:
+      demo, kernel, device, log, stats, history, ...
+    uart:~$ kernel version
+    Zephyr version 4.4.99
+    uart:~$ demo ping
+    pong
 
-    ERROR - SoC 'node' is not found, please ensure that the SoC exists and
-            that soc-root containing 'node' has been correctly defined.
+All four Milestone 2 criteria still pass and output is still deterministic.
 
-The cause is specific. Twister has a `--board-root` option but no
-`--soc-root` or `--arch-root`; those come from module discovery, and
-`zephyr_module.parse_modules()` returns an empty list in this workspace. The
-module is not found because it *is* the manifest repository, so it is not one
-of the projects west lists.
+Milestone 3 is complete apart from twister, which runs but cannot find the
+module's SoC; tick 25 records why and what would fix it.
 
-Two ways forward, neither attempted:
+The brief is finished. What is left is polish rather than work:
 
-1. Restructure the workspace so `zephyr-wasm` is a project in the manifest
-   rather than the manifest repository itself. This is probably right anyway
-   and would need only a change to `west.yml` and the setup instructions.
-2. Or have twister accept `--soc-root` and `--arch-root`, matching what
-   `west build` already accepts. That is the better fix for anyone in this
-   position, and small.
-
-Also of note: twister needs Python packages the west environment does not
-have. Seven of them, found one at a time: natsort, jsonschema, junitparser,
-pytest, psutil and two more. A separate virtualenv was used rather than
-changing the user's west installation.
-
-Remaining Milestone 3 item: **UART and shell**. The shell needs input, which
-the host harness has never had to provide, so it means extending the
-`zephyr_host` ABI with a way to read characters.
-
-
-### Tick 24 — preemption, and what it costs
-
-Nothing preempts a running wasm function, so preemption has to be built rather
-than configured. Two pieces.
-
-**Safepoints.** A post-link pass inserts a call at the top of every loop body,
-which covers the back-edge and the first iteration alike. The pass works on
-the text format, where every loop starts on its own line, so inserting a call
-with no operands and no results is a one-line edit per loop. It runs before
-Asyncify, so the transform sees those calls and can suspend through them:
-taking an interrupt there may switch threads. The dispatcher is skipped, since
-instrumenting its loop would let a safepoint call it from inside itself.
-
-**A counted tick, which turned out to be necessary rather than optional.**
-The brief lists instruction-count time as a separate stretch item; it is not
-separable. Under virtual time the clock only moves when the kernel idles, so a
-thread that spins without calling the kernel freezes time, and a frozen clock
-means the timer never fires and preemption can never happen. Safepoints alone
-deadlock. Every `CONFIG_WASM_SAFEPOINTS_PER_TICK` safepoints the guest calls a
-host import, and the host advances virtual time and raises any deadline that
-has passed. That is what makes the spinning case work at all.
-
-**The cost, measured on 800 million iterations of a tight arithmetic loop:**
-
-| | Without | With | Ratio |
-|---|---|---|---|
-| Code size | 329686 | 337175 | 1.023x |
-| Wall time | 1.74 s | 3.83 s | 2.28x |
-
-The size cost is small. The time cost is large, and that figure is the worst
-case by construction: the loop body is two arithmetic operations, so the check
-roughly doubles the work per iteration. Real code does more between
-back-edges, and the acceptance suite shows no perceptible change. Still, 2.28x
-on tight loops is the honest headline, and it is the price of preemption on a
-target with no interrupts.
-
-The knob is `CONFIG_WASM_SAFEPOINTS_PER_TICK`: lower is more responsive and
-slower. It decides how coarse preemption is for code that never calls into the
-kernel.
+* Fold the UART, the shell and `west build -t run` into `README.md`.
+* Add the preemption numbers and the shell to the final report.
+* `tests/safepoint_cost` and `tests/timeslice` are useful and undocumented.
 
 
 ### Tick 25 — a run target, and how far twister gets
@@ -99,3 +48,32 @@ The other obstacle is duller but real: twister needs seven Python packages the
 west environment does not carry, discovered one at a time because each import
 fails separately. A separate virtualenv was the right answer rather than
 changing the user's west installation.
+
+
+### Tick 26 — UART, and input the host never had
+
+The shell needed two things the port had never done: a UART, and a way for
+characters to reach the guest.
+
+**The UART is polled, and it has to be.** Nothing lets the host interrupt the
+guest: the only mechanism is the pending word, and that is read at safepoints.
+An interrupt-driven UART would have nothing to fire it. Polling costs nothing
+here, because the shell thread blocks between characters anyway.
+
+**Input needed the driver loop to stop being purely synchronous.** The host
+reads stdin through Node's event loop, and that loop never got a turn, because
+the Asyncify driver is a `while` loop that only stops when the guest does. It
+now yields to the event loop whenever the guest idles, which is exactly when
+input can matter and never on a hot path. Ctrl-C is handled in the host: raw
+mode stops the terminal doing it, and the guest has no notion of a signal.
+
+Routing the console through the UART also retired the bespoke console driver
+in favour of Zephyr's own `uart_console`, which is one less thing that is
+special about this port.
+
+**One real bug fell out of it.** Turning the old console driver off left its
+compiled object in the build directory, and the section generator scans the
+build tree, so it emitted a reference to an init entry that was no longer in
+the image and the link failed. The generator now scans the archives instead of
+loose objects. Archives are rebuilt from the current source list, so they are
+the honest view of what is about to be linked; a build directory is not.

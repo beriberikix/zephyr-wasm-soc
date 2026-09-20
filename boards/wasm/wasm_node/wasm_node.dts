@@ -15,8 +15,8 @@
 	compatible = "wasm,node";
 
 	chosen {
-		zephyr,console = &host_console;
-		zephyr,shell-uart = &host_console;
+		zephyr,console = &host_uart;
+		zephyr,shell-uart = &host_uart;
 		zephyr,sram = &ram0;
 	};
 
@@ -51,6 +51,12 @@
 		host_console: console {
 			compatible = "wasm,host-console";
 			status = "okay";
+		};
+
+		host_uart: uart {
+			compatible = "wasm,host-uart";
+			status = "okay";
+			current-speed = <115200>;
 		};
 
 		host_timer: timer {
