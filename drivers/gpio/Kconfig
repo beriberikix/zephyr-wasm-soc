@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config WASM_GPIO_BRIDGE
+	bool "Carry the emulated GPIO ports across to the host"
+	default y
+	depends on DT_HAS_WASM_HOST_GPIO_BRIDGE_ENABLED
+	depends on GPIO
+	select GPIO_EMUL
+	help
+	  Reports output changes to the host and pushes the host's input
+	  changes back in, so a page can draw the LEDs and press the buttons.
+	  The pins themselves are Zephyr's own emulated GPIO controller, so
+	  the driver, subsystem and sample code above them is the real thing.
+
+config WASM_GPIO_BRIDGE_INIT_PRIORITY
+	int "Init priority of the GPIO bridge"
+	default 50
+	depends on WASM_GPIO_BRIDGE
+	help
+	  POST_KERNEL priority. It has to be after the emulated ports, which
+	  are POST_KERNEL at GPIO_INIT_PRIORITY (40 by default), and before
+	  anything that uses them: gpio-leds and gpio-keys are both
+	  POST_KERNEL at 90.

@@ -135,6 +135,22 @@ for (const b of manifest.builds) {
   await page.selectOption('#build', b.name);
   await page.click('#run');
 
+  /* A build that waits for a button press gets one, through the same path a
+   * person's finger takes. This is the part Node cannot check at all. */
+  if (b.ci_gpio) {
+    try {
+      await page.waitForFunction(
+        (w) => window.zephyrOutput().includes(w), expect[0],
+        { timeout: 60_000, polling: 250 });
+      for (const event of b.ci_gpio) {
+        const [, pin, level] = /^\d+:(\d+)=([01])$/.exec(event) ?? [];
+        if (pin === undefined) continue;
+        await page.evaluate(([p, l]) => window.zephyrPress(p, l), [Number(pin), Number(level)]);
+        await page.waitForTimeout(300);
+      }
+    } catch { /* the wait below reports it */ }
+  }
+
   /* An interactive build waits for a person, so be one: the same input CI
    * feeds it on stdin goes in through the page's own keyboard path, with
    * newlines sent as the carriage return the Enter key produces. */
@@ -162,6 +178,18 @@ for (const b of manifest.builds) {
       break;
     }
   }
+  /* For a build that drives LEDs, check the page drew them: the terminal
+   * text could be right while the board strip stayed dark. */
+  if (ok && b.name === 'blinky') {
+    try {
+      await page.waitForFunction(() => window.zephyrLeds() !== 0, null,
+                                 { timeout: 30_000, polling: 100 });
+    } catch {
+      ok = false;
+      fail(b.name, 'the page never lit an LED');
+    }
+  }
+
   if (ok) console.log(`  ok    ${b.name.padEnd(8)} ${b.title}`);
 
   await page.click('#stop').catch(() => {});

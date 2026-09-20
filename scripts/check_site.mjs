@@ -30,12 +30,15 @@ const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !==
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin) {
+function run(wasm, maxTimeMs, stdin, gpio) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
   const argv = [runner, '--max-time', String(maxTimeMs)];
   if (stdin !== undefined) argv.push('--interactive');
+  /* Scripted pin movements happen at a stated guest time, so a sample that
+   * waits for a button gives the same output every run. */
+  for (const event of gpio ?? []) argv.push('--gpio', event);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -61,10 +64,12 @@ for (const b of manifest.builds) {
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
   const stdin = b.ci_stdin;
-  const { code, out, err } = await run(wasm, maxTime, stdin);
+  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio);
 
   const problems = [];
-  const allowed = b.endless || stdin !== undefined ? [0, 2] : [0];
+  /* A build that never finishes ends at --max-time, which is exit 2 and is
+   * the expected end of its run rather than a failure. */
+  const allowed = b.endless || b.interactive ? [0, 2] : [0];
   if (!allowed.includes(code)) {
     problems.push(`exit code ${code}, expected ${allowed.join(' or ')}`);
   }

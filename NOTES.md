@@ -222,3 +222,65 @@ The general lesson is that nobody had tried. The port was measured against
 what it was built against, which is the same reason the kernel's evidence
 was one suite.
 
+
+### Tick 36 — a virtual board, mostly by not writing one
+
+`basic/blinky` and `basic/button` run unmodified, with the LED drawn on the
+page and a button to press. The score is 8.
+
+Almost none of this is new code. `drivers/gpio/gpio_emul.c` is board agnostic
+and already implements pin state, direction, pull, edge and level triggering
+and the callback list, so the port needed a bridge rather than a driver:
+about a hundred lines that report output changes to the host through an
+ordinary GPIO callback, and push the host's input changes back in through
+`gpio_emul_input_set_masked()` when the host raises the GPIO line. Everything
+above the bottom of that is the code a learner would run on hardware.
+
+Two things cost an hour between them, and both deserve writing down because
+neither announced itself.
+
+**`gpio_emul` rejects a pin mask wider than the port.** Asking for all 32
+pins of an 8-pin port returns `-EINVAL` rather than ignoring the extra bits,
+so the bridge asked, got an error, returned early, and reported nothing. The
+LED toggled correctly the whole time; only the page stayed dark.
+
+**`gpio_emul` initialises at `POST_KERNEL`, not `PRE_KERNEL`.** The bridge
+was at `PRE_KERNEL_2` on the assumption that a GPIO controller would be up
+before the kernel was, and `device_is_ready()` answered honestly that it was
+not, and the bridge returned `-ENODEV`, and nothing said so: a `SYS_INIT` that
+fails is not reported anywhere. The sample kept working, because blinky drives
+the pin through the controller and never touches the bridge. It sits at
+`POST_KERNEL` priority 50 now, between the ports at 40 and `gpio-leds` and
+`gpio-keys` at 90.
+
+The pattern by now is familiar enough to be worth stating: three of the four
+bugs this week were things that worked well enough to look fine. What found
+each of them was printing a value, not reading the code.
+
+Interrupts needed a line number that is not the timer's, so there is now one
+place the line numbers live, `include/zephyr/arch/wasm/wasm_irq_lines.h`,
+shared by the guest, the devicetree and both hosts, and a `wasm,host-intc`
+node so a driver can name its line in the devicetree rather than in C. A page
+raises one through the Worker; the host records it and applies it at the top
+of its loop rather than writing guest memory from a message handler, since a
+message can arrive before the module is even instantiated.
+
+Scripted pin events (`--gpio 1000:4=0`) turned out to matter more than
+expected. A sample that waits for a button cannot be checked unattended
+otherwise, and a press at a stated guest time keeps the run deterministic,
+so `basic/button` is in CI like everything else rather than being something
+a person has to try.
+
+`basic/threads` was the third sample this phase was meant to unlock and it
+does not run: it declares `void blink0(void)` and hands it to
+`K_THREAD_DEFINE`. That is D8b, and correcting the three signatures locally
+makes it run and toggle LEDs, so nothing else is in its way.
+
+One more for the collection, and this one was caught by the browser check
+rather than by anything under Node. `core.mjs` gained an import of the new
+`irq_lines.mjs`, and `stage_site.sh` copies the page's files by name, so the
+staged site had a `core.mjs` importing a file that was not there. A module
+that fails to load takes the Worker with it and reports nothing at all: the
+page sat with its menu filled in and its Run button doing nothing. Under
+Node everything passed, because Node loads those files from the repository
+rather than from `_site`. The staged layout is a thing only a browser sees.

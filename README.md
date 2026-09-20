@@ -26,6 +26,9 @@ log, including what did not work. `BRIEF.md` is the original task.
 * `samples/philosophers` runs, which is five threads, mutexes and sleeps.
 * `samples/subsys/logging/logger` runs, hexdumps and all.
 * `samples/basic/sys_heap` runs, which is the heap.
+* `samples/basic/blinky` and `samples/basic/button` run, with the LEDs drawn
+  on the page and buttons to press. The pins are Zephyr's own emulated GPIO
+  controller, so the driver and subsystem code above them is the real thing.
 * 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
   `scripts/kernel_tests.json` records every suite tried, including the nine
   that do not pass and why.
@@ -325,7 +328,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that run unmodified, which is
-six today. `scripts/apps.py score` is what counts it.
+eight today. `scripts/apps.py score` is what counts it.
 
 ## Feedback
 

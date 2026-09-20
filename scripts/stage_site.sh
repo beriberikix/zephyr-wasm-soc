@@ -20,7 +20,12 @@ site="${SITE_DIR:-$topdir/_site}"
 
 rm -rf "$site"
 mkdir -p "$site/m"
-cp "$module/host/web/index.html" "$module/host/web/worker.js" "$module/host/core.mjs" "$site/"
+# Flat, because worker.js imports ./core.mjs and core.mjs imports
+# ./irq_lines.mjs. Anything the page or the worker imports has to be listed
+# here: a module that fails to load takes the Worker with it and says
+# nothing, so the page simply never starts.
+cp "$module/host/web/index.html" "$module/host/web/worker.js" \
+   "$module/host/core.mjs" "$module/host/irq_lines.mjs" "$site/"
 
 cd "$topdir"
 

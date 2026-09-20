@@ -12,6 +12,8 @@
     "endless: the application never finishes, so the harness gives up at",
     "  max_time_ms and exits 2. Expected, not a failure.",
     "interactive: the page forwards keystrokes to the guest's UART.",
+    "ci_gpio: scripted input-pin events, so a sample that waits for a",
+    "  button can be checked unattended and deterministically.",
     "upstream: unmodified upstream Zephyr code. false for this port's own",
     "  tests, which prove the port rather than the samples.",
     "kind: sample or test. The score in ROADMAP.md counts upstream samples,",
@@ -60,6 +62,29 @@
       "upstream": false,
       "max_time_ms": 30000,
       "expect": ["PASS: both threads ran, so preemption works"]
+    },
+    {
+      "name": "blinky",
+      "app": "zephyr/samples/basic/blinky",
+      "kind": "sample",
+      "title": "blinky (LED 0)",
+      "upstream": true,
+      "max_time_ms": 6000,
+      "endless": true,
+      "expect": ["LED state: ON", "LED state: OFF"],
+      "deterministic": true
+    },
+    {
+      "name": "button",
+      "app": "zephyr/samples/basic/button",
+      "kind": "sample",
+      "title": "button (press Button 0)",
+      "upstream": true,
+      "interactive": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 4000,
+      "ci_gpio": ["1000:4=0", "1400:4=1"],
+      "expect": ["Press the button", "Button 11 pressed at", "Button 11 released at"]
     },
     {
       "name": "philo",

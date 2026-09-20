@@ -42,6 +42,26 @@
   }
   #term:focus { border-color: var(--accent); }
   #status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  #board {
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 12px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--term-bg);
+  }
+  #board[hidden] { display: none; }
+  .part { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .part small { color: var(--muted); font-size: 11px; }
+  .led {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--bg);
+    transition: background-color 80ms linear, box-shadow 80ms linear;
+  }
+  .led.on { background: #d33; box-shadow: 0 0 10px 2px rgba(221,51,51,.55); }
+  .btn {
+    width: 34px; height: 26px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+    font: 11px ui-monospace, monospace; user-select: none;
+  }
+  .btn:active, .btn.down { background: var(--accent); border-color: var(--accent); color: #fff; }
   kbd {
     font: 12px ui-monospace, monospace; border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px; background: var(--bg);
@@ -72,6 +92,9 @@
     <button id="clear">Clear</button>
   </div>
 
+  <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
+  <div id="board" hidden></div>
+
   <div id="term" tabindex="0" role="log" aria-live="polite"></div>
   <div id="status">Pick a build and press Run. For the shell, click the output
     area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.</div>
@@ -83,6 +106,7 @@
  * good enough to read the shell, and a keyboard.
  */
 const termEl = document.getElementById('term');
+const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
 const buildEl = document.getElementById('build');
 const runEl = document.getElementById('run');
@@ -166,6 +190,65 @@ const term = {
   clear() { this.lines = ['']; this.col = 0; this.pending = ''; this.render(); },
 };
 
+/* The virtual board.
+ *
+ * The pins are the ones in boards/wasm/wasm_node/wasm_node.dts and the two
+ * have to agree: there is nothing to derive this from at run time, because
+ * the guest does not describe its own devicetree to the page.
+ *
+ * Buttons are wired active low with a pull-up, so not-pressed is 1.
+ */
+const BOARD = {
+  leds: [{ pin: 0, label: 'led0' }, { pin: 1, label: 'led1' },
+         { pin: 2, label: 'led2' }, { pin: 3, label: 'led3' }],
+  buttons: [{ pin: 4, label: 'sw0' }, { pin: 5, label: 'sw1' }],
+};
+
+const ledEls = new Map();
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  for (const led of BOARD.leds) {
+    const part = document.createElement('div');
+    part.className = 'part';
+    const dot = document.createElement('div');
+    dot.className = 'led';
+    const name = document.createElement('small');
+    name.textContent = led.label;
+    part.append(dot, name);
+    boardEl.append(part);
+    ledEls.set(led.pin, dot);
+  }
+  for (const button of BOARD.buttons) {
+    const part = document.createElement('div');
+    part.className = 'part';
+    const el = document.createElement('button');
+    el.className = 'btn';
+    el.textContent = 'push';
+    el.title = `${button.label}: hold to press`;
+    const press = (down) => {
+      el.classList.toggle('down', down);
+      /* Physical level: pulled up, so pressing pulls it to 0. */
+      worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level: down ? 0 : 1 });
+    };
+    el.addEventListener('mousedown', () => press(true));
+    el.addEventListener('mouseup', () => press(false));
+    el.addEventListener('mouseleave', () => press(false));
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); press(true); }, { passive: false });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); press(false); }, { passive: false });
+    const name = document.createElement('small');
+    name.textContent = button.label;
+    part.append(el, name);
+    boardEl.append(part);
+  }
+}
+
+function showLeds(values) {
+  for (const [pin, el] of ledEls) {
+    el.classList.toggle('on', (values & (1 << pin)) !== 0);
+  }
+}
+
 function setRunning(state) {
   running = state;
   runEl.disabled = state;
@@ -182,7 +265,8 @@ function start() {
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
   worker.onmessage = ({ data }) => {
-    if (data.type === 'out') term.write(new Uint8Array(data.buf));
+    if (data.type === 'gpio') showLeds(data.values);
+    else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
     else if (data.type === 'done') {
       setRunning(false);
@@ -193,6 +277,9 @@ function start() {
     term.write(new TextEncoder().encode(`\n*** worker error: ${e.message} ***\n`));
     setRunning(false);
   };
+
+  showLeds(0);
+  boardEl.hidden = false;
 
   setRunning(true);
   statusEl.textContent = interactive
@@ -207,6 +294,7 @@ function start() {
   if (interactive) termEl.focus();
 }
 
+buildBoard();
 loadManifest();
 
 runEl.onclick = start;
@@ -237,6 +325,16 @@ window.zephyrType = (text) => {
 window.zephyrOutput = () => term.lines.join('\n');
 window.zephyrRunning = () => running;
 window.zephyrBuilds = () => builds;
+window.zephyrLeds = () => {
+  let v = 0;
+  for (const [pin, el] of ledEls) if (el.classList.contains('on')) v |= 1 << pin;
+  return v;
+};
+window.zephyrPress = (pin, level) => {
+  if (!running || !worker) return false;
+  worker.postMessage({ type: 'gpio-in', port: 0, pin, level });
+  return true;
+};
 </script>
 </body>
 </html>

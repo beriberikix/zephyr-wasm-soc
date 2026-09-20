@@ -9,9 +9,9 @@ Where this disagrees with the issue, this file is the newer document.
 
 ## The measure
 
-**Upstream Zephyr samples that run unmodified.** Score today: **6**
+**Upstream Zephyr samples that run unmodified.** Score today: **8**
 (`hello_world`, `synchronization`, `shell_module`, `philosophers`,
-`subsys/logging/logger`, `basic/sys_heap`).
+`subsys/logging/logger`, `basic/sys_heap`, `basic/blinky`, `basic/button`).
 
 The last three were not new work. Logging was on this list as a phase 0
 prerequisite on the assumption it would need some; it runs as it is, hexdumps
@@ -113,22 +113,26 @@ which nothing in the port has ever considered.
 
 ## Phase 1 — a virtual board
 
-Still the largest unlock per unit of work, and unchanged in intent from the
-issue. What the issue did not say is how much of it already exists upstream.
+Done, apart from the real-time work. It was the largest unlock per unit of
+work and it turned out to be mostly a bridge, because Zephyr already ships
+the hard part.
 
-- [ ] **GPIO.** Zephyr ships `drivers/gpio/gpio_emul.c`, which is board
-      agnostic and already implements pin state, direction, pull, edge and
-      level triggering, and the callback list. The port needs a bridge, not a
-      driver: a callback registered on every pin reports output changes to the
-      host, and an interrupt handler pushes host input changes in through
-      `gpio_emul_input_set_masked()`. That is about eighty lines, and it means
-      a learner runs the same GPIO code every emulated Zephyr target runs.
-- [ ] **An interrupt line that is not the timer.** The machinery is already
-      general — the pending word is 32 bits, the ISR table is dynamic, and the
-      host's `raiseIrq` takes a line number — but line 0 is hardcoded in two
-      places, there is no interrupt-controller node in the devicetree, and
-      nothing routes a message from the page to `raiseIrq` at all. Buttons need
-      this, and so does anything later that interrupts.
+- [x] **GPIO**, as a bridge rather than a driver. `drivers/gpio/gpio_emul.c`
+      is board agnostic and already implements pin state, direction, pull,
+      edge and level triggering and the callback list, so
+      `drivers/gpio/gpio_wasm_bridge.c` only carries it across: a callback on
+      every pin reports output changes to the host, and the GPIO interrupt
+      pushes the host's input changes in through
+      `gpio_emul_input_set_masked()`. A learner therefore runs the same GPIO
+      code every emulated Zephyr target runs.
+- [x] **An interrupt line that is not the timer.**
+      `include/zephyr/arch/wasm/wasm_irq_lines.h` is now the one place the
+      line numbers live, shared by the guest, the devicetree and both hosts;
+      a `wasm,host-intc` node lets a driver name its line in the devicetree
+      the ordinary way; and a page can raise one through the Worker. The host
+      records the line and applies it at the top of its loop rather than
+      writing guest memory from a message handler, because a message can
+      arrive before the module is even instantiated.
 - [ ] **Entropy**, over one import. The catch is that
       `crypto.getRandomValues` would break the determinism check CI depends on,
       so the default has to be a seeded generator with true randomness as an
@@ -138,12 +142,22 @@ issue. What the issue did not say is how much of it already exists upstream.
       that sleeps until the next deadline rather than jumping to it, and a time
       scale, which is also the slow motion Phase 2 wants. Pacing changes when
       the host sleeps, not what the guest observes, so determinism survives.
-- [ ] **LEDs and buttons on the page**, and a devicetree describing them:
-      `gpio-leds` and `gpio-keys` nodes with the `led0` and `sw0` aliases the
+- [x] **LEDs and buttons on the page**, and a devicetree describing them:
+      four `gpio-leds` and two `gpio-keys`, wired active low with a pull-up
+      the way a button usually is, with the `led0` and `sw0` aliases the
       samples look for.
+- [ ] **Entropy** and **real time**, which are the two left. Blinky blinks at
+      exactly one second of virtual time, which is correct and invisible.
 
-Unlocks `basic/blinky`, `basic/button`, `basic/threads`, and with the heap and
-hash-map work from Phase 0, `basic/sys_heap` and `basic/hash_map`.
+`basic/blinky` and `basic/button` now run unmodified, the first with its LED
+drawn on the page and the second with a button to press. That is the score at
+8, and "my first embedded program" stops being impossible.
+
+`basic/threads`, the third sample this phase was meant to unlock, does not
+run and cannot: it declares `void blink0(void)` and hands it to
+`K_THREAD_DEFINE`, and wasm type-checks indirect calls. Correcting the three
+signatures locally makes it run and toggle LEDs, so nothing else is in the
+way. See the note on what "unmodified" can mean, below.
 
 ## Phase 2 — see the kernel working
 

@@ -270,6 +270,52 @@ recorded here because it bounds what "runs unmodified" can mean, and because
 it is the most upstreamable thing this port has found -- the fix is to give
 those entries the right signature, which costs nothing on any target.
 
+### D8c. GPIO is Zephyr's own emulated controller, bridged
+
+The pins are `drivers/gpio/gpio_emul.c`, which is board agnostic and already
+implements direction, pull, edge and level triggering and the callback list.
+`drivers/gpio/gpio_wasm_bridge.c` only carries it across to the host: a
+callback registered on every pin reports output changes, and the GPIO
+interrupt reads the host's input levels and hands the changes to
+`gpio_emul_input_set_masked()`, which raises the edges and fires the
+callbacks as usual.
+
+Writing a driver instead would have been about the same amount of code and
+would have meant a learner running this port's idea of GPIO rather than
+Zephyr's. The same argument applies to flash, I2C, SPI and the rest: prefer
+the emulated backend Zephyr already ships and bridge it.
+
+Levels crossing the ABI are physical rather than logical -- bit N is the
+voltage on pin N -- so an active-low button reads 1 when nobody is pressing
+it. The bridge forwards only changes, so the host's initial levels have to
+match what the pull configuration gives the pins at boot. Both are 1 for a
+pull-up, which is how the buttons are wired.
+
+Two details cost an hour and are not obvious from the outside.
+`gpio_emul_output_get_masked()` returns `-EINVAL` for a mask with a bit
+outside the port rather than ignoring it, so the mask has to be the port's
+own `ngpios`. And `gpio_emul` initialises at `POST_KERNEL`, not
+`PRE_KERNEL`, so the bridge is `POST_KERNEL` at
+`CONFIG_WASM_GPIO_BRIDGE_INIT_PRIORITY`, which sits between the ports at 40
+and `gpio-leds` and `gpio-keys` at 90.
+
+### D8d. Interrupt lines have one home
+
+`include/zephyr/arch/wasm/wasm_irq_lines.h` is where a line number is
+written down: the guest includes it, the board devicetree includes it, and
+both hosts carry a copy that says so. A `wasm,host-intc` node makes it an
+ordinary devicetree `interrupts` property rather than a constant in a driver.
+
+The host may raise a line at any time, but it does not write the pending
+word when it does. It records the line and applies it at the top of the
+driver loop, because a message handler can run before the module has been
+instantiated, and because the guest is fully unwound at that point and
+nothing else can be halfway through reading the word.
+
+That means an external interrupt is delivered no sooner than the next time
+the guest idles or reaches a safepoint, which is the same bound everything
+else on this port has.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

@@ -15,11 +15,13 @@ import { Host } from './core.mjs';
 
 function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
-                 interactive: false, wasm: null };
+                 interactive: false, traceGpio: false, gpio: [], wasm: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--realtime') opts.realtime = true;
     else if (a === '--trace-switches') opts.traceSwitches = true;
+    else if (a === '--trace-gpio') opts.traceGpio = true;
+    else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
     else if (a === '--interactive') opts.interactive = true;
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
@@ -31,6 +33,18 @@ function parseArgs(argv) {
   return opts;
 }
 
+/* --gpio <ms>:<pin>=<level>, repeatable. Scripted rather than interactive so
+ * that a sample which waits for a button can be run unattended and still
+ * produce the same output every time. */
+function parseGpioEvent(spec) {
+  const m = /^(\d+):(\d+)=([01])$/.exec(spec ?? '');
+  if (!m) {
+    console.error(`--gpio wants <ms>:<pin>=<0|1>, not ${JSON.stringify(spec)}`);
+    process.exit(2);
+  }
+  return { atNs: BigInt(m[1]) * 1_000_000n, port: 0, pin: Number(m[2]), level: Number(m[3]) };
+}
+
 function usage() {
   console.error(`usage: run.mjs [options] <zephyr.wasm>
 
@@ -38,7 +52,12 @@ function usage() {
   --trace-switches   log every context switch to stderr
   --max-time <ms>    give up after this much guest time (default 10000)
   --interactive      forward this terminal's input to the guest UART, and
-                     do not stop when the guest has nothing left to do`);
+                     do not stop when the guest has nothing left to do
+  --trace-gpio       log every GPIO output change to stderr
+  --gpio <ms>:<pin>=<0|1>
+                     move an input pin at a given guest time, repeatable.
+                     Levels are physical, so a button wired active low is
+                     pressed at 0 and released at 1.`);
 }
 
 const nodePlatform = {

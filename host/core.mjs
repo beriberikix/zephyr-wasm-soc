@@ -30,6 +30,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { IRQ } from './irq_lines.mjs';
+
 const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
 
 /* Thrown out of an import to stop a guest that will not stop by itself. See
@@ -81,6 +83,34 @@ export class Host {
     this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
+    /* Physical pin levels, per port. Outputs are what the guest last drove;
+     * inputs are what the host is holding the pins at. A button wired active
+     * low with a pull-up sits at 1 until something presses it, which is the
+     * level gpio_emul gives it at boot, and the two have to agree because the
+     * bridge forwards changes only. */
+    this.gpio = [{ out: 0, in: opts.gpioInputs ?? 0xffffffff }];
+    /* Interrupt lines raised from outside the driver loop. Applied at the top
+     * of the loop rather than written straight into guest memory, because a
+     * message handler can run before the module is even instantiated. */
+    this.externalIrqs = 0;
+  }
+
+  /* Raise an interrupt from outside the driver loop. Safe to call from a
+   * message handler or an input callback at any time. */
+  injectIrq(line) {
+    this.externalIrqs |= 1 << line;
+  }
+
+  /* Move an input pin and tell the guest. The level is physical: 0 is a
+   * pressed active-low button. */
+  setGpioInput(port, pin, level) {
+    const state = this.gpio[port];
+    if (!state) return;
+    const bit = 1 << pin;
+    const next = level ? (state.in | bit) : (state.in & ~bit);
+    if (next === state.in) return;
+    state.in = next >>> 0;
+    this.injectIrq(IRQ.GPIO);
   }
 
   get timeNs() {
@@ -142,6 +172,21 @@ export class Host {
           self.suspend({ idle: false });
         },
 
+        gpio_out(port, values) {
+          const state = self.gpio[port];
+          if (!state) return;
+          state.out = values >>> 0;
+          if (self.opts.traceGpio) {
+            self.platform.writeErr(
+              `[gpio] port${port} out=0x${state.out.toString(16)} at ${self.timeNs / 1_000_000n} ms\n`);
+          }
+          self.platform.gpioOut?.(port, state.out, self.timeNs);
+        },
+
+        gpio_in(port) {
+          return self.gpio[port] ? self.gpio[port].in : 0xffffffff;
+        },
+
         safepoint_tick() {
           /* A spinning thread reports progress. Nothing in the guest can tell
            * us how long it took, so under virtual time we charge a fixed
@@ -154,7 +199,7 @@ export class Host {
           if (self.alarmNs !== null && self.timeNs >= self.alarmNs) {
             self.alarmNs = null;
             self.quiescentRounds = 0;
-            self.raiseIrq(0);
+            self.raiseIrq(IRQ.TIMER);
           }
         },
 
@@ -258,8 +303,21 @@ export class Host {
   }
 
   /* Virtual time: nothing happens until the kernel idles, then jump to the
-   * next deadline. With no deadline there is nothing left to wait for. */
+   * next deadline. With no deadline there is nothing left to wait for.
+   *
+   * A scripted GPIO event counts as a deadline too. That is what lets a
+   * sample which waits for a button be run unattended and still produce the
+   * same output every time: the press happens at a stated guest time rather
+   * than whenever a person got round to it. */
   advanceToNextDeadline() {
+    const event = this.opts.gpio?.[0];
+    if (event && (this.alarmNs === null || event.atNs <= this.alarmNs)) {
+      this.opts.gpio.shift();
+      if (event.atNs > this.nowNs) this.nowNs = event.atNs;
+      this.quiescentRounds = 0;
+      this.setGpioInput(event.port, event.pin, event.level);
+      return true;
+    }
     if (this.alarmNs === null) return false;
     /* Waking from a clamped deadline having done nothing is the signal that
      * the kernel has run out of work. Waking from a real one is progress. */
@@ -267,7 +325,7 @@ export class Host {
     if (this.quiescentRounds > QUIESCENT_ROUNDS) return false;
     if (this.alarmNs > this.nowNs) this.nowNs = this.alarmNs;
     this.alarmNs = null;
-    this.raiseIrq(0);               // line 0 is the system timer
+    this.raiseIrq(IRQ.TIMER);
     return true;
   }
 
@@ -317,6 +375,14 @@ export class Host {
     while (!this.done) {
       try {
         this.checkDeadline();
+        /* Anything raised from outside since the last step. The guest is
+         * fully unwound here, so writing the pending word is safe. */
+        if (this.externalIrqs !== 0) {
+          for (let line = 0; line < 32; line++) {
+            if (this.externalIrqs & (1 << line)) this.raiseIrq(line);
+          }
+          this.externalIrqs = 0;
+        }
         if (!this.step()) break;
       } catch (err) {
         if (!(err instanceof GaveUp)) throw err;
@@ -401,7 +467,7 @@ export class Host {
         }
         return true;
       }
-      if (pending === 0 && !this.advanceToNextDeadline()) {
+      if (pending === 0 && this.externalIrqs === 0 && !this.advanceToNextDeadline()) {
         /* Every thread is idle and no timer is armed, so nothing can ever
          * happen again. For a sample that has finished its work that is the
          * normal end of the run, not a failure. */

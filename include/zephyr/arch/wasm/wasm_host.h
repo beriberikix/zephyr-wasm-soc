@@ -40,6 +40,24 @@ WASM_HOST_IMPORT(switch_to) void wasm_host_switch_to(void);
 WASM_HOST_IMPORT(uart_poll_out) void wasm_host_uart_poll_out(int32_t c);
 WASM_HOST_IMPORT(uart_poll_in) int32_t wasm_host_uart_poll_in(void);
 
+/* GPIO, as the host sees it.
+ *
+ * The pins themselves live in Zephyr's own emulated GPIO controller, which
+ * knows about direction, pull, edges and callbacks. These two imports are the
+ * whole of what crosses to the host: what the outputs are now, and what the
+ * inputs are now. A page draws the first and drives the second.
+ *
+ * gpio_out is called whenever an output changes, which the bridge learns
+ * through an ordinary GPIO callback. gpio_in is read when the host raises
+ * WASM_IRQ_GPIO to say an input moved; see wasm_irq_lines.h. Neither is a
+ * suspension point, so neither goes in the Asyncify import list.
+ *
+ * Levels are physical, not logical: bit N is the voltage on pin N, so an
+ * active-low button reads 1 when it is not pressed.
+ */
+WASM_HOST_IMPORT(gpio_out) void wasm_host_gpio_out(int32_t port, uint32_t values);
+WASM_HOST_IMPORT(gpio_in) uint32_t wasm_host_gpio_in(int32_t port);
+
 /* Progress report from a safepoint.
  *
  * Under virtual time the clock only moves when the kernel idles, so a thread

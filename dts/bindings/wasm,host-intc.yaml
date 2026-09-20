@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  The host as an interrupt controller.
+
+  There is no controller to configure: the host sets a bit in a word in linear
+  memory and the guest takes it at its next safepoint. This node exists so
+  that a driver can name its line in the devicetree, the ordinary way, rather
+  than spelling the number out in C. The line numbers are in
+  include/zephyr/arch/wasm/wasm_irq_lines.h.
+
+compatible: "wasm,host-intc"
+
+include: [interrupt-controller.yaml, base.yaml]
+
+properties:
+  "#interrupt-cells":
+    const: 1
+
+interrupt-cells:
+  - irq
