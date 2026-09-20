@@ -77,3 +77,19 @@ The patch adds `wasm` to the list. That is the smallest possible fix and also
 shows the shape of the real one: the enum should come from the architectures
 actually present, the same way `list_hardware.py` already discovers them,
 rather than being written out by hand.
+
+## 0007-device-api-ext-end-on-wasm.patch
+
+`Z_DEVICE_API_EXT_END` names a symbol the linker script produces by grouping a
+device API class's section with the sections of any classes extending it, and
+marking the end of the whole group. Grouping sections is exactly what wasm-ld
+cannot do.
+
+The patch uses the end of the class's own section instead. That is exact when
+nothing extends the class, which holds for every API class in this port's
+builds. It is not a general fix: with an extended class, `DEVICE_API_IS()`
+would fail to recognise the child. Recorded as a limitation rather than
+presented as equivalent.
+
+This is the fourth patch caused by the same underlying thing, that Zephyr
+expects a linker that can order and group sections.

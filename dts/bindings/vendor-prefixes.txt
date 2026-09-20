@@ -1,0 +1,8 @@
+# Vendor prefixes used by this module's bindings.
+#
+# Zephyr checks every compatible's prefix against these lists and warns when
+# one is unknown. Twister builds with warnings as errors, so an undeclared
+# prefix is a build failure there even though an ordinary build only warns.
+#
+# SPDX-License-Identifier: Apache-2.0
+wasm	WebAssembly

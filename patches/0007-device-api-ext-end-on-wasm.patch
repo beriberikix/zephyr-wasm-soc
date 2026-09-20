@@ -1,0 +1,24 @@
+--- a/include/zephyr/device.h
++++ b/include/zephyr/device.h
+@@ -1358,7 +1358,21 @@
+ #define Z_DEVICE_API_GET(_class, _dev) ((const struct Z_DEVICE_API_TYPE(_class) *)_dev->api)
+ 
+ /** @brief Linker symbol marking end of class section including child sections. */
++#ifdef CONFIG_WASM
++/* That symbol comes from the linker script, which groups a class section with
++ * the sections of any API classes extending it and marks the end of the whole
++ * group. wasm-ld has no linker script and cannot group sections, so the end of
++ * the class's own section is used instead.
++ *
++ * That is exact when nothing extends the class, and every API class in this
++ * port's builds is unextended. If an extended class is ever used here,
++ * DEVICE_API_IS() would not recognise the child, so this needs revisiting
++ * rather than trusting. See patches/README.md in the zephyr-wasm module.
++ */
++#define Z_DEVICE_API_EXT_END(_struct_type) TYPE_SECTION_END(_struct_type)
++#else
+ #define Z_DEVICE_API_EXT_END(_struct_type) CONCAT(_, _struct_type, _ext_end)
++#endif
+ 
+ /** @endcond */
+ 
