@@ -1,67 +1,30 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 16 done  |  Last commit: thread states  |  Blocker: none
+Tick: 17 done  |  Last commit: threads do run  |  Blocker: none
 
-Listing every thread the kernel knows about, from main, is the most
-informative thing done so far:
+**A second thread runs.** Starting the stuck one by hand from main produces
+`a: round 0`, so the port can create, schedule and switch to another thread.
+That is the first time anything other than main and idle has executed.
 
-    thread thread_b   prio   7 state 0x80    <- _THREAD_QUEUED: ready
-    thread thread_a   prio   7 state 0x04    <- _THREAD_PRESTART: never started
-    thread idle       prio  15 state 0x00
-    thread main       prio   0 state 0x80
+The stride hypothesis from tick 16 was wrong and is disproved: entries are 48
+bytes apart, `sizeof(struct _static_thread_data)` is 48, and both entries read
+back the right priority and a zero delay. The section layout is correct.
 
-Two distinct problems, not one.
+Two faults remain, both narrow:
 
-**thread_b is ready and never runs.** It sits at priority 7, queued, while
-main sleeps at priority 0 and the processor goes to idle at priority 15
-instead. A queued thread being passed over for a lower-priority one points at
-the ready queue or at what the scheduler believes is current, not at the
-switch itself.
-
-**thread_a never left PRESTART**, although `z_setup_new_thread` clearly ran
-for it: it is in the thread list with the right name and priority. So the
-second loop in `z_init_static_threads`, the one that calls
-`thread_schedule_new`, reached one entry and not the other. Both are defined
-identically in the same file.
-
-Next:
-
-1. Print `_kernel.ready_q.cache` and `arch_current_thread()` from the same
-   place. If the cache does not name thread_b while thread_b is queued, the
-   fault is in the queue; if it does, the fault is that nothing acts on it.
-2. For thread_a, instrument the second loop of `z_init_static_threads` and
-   print what `Z_THREAD_INIT_DELAY` returns per entry. One entry being
-   scheduled and the next not, from the same array, suggests the second
-   entry's fields are not being read correctly even though the first one's
-   are.
-3. That in turn suggests checking the iteration stride against
-   `sizeof(struct _static_thread_data)`, since `Z_DECL_ALIGN` and whatever
-   alignment wasm-ld gives the renamed section have to agree.
-
-Item 3 is the most likely single cause of both symptoms and is worth doing
-first.
-
-### Tick 15 — a reproducer, and what it rules out
-
-`samples/synchronization` was doing too many things at once to be a good
-second test: static and dynamic threads, two semaphores, a busy wait and a
-sleep. `tests/two_threads` in this repo does one thing, and prints at every
-stage so the output says how far the port gets.
-
-Two threads defined with `K_THREAD_DEFINE`, one already holding its
-semaphore, and neither runs. Main sleeps to hand over the processor and wakes
-on time, which confirms once more that sleeping and waking work.
-
-What this rules out is useful. It is not time slicing: the threads hand off
-explicitly, and the sample's do too, which was worth checking before blaming
-the port. It is not the section shim, verified last tick. It is not the timer
-or the wake path, both exercised by main's own sleep in this very test.
-
-What it leaves is narrow: a thread made ready during early boot never runs,
-while one made ready later does. That is the difference between the static
-threads here and the dynamic thread that works in the sample.
-
+1. **`z_init_static_threads` starts one thread and not the other.** Both
+   entries are identical and adjacent, both read correctly, yet the first is
+   left in PRESTART while the second reaches QUEUED. Instrument
+   `thread_schedule_new` and `z_sched_start` per entry and find which call
+   does not take effect. Note that the queued one still never ran on its own,
+   so there may be a single cause behind both.
+2. **A signature mismatch trap once a thread is running.** `a: round 0`
+   prints, then the guest traps in an indirect call. As on tick 7, that is
+   how wasm reports a call through a null or wrongly typed function pointer,
+   and it names the callee rather than the site. The thread's next actions are
+   `k_msleep` and `k_sem_give`, so look there, and at what happens when a
+   thread entry returns.
 
 ### Tick 16 — two problems, and a probable common cause
 
@@ -85,3 +48,23 @@ entry can produce a thread that is set up but never scheduled, and it would
 also mean the section shim is not as verified as tick 14 concluded. Counting
 entries only proves the bounds are right; it says nothing about whether the
 spacing between them matches `sizeof` on the consuming side.
+
+
+### Tick 17 — a second thread runs
+
+Starting the stuck thread by hand from main makes it run. That is worth
+stating plainly: the port creates a thread, schedules it, switches to it, and
+its code executes and prints. Everything the arch is responsible for on that
+path works.
+
+The stride hypothesis from last tick was wrong, and measuring it cost little:
+entries sit 48 bytes apart, `sizeof` is 48, and both read back correct fields.
+The section layout was never the problem. Worth recording as a small lesson in
+its own right, since it was a confident-sounding theory that survived exactly
+one measurement.
+
+What is left is two specific faults rather than one vague one. The kernel's
+own static-thread start path takes effect for one of two identical entries.
+And once a thread is running, an indirect call traps, in the same way tick 7's
+null function pointer did, which suggests looking at what happens when a
+thread's work finishes rather than at the work itself.
