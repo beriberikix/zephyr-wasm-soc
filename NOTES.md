@@ -1,58 +1,46 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 15 done  |  Last commit: minimal reproducer  |  Blocker: none
+Tick: 16 done  |  Last commit: thread states  |  Blocker: none
 
-There is now a minimal reproducer in the tree, `tests/two_threads`, and it
-isolates the fault sharply.
+Listing every thread the kernel knows about, from main, is the most
+informative thing done so far:
 
-    west build -b wasm_node -d build-two zephyr-wasm/tests/two_threads -- <flags>
-    node zephyr-wasm/host/run.mjs build-two/zephyr/zephyr.wasm
+    thread thread_b   prio   7 state 0x80    <- _THREAD_QUEUED: ready
+    thread thread_a   prio   7 state 0x04    <- _THREAD_PRESTART: never started
+    thread idle       prio  15 state 0x00
+    thread main       prio   0 state 0x80
 
-    *** Booting Zephyr OS build e201b84b04e4 ***
-    main: sleeping so the lower-priority threads can run
-    main: done
+Two distinct problems, not one.
 
-Two threads defined with `K_THREAD_DEFINE`, one holding a semaphore so it can
-run immediately, and neither ever runs. Main sleeps 200 ms to give them the
-processor and wakes correctly, so sleeping and waking work; the threads simply
-never become schedulable.
+**thread_b is ready and never runs.** It sits at priority 7, queued, while
+main sleeps at priority 0 and the processor goes to idle at priority 15
+instead. A queued thread being passed over for a lower-priority one points at
+the ready queue or at what the scheduler believes is current, not at the
+switch itself.
 
-Also established: the sample's threads hand off explicitly through semaphores,
-so none of this depends on time slicing. And in `samples/synchronization` the
-thread that does run is the one created dynamically from main, while the
-static one never runs. So the distinction is not static versus dynamic
-definition but when the thread is made ready: threads readied during early
-boot never run, threads readied later do.
+**thread_a never left PRESTART**, although `z_setup_new_thread` clearly ran
+for it: it is in the thread list with the right name and priority. So the
+second loop in `z_init_static_threads`, the one that calls
+`thread_schedule_new`, reached one entry and not the other. Both are defined
+identically in the same file.
 
 Next:
 
-1. Read `z_init_static_threads` in `kernel/init.c` and follow exactly what it
-   does to a thread with zero delay, through `k_thread_start` and
-   `z_ready_thread`, and find which step does not take effect here.
-2. Check the ready queue directly: after boot, walk `_kernel.ready_q` and see
-   whether the static threads are in it. That separates "never made ready"
-   from "ready but never chosen".
-3. If they are in the queue, the fault is in the switch contract; compare
-   `arch_new_thread`'s handling of `switch_handle` against the contract at the
-   top of `kernel/include/kswap.h`.
+1. Print `_kernel.ready_q.cache` and `arch_current_thread()` from the same
+   place. If the cache does not name thread_b while thread_b is queued, the
+   fault is in the queue; if it does, the fault is that nothing acts on it.
+2. For thread_a, instrument the second loop of `z_init_static_threads` and
+   print what `Z_THREAD_INIT_DELAY` returns per entry. One entry being
+   scheduled and the next not, from the same array, suggests the second
+   entry's fields are not being read correctly even though the first one's
+   are.
+3. That in turn suggests checking the iteration stride against
+   `sizeof(struct _static_thread_data)`, since `Z_DECL_ALIGN` and whatever
+   alignment wasm-ld gives the renamed section have to agree.
 
-### Tick 14 — the sections are right; it is the scheduler
-
-A single measurement settled where the remaining fault is not. Counting the
-entries the kernel actually walks at boot gives exactly one static thread,
-which is exactly what the sample defines.
-
-So the renaming survives the link, the bounds resolve to the real section, and
-the generated fallbacks stay out of the way. Everything the section shim is
-responsible for is working. The fault is downstream, in getting a ready thread
-onto the processor.
-
-Worth noting as method rather than result: this is the third tick in a row
-where the useful move was to measure one thing precisely rather than to fix
-something plausible. The two generator bugs found last tick were real, and
-neither was the cause.
-
+Item 3 is the most likely single cause of both symptoms and is worth doing
+first.
 
 ### Tick 15 — a reproducer, and what it rules out
 
@@ -73,3 +61,27 @@ or the wake path, both exercised by main's own sleep in this very test.
 What it leaves is narrow: a thread made ready during early boot never runs,
 while one made ready later does. That is the difference between the static
 threads here and the dynamic thread that works in the sample.
+
+
+### Tick 16 — two problems, and a probable common cause
+
+Asking the kernel what threads it has, rather than inferring from behaviour,
+split the failure in two.
+
+One static thread is queued and ready and simply never gets the processor,
+losing it to the idle thread three priority levels below. The other never left
+PRESTART at all, even though it was set up correctly enough to appear in the
+thread list with its right name and priority.
+
+The second of those is the more suggestive. Both threads are defined
+identically, one after the other in the same file, so they are adjacent
+entries in the same iterable section. The loop that starts them reached the
+first and not the second. That is the signature of an iteration stride that
+does not match the layout: the first entry reads correctly because it is at
+offset zero, and the next one reads garbage.
+
+If that is right it would explain both symptoms at once, since a garbled
+entry can produce a thread that is set up but never scheduled, and it would
+also mean the section shim is not as verified as tick 14 concluded. Counting
+entries only proves the bounds are right; it says nothing about whether the
+spacing between them matches `sizeof` on the consuming side.

@@ -43,8 +43,19 @@ static void b_entry(void *p1, void *p2, void *p3)
 K_THREAD_DEFINE(thread_a, STACKSIZE, a_entry, NULL, NULL, NULL, PRIORITY, 0, 0);
 K_THREAD_DEFINE(thread_b, STACKSIZE, b_entry, NULL, NULL, NULL, PRIORITY, 0, 0);
 
+static void report(const struct k_thread *thread, void *user_data)
+{
+	ARG_UNUSED(user_data);
+	printk("  thread %-10s prio %3d state 0x%02x\n",
+	       thread->name[0] ? thread->name : "(unnamed)",
+	       thread->base.prio, thread->base.thread_state);
+}
+
 int main(void)
 {
+	/* What does the kernel think exists, and in what state? */
+	k_thread_foreach(report, NULL);
+
 	printk("main: sleeping so the lower-priority threads can run\n");
 	k_msleep(200);
 	printk("main: done\n");
