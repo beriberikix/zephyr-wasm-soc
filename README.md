@@ -21,11 +21,37 @@ log, including what did not work. `BRIEF.md` is the original task.
 * `samples/synchronization` alternates two threads with `k_msleep` honoured.
 * `tests/kernel/semaphore/semaphore` passes all 32 tests under ztest.
 * Two runs in virtual time produce byte-identical output.
+* Two equal-priority threads that never yield are time-sliced against each
+  other, through safepoints inserted after linking.
+* `samples/subsys/shell/shell_module` runs interactively over a polled UART.
 
-Milestone 3 of the brief, which covers preemption through safepoint
-instrumentation, is not done. Without it a thread that never yields cannot be
-interrupted, so time slicing does not work and a runaway guest has to be
-stopped from outside.
+Not done: twister builds for this board but cannot find the module's SoC. It
+takes a `--board-root` and no `--soc-root`, relying on module discovery, and
+discovery finds nothing because this module is the manifest repository rather
+than a project inside it. `NOTES.md` has the detail.
+
+## How preemption works
+
+Nothing preempts a running wasm function, so `CONFIG_WASM_SAFEPOINTS` inserts
+a call at the top of every loop body after linking, and a pending interrupt is
+taken there. It runs before Asyncify, so those calls can suspend: taking an
+interrupt may switch threads.
+
+It needs a second piece. Under virtual time the clock only moves when the
+kernel idles, so a thread that spins without calling the kernel would freeze
+it, and a frozen clock means the timer never fires. Every
+`CONFIG_WASM_SAFEPOINTS_PER_TICK` safepoints the guest gives the host a chance
+to advance time.
+
+The cost, on 800 million iterations of a tight arithmetic loop, which is the
+worst case by construction:
+
+| | Without | With | Ratio |
+|---|---|---|---|
+| Code size | 329686 | 337175 | 1.023x |
+| Wall time | 1.74 s | 3.83 s | 2.28x |
+
+The acceptance suite shows no perceptible change.
 
 ## Requirements
 
@@ -106,6 +132,44 @@ Running TESTSUITE semaphore
 PROJECT EXECUTION SUCCESSFUL
 ```
 
+The shell, interactively. `--interactive` forwards this terminal's input to
+the guest UART and keeps the run alive while the guest is idle:
+
+```sh
+zephyr-wasm/scripts/build.sh build-shell zephyr/samples/subsys/shell/shell_module
+node zephyr-wasm/host/run.mjs --interactive --max-time 600000 build-shell/zephyr/zephyr.wasm
+```
+
+```
+uart:~$ kernel version
+Zephyr version 4.4.99
+uart:~$ demo ping
+pong
+```
+
+Ctrl-C exits. Commands can also be piped in, which is how the run above was
+checked.
+
+Preemption, which is what safepoints are for. Two threads at equal priority,
+both spinning with no kernel calls and no way out:
+
+```sh
+zephyr-wasm/scripts/build.sh build-slice zephyr-wasm/tests/timeslice
+node zephyr-wasm/host/run.mjs --max-time 30000 build-slice/zephyr/zephyr.wasm
+```
+
+```
+main: a=50499611 b=49519850
+PASS: both threads ran, so preemption works
+```
+
+The exact counts move with the binary; what matters is that both are large and
+roughly equal. Within one binary they are reproducible, like everything else
+under virtual time.
+
+Build the same test with `-DCONFIG_WASM_SAFEPOINTS=n` and it hangs after its
+first line, which is the control.
+
 Determinism, which is the point of virtual time:
 
 ```sh
@@ -114,6 +178,13 @@ zephyr-wasm/scripts/check_determinism.sh build-sem/zephyr/zephyr.wasm --max-time
 
 ```
 deterministic: two runs produced identical output (143 lines)
+```
+
+`west build -t run` also works and does the same thing:
+
+```sh
+zephyr-wasm/scripts/build.sh build-hello zephyr/samples/hello_world
+ninja -C build-hello run
 ```
 
 ## Host options
@@ -125,9 +196,7 @@ deterministic: two runs produced identical output (143 lines)
 | `--realtime` | follow the wall clock instead of virtual time |
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
-
-`--max-time` is checked between suspensions, so it cannot stop a guest that
-never yields. That needs the safepoint work from Milestone 3.
+| `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
 
 ## Layout
 
@@ -142,5 +211,7 @@ scripts/              offsets and section generators, build and check scripts
 host/run.mjs          the host harness
 spikes/               the Milestone 0 experiments, each with a run.sh
 tests/two_threads/    a minimal two-thread reproducer
+tests/timeslice/      two spinners that only run if preemption works
+tests/safepoint_cost/ fixed compute, for measuring what safepoints cost
 patches/              the five Zephyr changes, each explained
 ```

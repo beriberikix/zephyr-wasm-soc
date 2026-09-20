@@ -1,53 +1,25 @@
 # NOTES — running log
 
 ## Loop state
-Tick: 26 done  |  Last commit: UART and shell  |  Blocker: none
+Tick: 27 done  |  Last commit: documentation  |  Blocker: none
 
-**The shell works.** Interactively, over a polled UART carried by two host
-imports:
+**The brief is complete.** Milestones 0, 1, 2 and 3 are done apart from
+twister, which builds for the board but cannot find its SoC; the cause and the
+fix are recorded in tick 25 and in the final report.
 
-    uart:~$ help
-    Available commands:
-      demo, kernel, device, log, stats, history, ...
-    uart:~$ kernel version
-    Zephyr version 4.4.99
-    uart:~$ demo ping
-    pong
+`README.md` now covers the shell, preemption, `west build -t run` and the two
+new tests, and every command in it has been run. The final report carries the
+safepoint numbers, the shell, and twister's limitation as an upstreaming
+obstacle.
 
-All four Milestone 2 criteria still pass and output is still deterministic.
+If the loop continues, what is left is genuinely optional:
 
-Milestone 3 is complete apart from twister, which runs but cannot find the
-module's SoC; tick 25 records why and what would fix it.
-
-The brief is finished. What is left is polish rather than work:
-
-* Fold the UART, the shell and `west build -t run` into `README.md`.
-* Add the preemption numbers and the shell to the final report.
-* `tests/safepoint_cost` and `tests/timeslice` are useful and undocumented.
-
-
-### Tick 25 — a run target, and how far twister gets
-
-`west build -t run` works. Getting there needed one trick worth recording:
-Zephyr chooses an emulator by looking for `cmake/emu/<name>.cmake` inside its
-own tree, with no hook for a module. Naming a platform in `board.cmake` stops
-Zephyr defining its own `run` target that only prints "not supported", and its
-own `if(EXISTS ...)` then finds nothing, which leaves the name free for the
-module to define. The target itself cannot live in `board.cmake`, which runs
-before Zephyr's directory has been added, so it sits beside the post-link
-steps.
-
-Twister gets as far as the board and stops at the SoC. The reason is worth
-more than the symptom: twister takes a `--board-root` but no `--soc-root` or
-`--arch-root`, relying on module discovery for those, and discovery finds
-nothing here because this module *is* the manifest repository rather than a
-project inside it. Restructuring the workspace would fix it, and so would
-teaching twister the two options `west build` already has.
-
-The other obstacle is duller but real: twister needs seven Python packages the
-west environment does not carry, discovered one at a time because each import
-fails separately. A separate virtualenv was the right answer rather than
-changing the user's west installation.
+* Restructure the workspace so `zephyr-wasm` is a project in the manifest
+  rather than the manifest repository, which would make twister work and is
+  probably the right shape anyway.
+* Run a wider slice of `tests/kernel` and record what fails.
+* The stack-switching backend, which the brief puts out of scope but which
+  `DESIGN.md` says would remove most of what is awkward here.
 
 
 ### Tick 26 — UART, and input the host never had
@@ -77,3 +49,20 @@ build tree, so it emitted a reference to an init entry that was no longer in
 the image and the link failed. The generator now scans the archives instead of
 loose objects. Archives are rebuilt from the current source list, so they are
 the honest view of what is about to be linked; a build directory is not.
+
+
+### Tick 27 — documentation, and one number that moved
+
+Folding the Milestone 3 work into `README.md` and the final report, and
+running every command in the README again.
+
+One thing worth recording. The time slicing test printed spin counts one apart
+across two runs, which looked like determinism breaking under preemption. It
+was not: the two runs were different binaries, because the UART work had
+landed in between. Within one binary the counts are reproducible, and
+`check_determinism.sh` confirms it. The README no longer quotes exact counts
+as if they were stable across builds, since what matters is that both threads
+get a large and roughly equal share.
+
+That is a small example of the habit this project rewarded throughout: when a
+number looks wrong, find out what actually changed before explaining why.
