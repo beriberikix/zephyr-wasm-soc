@@ -52,8 +52,16 @@ function(zephyr_constants_library)
   # The triple is the whole point: struct layout has to come from the target
   # compiler, not the host. Without it clang builds for the host and the
   # numbers would be wrong even where they compile.
+  # Zephyr force-includes two headers into every compile, and the generator
+  # has to match or it is not compiling the same source the kernel does.
+  # autoconf.h carries the Kconfig settings. zephyr_stdint.h supplies the
+  # __UINT32_C family, which some compilers define themselves and others do
+  # not: omitting it built fine on clang 23 and failed on clang 18, which is
+  # the kind of thing only a second machine finds.
   set(include_flags --flag=--target=${CMAKE_C_COMPILER_TARGET}
-                    --flag=-imacros --flag=${AUTOCONF_H})
+                    --flag=-imacros --flag=${AUTOCONF_H}
+                    --flag=-imacros
+                    --flag=${ZEPHYR_BASE}/include/zephyr/toolchain/zephyr_stdint.h)
   foreach(dir ${ARG_INCLUDES} ${ZEPHYR_BASE}/arch/common/include ${ZEPHYR_BASE}/kernel/include)
     if(EXISTS ${dir})
       list(APPEND include_flags --flag=-I${dir})
