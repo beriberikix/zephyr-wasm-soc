@@ -45,6 +45,10 @@ SKIP_EXPORTS = (
     "z_wasm_switch",
 )
 
+# Every name above must be exported, or the skip silently protects nothing:
+# that is how z_wasm_switch went unprotected, since it was named here but never
+# exported. Checked at run time rather than trusted.
+
 
 def read_exports(lines: list[str]) -> dict[str, int]:
     """Map exported name to function index.
@@ -104,7 +108,15 @@ def main() -> int:
             "no way to name it here. Is CONFIG_WASM_SAFEPOINTS on?\n")
         return 1
 
-    skip_idx = {exports[name] for name in SKIP_EXPORTS if name in exports}
+    missing = [name for name in SKIP_EXPORTS if name not in exports]
+    if missing:
+        sys.stderr.write(
+            "instrument_safepoints: not exported, so these cannot be skipped "
+            f"and would be instrumented: {', '.join(missing)}. Give each an "
+            "export_name attribute, or drop it from SKIP_EXPORTS.\n")
+        return 1
+
+    skip_idx = {exports[name] for name in SKIP_EXPORTS}
     out, inserted, skipped = instrument(lines, exports[args.target], skip_idx)
     args.output.write_text("".join(out))
     print(f"instrument_safepoints: {inserted} loops instrumented, {skipped} skipped")

@@ -42,23 +42,26 @@ INIT_SEG_RE = re.compile(r"^\.z_init_(?P<level>[A-Z_0-9]+)_P_(?P<prio>\d+)_SUB_(
 SYM_RE = re.compile(r"^\s+-\s+\d+:\s+D\s+<(?P<name>[^>]+)>\s+segment=(?P<seg>\d+)")
 SEG_RE = re.compile(r"^\s+-\s+(?P<idx>\d+):\s+(?P<name>\S+)\s")
 
-# Iterable sections that need only bounds. Mapping from the section name Zephyr
-# uses to the start/end symbols the kernel declares.
-# Section base name -> (element type, start symbol, end symbol). The symbol
-# names follow TYPE_SECTION_START/END in iterable_sections.h.
-ITERABLES = {
-    "_static_thread_data": ("struct _static_thread_data",
-                            "__static_thread_data_list_start",
-                            "__static_thread_data_list_end"),
-    # STRUCT_SECTION_ITERABLE names the section after the struct, so the type
-    # is the section key without its leading underscore.
-    "k_kernel_init_pre_entry": ("struct k_kernel_init_pre_entry",
-                                 "_k_kernel_init_pre_entry_list_start",
-                                 "_k_kernel_init_pre_entry_list_end"),
-    "k_kernel_init_post_entry": ("struct k_kernel_init_post_entry",
-                                  "_k_kernel_init_post_entry_list_start",
-                                  "_k_kernel_init_post_entry_list_end"),
-}
+# The one list a new subsystem may have to be added to.
+#
+# Almost every iterable family is handled without naming it here: patch 0004
+# renames the section to a C identifier, wasm-ld synthesises its bounds, and
+# render_bounds() below covers a family that is referenced but never defined.
+#
+# An anchor is for the case that neither covers. These families are
+# pay-per-use, so their entries live only in objects the link may never pull
+# in: the section can be defined in some object of the tree and still be
+# absent from the image. A weak fallback cannot fix that, because it would
+# also suppress wasm-ld's real bounds wherever the section does exist. An
+# anchor member is unambiguous — it keeps the section present and does
+# nothing. Add a family here only after seeing the link fail on its bounds.
+#
+# Section base name -> element type. The section name follows
+# TYPE_SECTION_ITERABLE in iterable_sections.h as patch 0004 rewrites it.
+ANCHOR_FAMILIES = (
+    ("k_kernel_init_pre_entry", "struct k_kernel_init_pre_entry"),
+    ("k_kernel_init_post_entry", "struct k_kernel_init_post_entry"),
+)
 
 
 ITER_REF_RE = re.compile(r"__(?:start|stop)_(z_iter_\w+)")
@@ -111,7 +114,6 @@ def scan_object(objdump: str, path: Path) -> list[tuple[str, str]]:
 
 def collect(objdump: str, paths: list[Path]):
     init_entries = []   # (level, prio, sub, symbol)
-    iterables = {key: [] for key in ITERABLES}
     iter_refs: set[str] = set()
     iter_defs: set[str] = set()
     for path in paths:
@@ -123,13 +125,8 @@ def collect(objdump: str, paths: list[Path]):
             if m and m.group("level") in LEVELS:
                 init_entries.append((m.group("level"), int(m.group("prio")),
                                      int(m.group("sub")), name))
-                continue
-            for key in iterables:
-                # e.g. ._static_thread_data.static.foo_
-                if seg == f"z_iter_{key}":
-                    iterables[key].append(name)
     # Only a family that is referenced and never defined needs a fallback.
-    return init_entries, iterables, sorted(iter_refs - iter_defs)
+    return init_entries, sorted(iter_refs - iter_defs)
 
 
 def render_bounds(iter_refs) -> str:
@@ -155,7 +152,7 @@ def render_bounds(iter_refs) -> str:
     return "\n".join(out)
 
 
-def render(init_entries, iterables, iter_refs) -> str:
+def render(init_entries) -> str:
     by_level = {level: [] for level in LEVELS}
     for level, prio, sub, sym in init_entries:
         by_level[level].append((prio, sub, sym))
@@ -199,15 +196,10 @@ def render(init_entries, iterables, iter_refs) -> str:
     out.append(" * level's address well defined. */")
     out.append("static int z_wasm_init_nop(void) { return 0; }")
     out.append("")
-    out.append("/* The kernel's own init lists are pay-per-use: their entries live only in")
-    out.append(" * objects the link may never pull in, so the section can be defined in")
-    out.append(" * some object and still be absent from the image. A weak bound fallback")
-    out.append(" * cannot cover that, because it would also suppress the real bounds")
-    out.append(" * wherever the section does exist. An anchor member is unambiguous: it")
-    out.append(" * keeps the section present, and its function does nothing. */")
+    out.append("/* One anchor member per family in ANCHOR_FAMILIES, for the sections a")
+    out.append(" * weak bound fallback cannot cover. See the comment on that list. */")
     out.append("static void z_wasm_anchor_fn(void) { }")
-    for key, ctype in (("k_kernel_init_pre_entry", "struct k_kernel_init_pre_entry"),
-                       ("k_kernel_init_post_entry", "struct k_kernel_init_post_entry")):
+    for key, ctype in ANCHOR_FAMILIES:
         out.append(f'__attribute__((section("z_iter_{key}"), used))')
         out.append(f"const {ctype} z_wasm_anchor_{key} = {{ .init_fn = z_wasm_anchor_fn }};")
     for level in LEVELS:
@@ -275,9 +267,9 @@ def main() -> int:
         sys.stderr.write("gen_sections_wasm: no objects to scan\n")
         return 1
 
-    init_entries, iterables, iter_refs = collect(args.objdump, paths)
+    init_entries, iter_refs = collect(args.objdump, paths)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render(init_entries, iterables, iter_refs))
+    args.output.write_text(render(init_entries))
     bounds = args.output.with_name("wasm_section_bounds.c")
     bounds.write_text(render_bounds(iter_refs))
     if tmp:

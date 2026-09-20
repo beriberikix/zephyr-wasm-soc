@@ -28,6 +28,12 @@ uint32_t z_wasm_switch_block_addr(void)
 	return (uint32_t)(uintptr_t)&z_wasm_switch_block;
 }
 
+/* Exported for its name alone. The clang driver drops the wasm name section,
+ * so scripts/instrument_safepoints.py can only identify a function to leave
+ * alone by its export name: a safepoint inserted in here would dispatch
+ * interrupts, and so possibly switch, from inside the switch itself.
+ */
+__attribute__((export_name("z_wasm_switch")))
 void z_wasm_switch(void *switch_to, void **switched_from)
 {
 	struct k_thread *to = (struct k_thread *)switch_to;

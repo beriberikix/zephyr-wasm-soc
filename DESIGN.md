@@ -16,6 +16,11 @@ function in a single import module named `zephyr_host`.
 Out of scope, as set by the brief: `CONFIG_USERSPACE`, MPU/MMU, SMP,
 networking, Bluetooth, browsers, the stack-switching backend, upstreaming.
 
+The browser exclusion no longer holds. The brief ruled it out and the port then
+ran in one without a kernel change, so the browser is now the target rather
+than an excursion: `ROADMAP.md` and issue #1 set out what that means. The rest
+of the list stands.
+
 ## 2. Decisions
 
 ### D1. Workspace layout

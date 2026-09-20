@@ -12,6 +12,16 @@ if(NOT WASM_OBJDUMP)
   message(FATAL_ERROR "wasm-objdump (wabt) not found; it is required to build this board")
 endif()
 
+# The generator unpacks the archives Zephyr's libraries are built into, so it
+# needs an archiver that understands wasm objects. Looked for beside clang
+# rather than left to PATH, where the host's own ar would be found first and
+# would fail on the members it cannot read.
+get_filename_component(_wasm_llvm_bin ${CMAKE_C_COMPILER} DIRECTORY)
+find_program(WASM_AR llvm-ar HINTS ${_wasm_llvm_bin} PATHS /opt/homebrew/opt/llvm/bin ENV PATH)
+if(NOT WASM_AR)
+  message(FATAL_ERROR "llvm-ar not found; it is required to build this board")
+endif()
+
 function(wasm_add_sections_step)
   # Computed here, not at file scope: the deferred call runs in Zephyr's
   # top-level directory scope, where a plain variable set from a SoC file is
@@ -27,6 +37,7 @@ function(wasm_add_sections_step)
     COMMAND ${PYTHON_EXECUTABLE}
             ${WASM_MODULE_DIR}/scripts/gen_sections_wasm.py
             --objdump ${WASM_OBJDUMP}
+            --ar ${WASM_AR}
             # The whole build tree, not just the zephyr subdirectory: the
             # application's own objects sit outside it, and they are where
             # K_THREAD_DEFINE and most SYS_INIT entries in a sample live.

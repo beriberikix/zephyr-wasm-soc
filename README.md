@@ -92,7 +92,7 @@ west update
 zephyr-wasm/scripts/apply_patches.sh
 ```
 
-The Zephyr tree is otherwise read-only. Five patches are needed and each is
+The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; four of the five are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists.
@@ -242,10 +242,9 @@ python3 -m venv /tmp/wtenv && /tmp/wtenv/bin/pip install wasmtime
 It produces byte-identical output to the Node harness, including all 143 lines
 of the ztest run. It is not interactive: no UART input, no tracing.
 
-Browsers are untested and out of scope. The module would run in one; the
-harness would not, because the driver loop is synchronous and blocks until the
-guest suspends, which on a page's main thread would freeze the tab. That needs
-a Worker and an inside-out driver loop, not a kernel change.
+Between them the three hosts cover two engines and three environments: V8
+under Node, V8 in a browser with no filesystem and no stdio, and Cranelift
+under wasmtime. The kernel is the same module in all three.
 
 ## Host options
 
@@ -297,12 +296,15 @@ diffs against Zephyr and carry Zephyr's licence, which is the same.
 
 [Issue #1](https://github.com/beriberikix/zephyr-wasm-soc/issues/1) sets out
 the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
+`ROADMAP.md` is the plan underneath it, including the order the work is done in
+and what the issue did not account for.
+
 Progress is measured in upstream Zephyr samples that run unmodified, which is
 three today.
 
 ## Feedback
 
 The interesting parts to argue with are `patches/README.md`, which explains
-each change to Zephyr and why, and the final report at the end of `NOTES.md`,
-which covers what the approach costs and what it would take to upstream any of
-it. Neither needs a build to read.
+each change to Zephyr and why, `DESIGN.md`, which records the decisions and
+what they cost, and `ROADMAP.md`, which says where this is going and what the
+vision issue did not account for. None of them needs a build to read.
