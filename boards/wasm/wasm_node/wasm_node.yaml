@@ -11,3 +11,6 @@ ram: 1024
 testing:
   # Not in the default set: every build needs this module's toolchain flags.
   default: false
+supported:
+  - gpio
+  - entropy

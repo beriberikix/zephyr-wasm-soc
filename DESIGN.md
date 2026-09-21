@@ -16,6 +16,11 @@ function in a single import module named `zephyr_host`.
 Out of scope, as set by the brief: `CONFIG_USERSPACE`, MPU/MMU, SMP,
 networking, Bluetooth, browsers, the stack-switching backend, upstreaming.
 
+The browser exclusion no longer holds. The brief ruled it out and the port then
+ran in one without a kernel change, so the browser is now the target rather
+than an excursion: `ROADMAP.md` and issue #1 set out what that means. The rest
+of the list stands.
+
 ## 2. Decisions
 
 ### D1. Workspace layout
@@ -237,6 +242,166 @@ dummy thread and is an ordinary returning function.
 The rule generalises: no Zephyr API declared noreturn may contain a suspension
 point on this port.
 
+### D8b. Indirect calls are type-checked, so a mis-cast entry point traps
+
+Wasm checks the signature at an indirect call against the type recorded for
+the table entry, and a mismatch is a trap, not a coercion. Every other
+Zephyr target tolerates a function pointer called through the wrong
+prototype: the extra arguments are ignored and the call goes through.
+
+So a thread entry that is not exactly `void (*)(void *, void *, void *)`
+traps at the point the thread first runs. Both spellings occur upstream:
+
+```c
+static void thread_05(struct k_sem *wait, struct k_sem *done);   /* two */
+k_thread_create(..., (k_thread_entry_t)thread_05, ...);
+
+void task_low(void);                                             /* none */
+K_THREAD_DEFINE(TASK_LOW, STACK, task_low, NULL, NULL, NULL, ...);
+```
+
+`tests/kernel/mutex/mutex_api` is the first and `tests/kernel/pending` the
+second. Both trap on their first case; giving the entries the signature
+`k_thread_entry_t` actually has makes all 11 of the mutex suite pass.
+
+Nothing in the port can fix this, and nothing should: the cast is undefined
+behaviour in C and wasm is simply the first target that enforces it. It is
+recorded here because it bounds what "runs unmodified" can mean, and because
+it is the most upstreamable thing this port has found -- the fix is to give
+those entries the right signature, which costs nothing on any target.
+
+### D8c. GPIO is Zephyr's own emulated controller, bridged
+
+The pins are `drivers/gpio/gpio_emul.c`, which is board agnostic and already
+implements direction, pull, edge and level triggering and the callback list.
+`drivers/gpio/gpio_wasm_bridge.c` only carries it across to the host: a
+callback registered on every pin reports output changes, and the GPIO
+interrupt reads the host's input levels and hands the changes to
+`gpio_emul_input_set_masked()`, which raises the edges and fires the
+callbacks as usual.
+
+Writing a driver instead would have been about the same amount of code and
+would have meant a learner running this port's idea of GPIO rather than
+Zephyr's. The same argument applies to flash, I2C, SPI and the rest: prefer
+the emulated backend Zephyr already ships and bridge it.
+
+Levels crossing the ABI are physical rather than logical -- bit N is the
+voltage on pin N -- so an active-low button reads 1 when nobody is pressing
+it. The bridge forwards only changes, so the host's initial levels have to
+match what the pull configuration gives the pins at boot. Both are 1 for a
+pull-up, which is how the buttons are wired.
+
+Two details cost an hour and are not obvious from the outside.
+`gpio_emul_output_get_masked()` returns `-EINVAL` for a mask with a bit
+outside the port rather than ignoring it, so the mask has to be the port's
+own `ngpios`. And `gpio_emul` initialises at `POST_KERNEL`, not
+`PRE_KERNEL`, so the bridge is `POST_KERNEL` at
+`CONFIG_WASM_GPIO_BRIDGE_INIT_PRIORITY`, which sits between the ports at 40
+and `gpio-leds` and `gpio-keys` at 90.
+
+### D8d. Interrupt lines have one home
+
+`include/zephyr/arch/wasm/wasm_irq_lines.h` is where a line number is
+written down: the guest includes it, the board devicetree includes it, and
+both hosts carry a copy that says so. A `wasm,host-intc` node makes it an
+ordinary devicetree `interrupts` property rather than a constant in a driver.
+
+The host may raise a line at any time, but it does not write the pending
+word when it does. It records the line and applies it at the top of the
+driver loop, because a message handler can run before the module has been
+instantiated, and because the guest is fully unwound at that point and
+nothing else can be halfway through reading the word.
+
+That means an external interrupt is delivered no sooner than the next time
+the guest idles or reaches a safepoint, which is the same bound everything
+else on this port has.
+
+### D5b. Pacing: waiting afterwards, not deciding beforehand
+
+A sample that blinks once a second is correct under virtual time and
+invisible: the host jumps straight to each deadline and the whole run is
+over before anyone sees it. `--paced` waits out the difference *after* the
+guest has done the work, rather than deciding in advance how long to let it
+run.
+
+That ordering is what keeps determinism. The clock is still set to the
+deadline and never to however long the host actually slept, so the guest
+observes exactly the timestamps it observes under plain virtual time.
+Pacing changes when a thing is shown and never what it is, which is checked:
+the same build under `--paced`, under `--paced --time-scale 10` and under
+plain virtual time produces byte-identical output, in 5.07 s, 0.56 s and
+0.06 s respectively.
+
+`timeScale` divides the wait, so the page can offer slow motion and fast
+forward without the guest being able to tell. An advance longer than
+`PACE_MAX_NS` is taken at full speed: the kernel clamps "nothing soon" to a
+deadline about two days out, and sitting through that would be a hang rather
+than pacing.
+
+### D8e. The host asks rather than reads
+
+A page that shows the kernel's threads needs the kernel's thread list, and
+the obvious way to get it is to hand the host the generated struct offsets.
+That would be a mistake worth naming: the offsets are generated per build
+precisely because they are not stable, and a host that knew them would go
+quietly wrong whenever a struct moved rather than failing.
+
+So the guest answers questions instead. `z_wasm_inspect_threads()` walks
+`_kernel.threads` and fills an array of `struct wasm_thread_info`, which is
+nine 32-bit fields in a fixed order and the only Zephyr shape the host
+knows. Adding a field costs an edit on each side, which is the usual price
+of an ABI and cheap at this size.
+
+Three rules make the call safe, and all three come from where it happens.
+The host calls it between steps, where the guest is fully unwound, Asyncify
+is `NORMAL`, nothing is mid-switch and `_kernel.cpus[0].current` already
+names the thread that will run next. It takes no lock, because there is one
+CPU and nothing else is running. It must not suspend, because a suspension
+outside the driver loop would corrupt the Asyncify state the host is
+holding. And it must not be instrumented, because a safepoint inside the
+walk would dispatch interrupts and reschedule from a call the kernel never
+made -- so it is in the safepoint pass's skip list, which now refuses to run
+if it cannot find a name it was told to skip.
+
+It runs on a stack of its own rather than spending the headroom of whichever
+thread happens to be suspended when the host asks.
+
+### D8f. A step is a suspension
+
+Pausing and stepping are nearly free here, and it is worth being clear about
+why: the driver loop is already one step per suspension, so "stopped between
+two context switches" is a state the host is in thousands of times a second
+anyway. Offering it costs a flag.
+
+That also sets the granularity. A step is one suspension -- the guest runs
+until it switches threads or idles -- which is exactly the unit a learner
+wants when watching a scheduler hand off. Stepping at instruction or
+safepoint granularity would mean making `safepoint_tick` suspend, which
+costs a full unwind on every loop iteration, and is a different feature
+rather than a finer setting of this one.
+
+### D8g. Stepping backwards is a memcpy
+
+The issue is right that this is the thing hardware cannot offer, and it is
+worth saying how little it costs here. The whole machine is one linear
+memory plus a couple of globals: a module is about 128 KB of memory, so a
+snapshot is a copy of that and a restore is a write.
+
+What is not in that buffer is the host's own bookkeeping -- the virtual
+clock, the alarm and its clamp flag, the quiescence count, the switch
+counter, the entropy state, the pending input, the GPIO levels, and the map
+of which Asyncify buffer belongs to which context. All of it has to be
+copied alongside, and the context map rebuilt rather than shared, since
+restoring must not hand back objects the run has gone on mutating.
+
+Asyncify needs nothing special. Its buffers are in linear memory and so are
+captured with everything else, and a snapshot is only ever taken between
+steps, where its state is `NORMAL`.
+
+Snapshots are taken only while paused, and bounded. Copying 128 KB on every
+suspension would be thousands of copies a second in service of nothing;
+copying it when a person asks for a step is free.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,
@@ -275,6 +440,24 @@ Every Kconfig this port forces off, with the reason. Filled in as they are hit.
 | `GEN_ABSOLUTE_SYM_KCONFIG` | Not a Kconfig, but recorded here: made a no-op by patch 0001. Its callers pass names that are themselves macros, which only works with the stringifying assembly form. Nothing reads the resulting symbols at run time. |
 
 All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
+
+## 4a. What the kernel test suites say
+
+`scripts/kernel_tests.json` records how each of Zephyr's own kernel suites
+does here and `scripts/check_kernel.py` re-runs them, so this stops being a
+number taken once. At the time of writing, 25 suites and 441 passing cases:
+16 pass outright, 4 finish with failures, and 5 do not finish.
+
+The four that fail cluster into two causes and one unknown. `device` fails
+exactly the four cases that exercise `DEVICE_API_IS()` on an extended class,
+which is patch 0007's documented approximation demonstrated rather than
+predicted. `common` and `timer/timer_api` both fail on timer duration
+accuracy, and `tickless/tickless_concept` on slice length: a slice ends at
+the next safepoint rather than on the tick, so slicing works but its timing
+is approximate.
+
+Of the five that do not finish, two are D8b above and are not the port's to
+fix. The other three are open.
 
 ## 5. Changes to the Zephyr tree
 

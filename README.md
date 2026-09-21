@@ -23,7 +23,17 @@ log, including what did not work. `BRIEF.md` is the original task.
 
 * `samples/hello_world` boots and exits cleanly.
 * `samples/synchronization` alternates two threads with `k_msleep` honoured.
-* `tests/kernel/semaphore/semaphore` passes all 32 tests under ztest.
+* `samples/philosophers` runs, which is five threads, mutexes and sleeps.
+* `samples/subsys/logging/logger` runs, hexdumps and all.
+* `samples/basic/sys_heap` runs, which is the heap.
+* `samples/basic/blinky` and `samples/basic/button` run, with the LEDs drawn
+  on the page and buttons to press. The pins are Zephyr's own emulated GPIO
+  controller, so the driver and subsystem code above them is the real thing.
+* `tests/drivers/entropy/api` passes, on a generator that is seeded by
+  default so that runs stay reproducible.
+* 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
+  `scripts/kernel_tests.json` records every suite tried, including the nine
+  that do not pass and why.
 * Two runs in virtual time produce byte-identical output.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
@@ -66,6 +76,7 @@ The acceptance suite shows no perceptible change.
 | wasm-opt | 132 | Binaryen |
 | wasm-objdump | 1.0.42 | wabt |
 | Node.js | 26 | 20 or newer should do |
+| Python | 3.12 | Zephyr's own `west build` needs 3.12 or newer |
 | west, cmake, ninja | | with Zephyr's Python dependencies |
 
 **Version matters more than it should.** On clang 18 the linker leaves the
@@ -92,7 +103,7 @@ west update
 zephyr-wasm/scripts/apply_patches.sh
 ```
 
-The Zephyr tree is otherwise read-only. Five patches are needed and each is
+The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; four of the five are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists.
@@ -212,7 +223,11 @@ zephyr-wasm/scripts/serve_web.sh 8777  # then open http://127.0.0.1:8777/
 ```
 
 Pick a build and press Run. For the shell, click the output area and type;
-<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. A server is needed because `file://`
+<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and the philosophers run at
+their own pace, with a speed control that does not change what they do, and
+the kernel's thread table is shown underneath: who exists, who holds the CPU,
+and what the rest are waiting for. Pause stops the guest between two context
+switches and Step lets exactly one through. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.
@@ -242,10 +257,9 @@ python3 -m venv /tmp/wtenv && /tmp/wtenv/bin/pip install wasmtime
 It produces byte-identical output to the Node harness, including all 143 lines
 of the ztest run. It is not interactive: no UART input, no tracing.
 
-Browsers are untested and out of scope. The module would run in one; the
-harness would not, because the driver loop is synchronous and blocks until the
-guest suspends, which on a page's main thread would freeze the tab. That needs
-a Worker and an inside-out driver loop, not a kernel change.
+Between them the three hosts cover two engines and three environments: V8
+under Node, V8 in a browser with no filesystem and no stdio, and Cranelift
+under wasmtime. The kernel is the same module in all three.
 
 ## Host options
 
@@ -254,6 +268,11 @@ a Worker and an inside-out driver loop, not a kernel change.
 | Flag | Effect |
 |---|---|
 | `--realtime` | follow the wall clock instead of virtual time |
+| `--paced` | let virtual time pass at the rate it claims, so a sample that blinks once a second can be watched. The guest sees the same clock either way, so the output is unchanged |
+| `--time-scale <n>` | with `--paced`, divide the waiting: 10 is ten times faster than real, 0.1 is slow motion |
+| `--threads` | print the kernel's thread table to stderr as it changes |
+| `--trace-gpio` | log every GPIO output change to stderr |
+| `--gpio <ms>:<pin>=<0\|1>` | move an input pin at a given guest time, repeatable |
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
@@ -261,10 +280,25 @@ a Worker and an inside-out driver loop, not a kernel change.
 ## Continuous integration
 
 `.github/workflows/pages.yml` starts from a bare Ubuntu runner, installs the
-toolchain, clones Zephyr, applies the seven patches, builds five applications,
-runs three of them under Node, checks two runs are byte-identical, and only
-then publishes. It is the reproducibility check for everything above: if it is
-green, these instructions work on a machine that is not the author's.
+toolchain, clones Zephyr, applies the seven patches, builds everything
+`scripts/apps.json` names, runs each one and checks it printed what that file
+says it should, checks two runs are byte-identical, runs the page itself in
+Chromium, and only then publishes. It is the reproducibility check for
+everything above: if it is green, these instructions work on a machine that is
+not the author's.
+
+To run those checks locally against a staged site:
+
+```sh
+node zephyr-wasm/scripts/check_site.mjs        # every build, under Node
+node zephyr-wasm/scripts/check_browser.mjs     # every build, in Chromium
+zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
+python3 zephyr-wasm/scripts/check_kernel.py    # Zephyr's kernel suites
+```
+
+The browser check needs Playwright (`npm install --no-save playwright && npx
+playwright install chromium`); nothing else here does, which is why it is not
+a dependency of the repository.
 
 ## Layout
 
@@ -276,6 +310,10 @@ boards/wasm/wasm_node/      the board
 drivers/              console and system timer over host imports
 cmake/                toolchain variant, and the build steps Zephyr lacks
 scripts/              offsets and section generators, build and check scripts
+scripts/apps.json     the applications the demo is built from, and what each
+                      one must print; the single source for the page's menu,
+                      the staged manifest and what CI asserts
+scripts/kernel_tests.json  how each Zephyr kernel suite does here, and why
 host/core.mjs         the engine-neutral driver loop and host ABI
 host/run.mjs          the Node front-end
 host/run_wasmtime.py  a separate implementation, for wasmtime
@@ -297,12 +335,15 @@ diffs against Zephyr and carry Zephyr's licence, which is the same.
 
 [Issue #1](https://github.com/beriberikix/zephyr-wasm-soc/issues/1) sets out
 the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
+`ROADMAP.md` is the plan underneath it, including the order the work is done in
+and what the issue did not account for.
+
 Progress is measured in upstream Zephyr samples that run unmodified, which is
-three today.
+eight today. `scripts/apps.py score` is what counts it.
 
 ## Feedback
 
 The interesting parts to argue with are `patches/README.md`, which explains
-each change to Zephyr and why, and the final report at the end of `NOTES.md`,
-which covers what the approach costs and what it would take to upstream any of
-it. Neither needs a build to read.
+each change to Zephyr and why, `DESIGN.md`, which records the decisions and
+what they cost, and `ROADMAP.md`, which says where this is going and what the
+vision issue did not account for. None of them needs a build to read.

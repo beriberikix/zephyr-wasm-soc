@@ -42,6 +42,38 @@
   }
   #term:focus { border-color: var(--accent); }
   #status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  #board {
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 12px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--term-bg);
+  }
+  #board[hidden] { display: none; }
+  .part { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .part small { color: var(--muted); font-size: 11px; }
+  .led {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--bg);
+    transition: background-color 80ms linear, box-shadow 80ms linear;
+  }
+  .led.on { background: #d33; box-shadow: 0 0 10px 2px rgba(221,51,51,.55); }
+  .btn {
+    width: 34px; height: 26px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+    font: 11px ui-monospace, monospace; user-select: none;
+  }
+  .btn:active, .btn.down { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #kernel { margin: 12px 0 0; display: none; }
+  #kernel.on { display: block; }
+  #kstat { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  table.threads { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.threads th, table.threads td {
+    text-align: left; padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.threads th { color: var(--muted); font-weight: 500; }
+  table.threads td.mono { font: 12px ui-monospace, monospace; }
+  table.threads tr.cur td { font-weight: 600; }
+  table.threads tr.cur td:first-child::before { content: "\25B8 "; color: var(--accent); }
   kbd {
     font: 12px ui-monospace, monospace; border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px; background: var(--bg);
@@ -64,21 +96,50 @@
   </p>
 
   <div class="bar">
-    <select id="build">
-      <option value="./m/hello.wasm">hello_world</option>
-      <option value="./m/sync.wasm">synchronization</option>
-      <option value="./m/sem.wasm">ztest: kernel semaphore</option>
-      <option value="./m/slice.wasm">timeslice: two spinners</option>
-      <option value="./m/shell.wasm" data-interactive="1">shell (type into the output)</option>
+    <select id="build" disabled>
+      <option>loading…</option>
     </select>
-    <button id="run" class="primary">Run</button>
+    <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
+    <label id="speedWrap" hidden>
+      speed
+      <select id="speed">
+        <option value="0.25">&frac14;&times;</option>
+        <option value="0.5">&frac12;&times;</option>
+        <option value="1" selected>1&times;</option>
+        <option value="4">4&times;</option>
+        <option value="20">20&times;</option>
+      </select>
+    </label>
   </div>
 
+  <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
+  <div id="board" hidden></div>
+
   <div id="term" tabindex="0" role="log" aria-live="polite"></div>
+
+  <!-- The host brokers every context switch, so it can simply be asked what
+       the kernel looks like between them. Nothing here reads Zephyr struct
+       offsets: the guest answers, through z_wasm_inspect_threads. -->
+  <div id="kernel">
+    <div class="bar">
+      <button id="pause">Pause</button>
+      <button id="back" disabled>&larr; Back</button>
+      <button id="step" disabled>Step</button>
+      <span id="kstat"></span>
+    </div>
+    <table class="threads">
+      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th></tr></thead>
+      <tbody id="threads"></tbody>
+    </table>
+  </div>
   <div id="status">Pick a build and press Run. For the shell, click the output
-    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.</div>
+    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Pause the
+    kernel and you can step forward one context switch at a time, and back
+    again. Blinky and
+    the philosophers run at their own pace, and the speed control changes how
+    fast that is without changing what they do.</div>
 </main>
 
 <script type="module">
@@ -87,14 +148,49 @@
  * good enough to read the shell, and a keyboard.
  */
 const termEl = document.getElementById('term');
+const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
 const buildEl = document.getElementById('build');
 const runEl = document.getElementById('run');
 const stopEl = document.getElementById('stop');
 const clearEl = document.getElementById('clear');
+const speedEl = document.getElementById('speed');
+const speedWrapEl = document.getElementById('speedWrap');
+const kernelEl = document.getElementById('kernel');
+const kstatEl = document.getElementById('kstat');
+const threadsEl = document.getElementById('threads');
+const pauseEl = document.getElementById('pause');
+const stepEl = document.getElementById('step');
+const backEl = document.getElementById('back');
 
 let worker = null;
 let running = false;
+let builds = [];
+let lastState = null;
+
+/* The menu comes from the manifest scripts/stage_site.sh writes, which is
+ * generated from scripts/apps.json. The page used to carry its own copy of
+ * the list, which meant adding a build meant editing two files that had to
+ * agree, and nothing checked that they did. */
+async function loadManifest() {
+  try {
+    const res = await fetch('./manifest.json');
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const manifest = await res.json();
+    builds = manifest.builds;
+    buildEl.innerHTML = '';
+    for (const b of builds) {
+      const opt = document.createElement('option');
+      opt.value = b.name;
+      opt.textContent = b.title;
+      buildEl.append(opt);
+    }
+    buildEl.disabled = false;
+    runEl.disabled = false;
+  } catch (err) {
+    statusEl.textContent = `could not read manifest.json: ${err.message}`;
+  }
+}
 
 /* A minimal terminal.
  *
@@ -145,6 +241,111 @@ const term = {
   clear() { this.lines = ['']; this.col = 0; this.pending = ''; this.render(); },
 };
 
+/* The virtual board.
+ *
+ * The pins are the ones in boards/wasm/wasm_node/wasm_node.dts and the two
+ * have to agree: there is nothing to derive this from at run time, because
+ * the guest does not describe its own devicetree to the page.
+ *
+ * Buttons are wired active low with a pull-up, so not-pressed is 1.
+ */
+const BOARD = {
+  leds: [{ pin: 0, label: 'led0' }, { pin: 1, label: 'led1' },
+         { pin: 2, label: 'led2' }, { pin: 3, label: 'led3' }],
+  buttons: [{ pin: 4, label: 'sw0' }, { pin: 5, label: 'sw1' }],
+};
+
+const ledEls = new Map();
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  for (const led of BOARD.leds) {
+    const part = document.createElement('div');
+    part.className = 'part';
+    const dot = document.createElement('div');
+    dot.className = 'led';
+    const name = document.createElement('small');
+    name.textContent = led.label;
+    part.append(dot, name);
+    boardEl.append(part);
+    ledEls.set(led.pin, dot);
+  }
+  for (const button of BOARD.buttons) {
+    const part = document.createElement('div');
+    part.className = 'part';
+    const el = document.createElement('button');
+    el.className = 'btn';
+    el.textContent = 'push';
+    el.title = `${button.label}: hold to press`;
+    const press = (down) => {
+      el.classList.toggle('down', down);
+      /* Physical level: pulled up, so pressing pulls it to 0. */
+      worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level: down ? 0 : 1 });
+    };
+    el.addEventListener('mousedown', () => press(true));
+    el.addEventListener('mouseup', () => press(false));
+    el.addEventListener('mouseleave', () => press(false));
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); press(true); }, { passive: false });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); press(false); }, { passive: false });
+    const name = document.createElement('small');
+    name.textContent = button.label;
+    part.append(el, name);
+    boardEl.append(part);
+  }
+}
+
+function showLeds(values) {
+  for (const [pin, el] of ledEls) {
+    el.classList.toggle('on', (values & (1 << pin)) !== 0);
+  }
+}
+
+let paused = false;
+
+/* The kernel, as the host sees it between suspensions.
+ *
+ * This is the thing no other Zephyr target can offer: the host brokers every
+ * context switch, so "stopped between two switches" is a state it already
+ * has, and showing it costs a table. */
+function showKernel(state) {
+  lastState = state;
+  kernelEl.classList.add('on');
+  paused = state.paused;
+  pauseEl.textContent = paused ? 'Resume' : 'Pause';
+  stepEl.disabled = !paused;
+  /* Backwards is only offered where it is real: a step that was taken while
+   * paused, and so has a snapshot behind it. */
+  backEl.disabled = !paused || !state.canStepBack;
+  backEl.title = state.canStepBack
+    ? `${state.canStepBack} step${state.canStepBack === 1 ? '' : 's'} to go back through`
+    : 'take a step first';
+
+  const bits = [`${state.nowMs} ms`, `${state.switches} switches`];
+  if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
+  if (state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
+  kstatEl.textContent = bits.join(' · ');
+
+  if (!state.threads) {
+    threadsEl.innerHTML =
+      '<tr><td colspan="4">this build has no CONFIG_WASM_INSPECT</td></tr>';
+    return;
+  }
+  threadsEl.innerHTML = '';
+  for (const t of state.threads) {
+    const tr = document.createElement('tr');
+    if (t.current) tr.className = 'cur';
+    const cells = [t.name || '(unnamed)', String(t.prio),
+                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`];
+    cells.forEach((text, i) => {
+      const td = document.createElement('td');
+      if (i === 3) td.className = 'mono';
+      td.textContent = text;
+      tr.append(td);
+    });
+    threadsEl.append(tr);
+  }
+}
+
 function setRunning(state) {
   running = state;
   runEl.disabled = state;
@@ -154,13 +355,16 @@ function setRunning(state) {
 
 function start() {
   term.clear();
-  const opt = buildEl.selectedOptions[0];
-  const interactive = opt.dataset.interactive === '1';
+  const build = builds.find((b) => b.name === buildEl.value);
+  if (!build) return;
+  const interactive = !!build.interactive;
 
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
   worker.onmessage = ({ data }) => {
-    if (data.type === 'out') term.write(new Uint8Array(data.buf));
+    if (data.type === 'state') showKernel(data.state);
+    else if (data.type === 'gpio') showLeds(data.values);
+    else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
     else if (data.type === 'done') {
       setRunning(false);
@@ -172,22 +376,46 @@ function start() {
     setRunning(false);
   };
 
+  showLeds(0);
+  boardEl.hidden = false;
+  kernelEl.classList.remove('on');
+  threadsEl.innerHTML = '';
+  paused = false;
+  pauseEl.textContent = 'Pause';
+  backEl.disabled = true;
+
   setRunning(true);
   statusEl.textContent = interactive
     ? 'running: click the output area and type'
     : 'running';
+  /* Only a paced build has a speed worth changing: under virtual time the
+   * run is over before the control could be reached. */
+  const paced = build.clock === 'paced';
+  speedWrapEl.hidden = !paced;
+
   worker.postMessage({
     type: 'run',
-    url: opt.value,
+    url: `./${build.path}`,
     interactive,
-    maxTimeMs: interactive ? 600_000 : 60_000,
+    maxTimeMs: build.max_time_ms ?? 60_000,
+    clock: build.clock ?? 'virtual',
+    timeScale: paced ? Number(speedEl.value) : 1,
   });
   if (interactive) termEl.focus();
 }
 
+buildBoard();
+loadManifest();
+
 runEl.onclick = start;
 stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
 clearEl.onclick = () => term.clear();
+pauseEl.onclick = () =>
+  worker?.postMessage({ type: paused ? 'resume' : 'pause' });
+stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
+backEl.onclick = () => worker?.postMessage({ type: 'back' });
+speedEl.onchange = () =>
+  worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 
 /* Keystrokes go to the guest's UART as bytes. */
 termEl.addEventListener('keydown', (e) => {
@@ -212,6 +440,21 @@ window.zephyrType = (text) => {
 };
 window.zephyrOutput = () => term.lines.join('\n');
 window.zephyrRunning = () => running;
+window.zephyrBuilds = () => builds;
+window.zephyrLeds = () => {
+  let v = 0;
+  for (const [pin, el] of ledEls) if (el.classList.contains('on')) v |= 1 << pin;
+  return v;
+};
+window.zephyrState = () => lastState;
+window.zephyrPause = () => worker?.postMessage({ type: 'pause' });
+window.zephyrStep = () => worker?.postMessage({ type: 'step', count: 1 });
+window.zephyrBack = () => worker?.postMessage({ type: 'back' });
+window.zephyrPress = (pin, level) => {
+  if (!running || !worker) return false;
+  worker.postMessage({ type: 'gpio-in', port: 0, pin, level });
+  return true;
+};
 </script>
 </body>
 </html>

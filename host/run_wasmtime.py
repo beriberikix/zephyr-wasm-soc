@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import struct
+import os
 import sys
 from pathlib import Path
 
@@ -29,9 +30,29 @@ I32 = ValType.i32()
 I64 = ValType.i64()
 
 
+# Must match include/zephyr/arch/wasm/wasm_irq_lines.h, which is the
+# authority, and host/irq_lines.mjs, which carries the same values again
+# because this host is deliberately a separate implementation.
+IRQ_TIMER = 0
+IRQ_GPIO = 1
+
+# Must match DEFAULT_SEED and nextRandomByte() in host/core.mjs: a build that
+# prints random numbers has to print the same ones under both hosts, which is
+# what the two-engine check compares.
+DEFAULT_SEED = 0x5EED0001
+
+
+class GaveUp(Exception):
+    """Raised out of an import to stop a guest that will not stop by itself."""
+
+
 class Host:
-    def __init__(self, path: Path, max_time_ms: int):
+    def __init__(self, path: Path, max_time_ms: int, trace_gpio: bool = False,
+                 seed: int | None = None, true_random: bool = False):
         self.max_time_ns = max_time_ms * 1_000_000
+        self.trace_gpio = trace_gpio
+        self.true_random = true_random
+        self.rand_state = (seed if seed is not None else DEFAULT_SEED) & 0xFFFFFFFF or DEFAULT_SEED
         self.now_ns = 0
         self.alarm_ns: int | None = None
         self.alarm_is_clamp = False
@@ -90,10 +111,36 @@ class Host:
 
         def safepoint_tick():
             self.now_ns += SAFEPOINT_TICK_NS
+            # The only place a guest that never suspends can be stopped. The
+            # check between steps below cannot reach one, because such a guest
+            # never ends a step. This import cannot suspend, so raising is the
+            # way out; the instance is finished either way.
+            self.check_deadline()
             if self.alarm_ns is not None and self.now_ns >= self.alarm_ns:
                 self.alarm_ns = None
                 self.quiescent = 0
-                self.raise_irq(0)
+                self.raise_irq(IRQ_TIMER)
+
+        def entropy_get(ptr, length):
+            if self.true_random:
+                data = os.urandom(length)
+            else:
+                data = bytes(self.next_random_byte() for _ in range(length))
+            self.mem.write(self.store, data, ptr)
+
+        def gpio_out(port, values):
+            # Nothing here draws anything, so an output change is a trace
+            # line. It still has to be implemented: the module imports it,
+            # and this host refuses to load a module whose imports it does
+            # not know.
+            if self.trace_gpio:
+                sys.stderr.write(f"[gpio] port{port} out=0x{values & 0xFFFFFFFF:x}\n")
+
+        def gpio_in(port):
+            # Pins idle high, which is what a pull-up gives them and what
+            # gpio_emul starts from. Nothing moves them: this host has no
+            # one to press a button.
+            return 0xFFFFFFFF
 
         def fatal(reason, arg):
             sys.stderr.write(f"\n*** fatal: reason {reason} (arg {arg}) ***\n")
@@ -114,6 +161,9 @@ class Host:
             "set_alarm_ns": (set_alarm_ns, [I64], []),
             "wait_for_event": (wait_for_event, [], []),
             "switch_to": (switch_to, [], []),
+            "entropy_get": (entropy_get, [I32, I32], []),
+            "gpio_out": (gpio_out, [I32, I32], []),
+            "gpio_in": (gpio_in, [I32], [I32]),
             "safepoint_tick": (safepoint_tick, [], []),
             "fatal": (fatal, [I32, I32], []),
             "uart_poll_out": (uart_poll_out, [I32], []),
@@ -156,7 +206,7 @@ class Host:
             return False
         self.now_ns = max(self.now_ns, self.alarm_ns)
         self.alarm_ns = None
-        self.raise_irq(0)
+        self.raise_irq(IRQ_TIMER)
         return True
 
     def step(self) -> bool:
@@ -203,6 +253,19 @@ class Host:
             self.current = known
         return True
 
+    def next_random_byte(self) -> int:
+        """xorshift32, the same one host/core.mjs uses."""
+        x = self.rand_state
+        x ^= (x << 13) & 0xFFFFFFFF
+        x ^= x >> 17
+        x ^= (x << 5) & 0xFFFFFFFF
+        self.rand_state = x & 0xFFFFFFFF
+        return self.rand_state & 0xFF
+
+    def check_deadline(self):
+        if self.now_ns > self.max_time_ns:
+            raise GaveUp(f"gave up after {self.max_time_ns // 1_000_000} ms of guest time")
+
     def run(self) -> int:
         self.block_addr = self.call("z_wasm_switch_block_addr")
         self.irq_addr = self.call("z_wasm_irq_pending_addr")
@@ -210,12 +273,13 @@ class Host:
         self.current = {"entry": "z_wasm_boot", "arg": 0, "buf": self.scratch,
                         "sp": None, "fresh": True}
         while not self.done:
-            if self.now_ns > self.max_time_ns:
-                sys.stderr.write(f"\n*** gave up after {self.max_time_ns // 1_000_000} ms "
-                                 "of guest time ***\n")
+            try:
+                self.check_deadline()
+                if not self.step():
+                    break
+            except GaveUp as gave_up:
+                sys.stderr.write(f"\n*** {gave_up} ***\n")
                 return 2
-            if not self.step():
-                break
         return self.exit_code
 
 
@@ -224,8 +288,15 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("wasm", type=Path)
     ap.add_argument("--max-time", type=int, default=10_000, help="guest time limit in ms")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="seed the entropy generator")
+    ap.add_argument("--true-random", action="store_true",
+                    help="take entropy from the platform, ending reproducibility")
+    ap.add_argument("--trace-gpio", action="store_true",
+                    help="log every GPIO output change to stderr")
     args = ap.parse_args()
-    return Host(args.wasm, args.max_time).run()
+    return Host(args.wasm, args.max_time, args.trace_gpio,
+                args.seed, args.true_random).run()
 
 
 if __name__ == "__main__":

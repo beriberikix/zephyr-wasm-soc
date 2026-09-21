@@ -10,3 +10,4 @@ zephyr_library_sources(
   switch.c
   thread.c
 )
+zephyr_library_sources_ifdef(CONFIG_WASM_INSPECT inspect.c)

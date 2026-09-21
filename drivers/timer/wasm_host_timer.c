@@ -19,6 +19,12 @@
 #define NSEC_PER_TICK (NSEC_PER_SEC / CONFIG_SYS_CLOCK_TICKS_PER_SEC)
 #define TIMER_IRQ     0
 
+/* Which line the system timer arrives on. Every timer driver defines this and
+ * tests/kernel/context will not link without it. Line 0 by convention here;
+ * there is no interrupt controller and no devicetree interrupt property yet,
+ * so the number is spelled out rather than taken from DT_INST_IRQN. */
+const int32_t z_sys_timer_irq_for_test = TIMER_IRQ;
+
 static int64_t last_announced_ns;
 
 

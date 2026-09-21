@@ -40,6 +40,35 @@ WASM_HOST_IMPORT(switch_to) void wasm_host_switch_to(void);
 WASM_HOST_IMPORT(uart_poll_out) void wasm_host_uart_poll_out(int32_t c);
 WASM_HOST_IMPORT(uart_poll_in) int32_t wasm_host_uart_poll_in(void);
 
+/* GPIO, as the host sees it.
+ *
+ * The pins themselves live in Zephyr's own emulated GPIO controller, which
+ * knows about direction, pull, edges and callbacks. These two imports are the
+ * whole of what crosses to the host: what the outputs are now, and what the
+ * inputs are now. A page draws the first and drives the second.
+ *
+ * gpio_out is called whenever an output changes, which the bridge learns
+ * through an ordinary GPIO callback. gpio_in is read when the host raises
+ * WASM_IRQ_GPIO to say an input moved; see wasm_irq_lines.h. Neither is a
+ * suspension point, so neither goes in the Asyncify import list.
+ *
+ * Levels are physical, not logical: bit N is the voltage on pin N, so an
+ * active-low button reads 1 when it is not pressed.
+ */
+WASM_HOST_IMPORT(gpio_out) void wasm_host_gpio_out(int32_t port, uint32_t values);
+WASM_HOST_IMPORT(gpio_in) uint32_t wasm_host_gpio_in(int32_t port);
+
+/* Entropy. Fills the buffer; cannot fail.
+ *
+ * What it fills it with is host policy rather than ABI. Both hosts use the
+ * same seeded generator by default, because CI requires two runs of a build
+ * to be byte-identical and a real random source would end that. A flag opts
+ * into the platform's own randomness for anyone who wants it.
+ *
+ * Not a suspension point.
+ */
+WASM_HOST_IMPORT(entropy_get) void wasm_host_entropy_get(uint8_t *buf, int32_t len);
+
 /* Progress report from a safepoint.
  *
  * Under virtual time the clock only moves when the kernel idles, so a thread
@@ -58,6 +87,31 @@ WASM_HOST_IMPORT(safepoint_tick) void wasm_host_safepoint_tick(void);
  * to report and no way back in.
  */
 WASM_HOST_IMPORT(fatal) void wasm_host_fatal(int32_t reason, int32_t arg);
+
+/*
+ * What the host is told about a thread.
+ *
+ * The host is deliberately ignorant of Zephyr's struct layout -- it reads
+ * linear memory and a handful of exported addresses and nothing else -- and
+ * that is worth keeping, because a host that knew the offsets would go wrong
+ * quietly whenever a struct moved. So inspection does not hand over offsets;
+ * it hands over this, which the guest fills in and both sides agree on.
+ *
+ * Laid out for a host reading it as a Uint32Array: every field is four bytes
+ * and the array is a plain stride. Adding a field means adding it here and
+ * in the host's reader, which is the usual cost of an ABI.
+ */
+struct wasm_thread_info {
+	uint32_t thread;      /* the k_thread *, as an identifier */
+	uint32_t state;       /* _THREAD_* bits, as the kernel holds them */
+	uint32_t is_current;  /* 1 for the thread holding the CPU */
+	uint32_t name;        /* pointer to a NUL-terminated name, or 0 */
+	int32_t prio;
+	uint32_t stack_base;
+	uint32_t stack_size;
+	uint32_t sp;          /* the saved shadow-stack pointer */
+	uint32_t asyncify_buf;
+};
 
 /*
  * The switch request block.

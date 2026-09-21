@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  Entropy from the host.
+
+  Not a real entropy source and not meant to be one. The default generator is
+  seeded and produces the same sequence every run, because a run of this port
+  is required to be reproducible; the host has a flag for real randomness.
+
+compatible: "wasm,host-entropy"
+
+include: base.yaml

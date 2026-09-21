@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  Carries Zephyr's emulated GPIO ports across to the host.
+
+  The ports themselves are zephyr,gpio-emul, which is upstream and knows about
+  pins, direction, pull, edges and callbacks. This node is only the bridge:
+  it reports output changes to the host and pushes the host's input changes
+  back in, so that a page can draw the LEDs and press the buttons.
+
+compatible: "wasm,host-gpio-bridge"
+
+include: base.yaml
+
+properties:
+  ports:
+    type: phandles
+    required: true
+    description: |
+      The emulated GPIO ports to bridge, in the order the host indexes them.
+
+  interrupts:
+    required: true

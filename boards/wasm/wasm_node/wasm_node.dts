@@ -8,16 +8,81 @@
 
 /dts-v1/;
 
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/arch/wasm/wasm_irq_lines.h>
+
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
 	model = "WebAssembly on a Node.js host";
 	compatible = "wasm,node";
+	interrupt-parent = <&host_intc>;
 
 	chosen {
 		zephyr,console = &host_uart;
 		zephyr,shell-uart = &host_uart;
 		zephyr,sram = &ram0;
+		zephyr,entropy = &host_rng;
+	};
+
+	aliases {
+		led0 = &led0;
+		led1 = &led1;
+		led2 = &led2;
+		led3 = &led3;
+		sw0 = &sw0;
+		sw1 = &sw1;
+	};
+
+	/*
+	 * A board's worth of LEDs and buttons, drawn by the page. The pins are
+	 * on the emulated controller below; host/web/index.html mirrors this
+	 * numbering and says so.
+	 */
+	leds {
+		compatible = "gpio-leds";
+
+		led0: led_0 {
+			gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+			label = "LED 0";
+		};
+
+		led1: led_1 {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "LED 1";
+		};
+
+		led2: led_2 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "LED 2";
+		};
+
+		led3: led_3 {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "LED 3";
+		};
+	};
+
+	/*
+	 * Active low with a pull-up, which is how a button is usually wired and
+	 * so what the samples expect. The host therefore holds an unpressed
+	 * button at 1, and the bridge only forwards changes.
+	 */
+	buttons {
+		compatible = "gpio-keys";
+
+		sw0: button_0 {
+			gpios = <&gpio0 4 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Button 0";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+
+		sw1: button_1 {
+			gpios = <&gpio0 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Button 1";
+			zephyr,code = <INPUT_KEY_1>;
+		};
 	};
 
 	cpus {
@@ -62,6 +127,49 @@
 		host_timer: timer {
 			compatible = "wasm,host-timer";
 			status = "okay";
+			interrupts = <WASM_IRQ_TIMER>;
+		};
+
+		/*
+		 * Not a controller to configure: the host sets a bit in a word
+		 * and the guest takes it at its next safepoint. The node exists
+		 * so drivers can name their line here rather than in C.
+		 */
+		host_intc: interrupt-controller {
+			compatible = "wasm,host-intc";
+			status = "okay";
+			interrupt-controller;
+			#interrupt-cells = <1>;
+		};
+
+		/*
+		 * Upstream's emulated GPIO, which already knows about pins,
+		 * direction, pull, edges and callbacks. Using it rather than
+		 * writing a driver means a learner runs the same GPIO code
+		 * every other emulated Zephyr target runs.
+		 */
+		gpio0: gpio_emul {
+			compatible = "zephyr,gpio-emul";
+			status = "okay";
+			rising-edge;
+			falling-edge;
+			high-level;
+			low-level;
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <8>;
+		};
+
+		host_rng: rng {
+			compatible = "wasm,host-entropy";
+			status = "okay";
+		};
+
+		host_gpio: gpio-bridge {
+			compatible = "wasm,host-gpio-bridge";
+			status = "okay";
+			ports = <&gpio0>;
+			interrupts = <WASM_IRQ_GPIO>;
 		};
 	};
 };

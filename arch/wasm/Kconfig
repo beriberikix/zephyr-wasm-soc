@@ -93,3 +93,25 @@ config WASM_IRQ_LINES
 endmenu
 
 endif # WASM
+
+config WASM_INSPECT
+	bool "Let the host ask about the kernel's threads"
+	default y
+	select THREAD_MONITOR
+	select THREAD_NAME
+	select THREAD_STACK_INFO
+	help
+	  Exports a walk of the kernel's thread list in a shape the host can
+	  read, so a page can show which threads exist and which one holds the
+	  CPU. The host learns no struct offsets: it asks and is answered.
+
+	  The cost is the three options above, which the kernel would not
+	  otherwise carry.
+
+config WASM_INSPECT_STACK_SIZE
+	int "Stack for the inspection walk"
+	default 1024
+	depends on WASM_INSPECT
+	help
+	  The walk runs on a stack of its own rather than spending the headroom
+	  of whichever thread happens to be suspended when the host asks.

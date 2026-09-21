@@ -20,6 +20,7 @@ import { Host } from './core.mjs';
 let pushInput = null;      // set by the core once a run starts
 let interrupt = null;
 let stopRequested = false;
+let host = null;           // the running Host, so buttons can reach it
 
 const browserPlatform = {
   async loadModule(url) {
@@ -60,10 +61,46 @@ const browserPlatform = {
 
   yieldToEventLoop: (hasInput) =>
     new Promise((resolve) => setTimeout(resolve, hasInput ? 0 : 1)),
+
+  /* Used only for pacing. A macrotask, so queued messages -- a button press,
+   * a change of speed -- are delivered while the host waits. */
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+
+  /* An output pin moved. The page draws it. */
+  gpioOut(port, values) {
+    self.postMessage({ type: 'gpio', port, values });
+  },
+
+  /* The kernel's state, as often as the core decides is worth sending. */
+  onState(state) {
+    self.postMessage({ type: 'state', state });
+  },
 };
 
 self.onmessage = async (event) => {
   const msg = event.data;
+
+  if (msg.type === 'pause') { host?.pause(); return; }
+  if (msg.type === 'resume') { host?.resume(); return; }
+  if (msg.type === 'step') { host?.stepOnce(msg.count ?? 1); return; }
+  if (msg.type === 'back') { host?.stepBack(); return; }
+
+  if (msg.type === 'speed') {
+    /* Applies to the next wait, which is at most a few hundred milliseconds
+     * away, so the slider feels immediate without anything being
+     * interrupted. */
+    if (host) host.opts.timeScale = msg.timeScale;
+    return;
+  }
+
+  if (msg.type === 'gpio-in') {
+    /* Safe at any time: the host records the line and applies it at the top
+     * of its loop, so nothing here writes guest memory. A message is only
+     * delivered while the driver loop is yielded, which is when the guest is
+     * idle and fully unwound. */
+    host?.setGpioInput(msg.port ?? 0, msg.pin, msg.level);
+    return;
+  }
 
   if (msg.type === 'input') {
     for (const b of msg.bytes) {
@@ -90,18 +127,22 @@ self.onmessage = async (event) => {
     traceSwitches: false,
     maxTimeMs: msg.maxTimeMs ?? 10_000,
     interactive: !!msg.interactive,
+    clock: msg.clock ?? 'virtual',
+    timeScale: msg.timeScale ?? 1,
     wasm: msg.url,
   };
 
   try {
-    const host = new Host(browserPlatform, opts);
+    host = new Host(browserPlatform, opts);
     /* Stop has to reach a run that is already going, and the only safe moment
      * is between suspensions, which is where the core checks `done`. */
     const tick = setInterval(() => { if (stopRequested) host.done = true; }, 50);
     const code = await host.run();
     clearInterval(tick);
+    host = null;
     self.postMessage({ type: 'done', code });
   } catch (err) {
+    host = null;
     self.postMessage({ type: 'err', text: `\n*** harness error: ${err.message} ***\n` });
     self.postMessage({ type: 'done', code: 1 });
   }
