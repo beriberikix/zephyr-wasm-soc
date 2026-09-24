@@ -142,6 +142,28 @@
       "expect": ["System heap sample", "allocated 156, free 36, max allocated 156, heap size 256"]
     },
     {
+      "name": "metairq",
+      "app": "zephyr/samples/kernel/metairq_dispatch",
+      "kind": "sample",
+      "title": "meta-IRQ dispatch",
+      "upstream": true,
+      "max_time_ms": 30000,
+      "expect": ["Starting Thread0 at priority -2", "MetaIRQ Test Complete"],
+      "deterministic": true
+    },
+    {
+      "name": "hsm",
+      "app": "zephyr/samples/subsys/smf/hsm_psicc2",
+      "kind": "sample",
+      "title": "state machine (type events into the shell)",
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "expect": ["State Machine Framework Demo", "hsm_psicc2_thread: s211_entry"]
+    },
+    {
       "name": "shell",
       "app": "zephyr/samples/subsys/shell/shell_module",
       "kind": "sample",

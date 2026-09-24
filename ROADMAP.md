@@ -9,23 +9,80 @@ Where this disagrees with the issue, this file is the newer document.
 
 ## The measure
 
-**Upstream Zephyr samples that run unmodified.** Score today: **8**
-(`hello_world`, `synchronization`, `shell_module`, `philosophers`,
-`subsys/logging/logger`, `basic/sys_heap`, `basic/blinky`, `basic/button`).
+**Upstream Zephyr samples that pass their own acceptance criterion.** Score
+today: **31**, of which 28 check more than a start-up banner.
 
-The last three were not new work. Logging was on this list as a phase 0
-prerequisite on the assumption it would need some; it runs as it is, hexdumps
-and instance-level filtering and all, and its three section families come
-through the shim untouched. `philosophers` is the sample the issue wants
-phase 2 to visualise and it already runs. `basic/sys_heap` is the only thing
-that has ever exercised the heap successfully, which is worth holding next to
-`mem_heap/k_heap_api`, which panics.
+The number is computed, not claimed. `scripts/check_samples.py` reads every
+`tests.yaml` under `zephyr/samples`, keeps the entries that could plausibly run
+on a board with no hardware, builds each one exactly as twister would (with
+the entry's own `extra_args` and `extra_configs`), runs it, and judges the
+output by the entry's own `harness_config` using twister's rules: a console
+regex, a ztest verdict, or a scripted shell session. An application counts once
+if any of its entries passes. `scripts/samples.json` holds the result for every
+entry, with a cause for every one that does not pass, and `scripts/apps.py score`
+reads the score from there plus the curated demo in `scripts/apps.json`, which
+adds `basic/blinky` and `basic/button`: upstream only builds those two, because
+twister has no way to watch an LED or press a button.
 
-Two more were tried and are not counted. `basic/minimal` runs and prints
-nothing by design, so there is no acceptance criterion to give it and
-counting it would only make the number less meaningful. `basic/hash_map`
-spins without ever suspending and is given up on; it is the first sample
-found that does not work for a reason nobody has looked into yet.
+What was tried, out of 650 upstream applications and 1268 entries:
+
+| | entries | applications |
+|---|---:|---:|
+| Plausible on this board | 229 | 143 |
+| Pass upstream's own criterion | 44 | 29 |
+| Build, but upstream only builds them | 5 | |
+| Run and fail their criterion | 6 | |
+| Do not finish | 30 | |
+| Do not build | 144 | |
+
+The other 1039 entries were not tried, for reasons recorded in the summary of
+`samples.json`: 655 name only hardware platforms, 112 depend on a feature this
+board does not declare, and 267 use a harness that needs a peer or a person
+(networking, Bluetooth, sensors, keyboards and so on).
+
+Three passes are weak and are marked `boot-only` in the record, because
+upstream's regex only checks that they started:
+`code_relocation_nocopy` ("Hello World!"), `drivers/smbus` and
+`drivers/display` (their banners). The display sample passing says nothing
+about drawing anything.
+
+Why the rest do not pass, the largest groups first (the long tail is in
+`samples.json`):
+
+| Cause | entries | what it is |
+|---|---:|---|
+| No such device | 36 | the sample wants a devicetree node this board has no driver for (`__device_dts_ord_N`) |
+| Missing module | 19 | LVGL (13 entries, counting its Kconfig), FatFs, TFLite, PSA |
+| Iterable-section ordering | 17 | 7 zbus applications; a port bug, below |
+| Kconfig refuses | 16 | options the board cannot satisfy, mostly hardware drivers |
+| No C library headers | 16 | C++, POSIX, `syst` and the benchmarks need a libc with `string.h`; only the minimal one is here |
+| Gave up | 8 | runs and never suspends: `hash_map` with newlib, four sensor samples, `flash_shell`, `tracing.gpio` |
+| Needs a crypto driver | 7 | "You need to enable one crypto device" |
+| Link | 7 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand) |
+| Fails its regex | 6 | codec, `uart async_api`, PM latency, settings on NVS, the two TF-M storage samples |
+| Wasm's indirect-call check | 4 | 2 applications; D8b, below |
+| Trap | 1 | `sensing/simple`, an out-of-bounds access |
+
+**The D8b ceiling is small.** Wasm type-checks indirect calls, and before the
+sweep nobody knew what that cost. It costs two applications: `basic/threads`,
+whose thread entries are declared `void f(void)`, and
+`cmsis_rtos_v1/philosophers`, where the bug is not in the sample at all but in
+Zephyr's `zephyr_thread_wrapper`, which calls a `void (*)(void const *)`
+through a `void *(*)(void *)`. Both are one-line fixes upstream and both are
+undefined behaviour on every target.
+
+**Section ordering is a bigger problem than D8b.** `_zbus_init` assumes each
+channel's observers sit next to each other in the `zbus_channel_observation`
+section. Upstream's linker scripts guarantee that with `SORT_BY_NAME`; the
+section shim in patch 0004 renames the sections and loses the ordering. Seven
+zbus applications fail on that alone. It is the most valuable single port fix
+the sweep found, and it is a design change to the shim rather than a patch to
+zbus, so it is recorded here and not attempted in the same change as the sweep.
+
+The sweep runs weekly in CI (`.github/workflows/samples.yml`), re-running
+everything recorded as working and failing if any of it got worse. Dispatching
+that workflow with `everything` re-runs all 229 entries, which is how an
+improvement gets noticed.
 
 The issue proposes the measure but nothing counts it. That is the first thing to
 fix, because a number nobody computes drifts within a week:
@@ -74,7 +131,8 @@ the kernel, so this comes first.
       `tickless/tickless_concept` all fail on how long something took, which
       is one question wearing three hats: a slice ends at the next safepoint
       rather than on the tick.
-- [ ] **The manifest and the score**, as above.
+- [x] **The manifest and the score**, as above. The score is now the
+      samples sweep; see the measure.
 - [ ] **Twister.** It builds for this board but cannot find the module's SoC,
       because it takes a `--board-root` and no `--soc-root` and relies on
       module discovery, which finds nothing when the module is the manifest
@@ -242,7 +300,13 @@ scripted, or off by default.
 type-checks indirect calls, so upstream code that casts a thread entry to
 `k_thread_entry_t` traps where every other target shrugs. That is not
 fixable here and not worth working around: the honest answer is to fix those
-entry points upstream, where the cast is undefined behaviour anyway.
+entry points upstream, where the cast is undefined behaviour anyway. The
+samples sweep measured the edge: two upstream applications.
+
+**Iterable sections have an order, and some code depends on it.** The shim
+keeps every entry of a family but not the `SORT_BY_NAME` order upstream's
+linker scripts give it. Most consumers do not care. zbus does, and seven of
+its samples fail for it.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk and it is the right one. Two of its failure modes

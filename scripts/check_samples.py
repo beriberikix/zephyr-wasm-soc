@@ -243,8 +243,13 @@ def shell_verdict(commands: list[dict], out: str) -> bool:
 
 
 def run_cause(out: str) -> str:
+    # V8 raises the same message for a call through a null pointer as for a
+    # call with the wrong signature, so the trap alone cannot say which. The
+    # first sweep tagged nine apps "d8b" on this basis and seven of them were
+    # zbus reading garbage out of a section this port had put out of order.
+    # What it was is decided by looking, and recorded in the note.
     if sweeplib.SIGNATURE_TRAP in out:
-        return "d8b"
+        return "indirect-call"
     if "RuntimeError" in out:
         return "trap"
     if "*** fatal" in out:
@@ -402,7 +407,10 @@ def main() -> int:
 
     chosen = record.get("samples", [])
     if args.match:
-        chosen = [s for s in chosen if any(s["path"].startswith(m) for m in args.match)]
+        # Recorded paths start at the west topdir; let "samples/kernel" mean
+        # "zephyr/samples/kernel", which is what anyone would type.
+        prefixes = [m if m.startswith("zephyr/") else f"zephyr/{m}" for m in args.match]
+        chosen = [s for s in chosen if s["path"].startswith(tuple(prefixes))]
     if args.only:
         want = set(args.only.split(","))
         chosen = [s for s in chosen if s["path"] in want or s["entry"] in want]

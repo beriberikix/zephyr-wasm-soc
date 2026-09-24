@@ -2,8 +2,9 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 3 upstream
-samples and `scripts/apps.py score` is what counts it.
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 31 upstream
+samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
+is what counts it.
 
 
 ### Tick 30 — in a browser
@@ -467,4 +468,49 @@ The harness now builds one at a time by default. A regression harness that
 reports failures it caused itself is worse than a slow one, and the
 distinction matters more here than elsewhere: the whole value of
 `kernel_tests.json` is that a line moving means something.
+
+
+### Tick 43 — every sample that could run, tried
+
+The score was 8 because nobody had tried the others. Now all have been.
+Upstream declares its samples in `tests.yaml`: 650 applications, 1268
+entries. Of those, 229 entries in 143 applications could plausibly run here;
+the rest name only hardware platforms, need a feature the board lacks, or use
+a harness that needs a peer. `scripts/check_samples.py` builds each one with
+the entry's own arguments and judges it by twister's own rules, so the score
+is upstream's opinion, not this port's.
+
+29 applications pass. With blinky and button, which upstream only builds,
+the score is 31.
+
+Five things this tick got wrong on the way, all corrected:
+
+- The first build classifier read the whole log, so a missing `CONFIG_`
+  symbol came out as a devicetree failure because some devicetree line
+  appeared earlier. It now classifies by the error line and only falls back
+  to the log for Kconfig and missing modules.
+- The first sweep rewrote `samples.json` inside the repository while it ran,
+  so every push cancelled CI. `--record` now takes a path outside it.
+- ccache did not make the sweep faster. Zephyr refuses anything below 4.12
+  unless told otherwise and Ubuntu has 4.9, so it was never used; what got
+  faster was builds that fail in the first second.
+- Every `null function or function signature mismatch` trap was tagged
+  `d8b`, and seven of them were not. V8 says the same thing for a null
+  pointer as for a wrong signature. The zbus ones are null: `_zbus_init`
+  expects each channel's observers to be contiguous, upstream's linker
+  script sorts them by name to make it so, and patch 0004's shim does not.
+  The automatic tag is now `indirect-call`, and the notes in the record say
+  which ones are really D8b. Two applications are.
+- `drivers/display` passing does not mean the display works. Its regex is
+  the banner. It and two others are marked `boot-only`.
+
+Blinky has no candidate entry at all: its harness is `led`, a fixture label
+twister has no class for, so upstream never runs it. Button is `build_only`.
+That is why the score is the union of the sweep and `apps.json`.
+
+Two passing samples are worth watching and are now on the page:
+`kernel/metairq_dispatch`, which prints per-thread dispatch latency and
+finishes, deterministically and identically on both engines; and
+`smf/hsm_psicc2`, a hierarchical state machine driven from a shell, so
+someone can type events at it and watch the transitions.
 

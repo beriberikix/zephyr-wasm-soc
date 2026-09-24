@@ -38,6 +38,13 @@ log, including what did not work. `BRIEF.md` is the original task.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
 * `samples/subsys/shell/shell_module` runs interactively over a polled UART.
+* 29 upstream samples pass their own twister criterion, unmodified, out of 143
+  that could plausibly run on a board with no hardware. Among them the
+  meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
+  samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
+  which is on the page as something to type events into.
+  `scripts/samples.json` records every candidate tried, with a cause for each
+  one that does not pass.
 
 Not done: twister builds for this board but cannot find the module's SoC. It
 takes a `--board-root` and no `--soc-root`, relying on module discovery, and
@@ -294,7 +301,16 @@ node zephyr-wasm/scripts/check_site.mjs        # every build, under Node
 node zephyr-wasm/scripts/check_browser.mjs     # every build, in Chromium
 zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
 python3 zephyr-wasm/scripts/check_kernel.py    # Zephyr's kernel suites
+python3 zephyr-wasm/scripts/check_samples.py --recorded passes  # upstream samples
 ```
+
+`check_samples.py` builds each upstream sample entry the way twister would and
+judges it by the entry's own `harness_config`. It compares against
+`scripts/samples.json` and exits non-zero on anything that did worse.
+`--match samples/kernel` narrows it to one area; `--discover` regenerates the
+candidate list from upstream's `tests.yaml` files. All 229 candidates take a
+few hours, so CI runs them weekly in `.github/workflows/samples.yml` rather
+than on every push.
 
 The browser check needs Playwright (`npm install --no-save playwright && npx
 playwright install chromium`); nothing else here does, which is why it is not
@@ -338,8 +354,9 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 `ROADMAP.md` is the plan underneath it, including the order the work is done in
 and what the issue did not account for.
 
-Progress is measured in upstream Zephyr samples that run unmodified, which is
-eight today. `scripts/apps.py score` is what counts it.
+Progress is measured in upstream Zephyr samples that pass their own
+acceptance criterion unmodified, which is 31 today. `scripts/apps.py score`
+is what counts it, from the samples sweep.
 
 ## Feedback
 
