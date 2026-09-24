@@ -8,14 +8,15 @@ equivalent for:
   * SYS_INIT entries, which must form one contiguous block ordered by level and
     then priority, because z_sys_init_run_level() walks from one level's start
     symbol to the next one's.
-  * iterable sections, which need only a start and an end symbol.
+  * iterable sections, which the ELF scripts collect with SORT_BY_NAME, so
+    that each family is one contiguous list in name order. Some lists depend
+    on that order: zbus finds a channel's observers by it.
 
-wasm-ld does synthesise __start_/__stop_ for sections whose names are C
-identifiers, but it never orders segments by name and Zephyr's section names
-contain dots, so neither half comes for free (see spike A).
+wasm-ld never orders segments by name (see spike A), so neither half comes for
+free.
 
-This script reads the wasm objects, recovers each entry's level and priority
-from the segment name Zephyr already encodes, and writes a C file that:
+For init entries this script recovers each entry's level and priority from the
+segment name Zephyr already encodes, and writes a C file that:
 
   * defines the six per-level arrays adjacently in one translation unit, which
     lands them contiguous and in order, and
@@ -24,6 +25,17 @@ from the segment name Zephyr already encodes, and writes a C file that:
 Copying is safe because nothing holds a pointer to an init entry. The arrays
 are sized here, at build time, so the copy is a fixed sequence of assignments
 with no allocation and no sorting at run time.
+
+Iterable entries cannot be copied, because plenty of code holds pointers to
+them. They are ordered where they are instead. Patch 0004 names each entry's
+section z_iter_<family>.<key>, with the key the ELF name sorts on. wasm-ld
+makes one output segment per section name, in the order it first sees each
+name, and lays them out one after another. So a file linked ahead of
+everything else that mentions every family's names in sorted order decides the
+layout: a zero-length start marker, a zero-length placeholder per key, and a
+zero-length stop marker. Every real entry then lands in its key's segment,
+between the markers, in upstream's order. scripts/check_sections_wasm.py reads
+the link map afterwards and fails the build if any entry did not.
 """
 from __future__ import annotations
 
@@ -42,44 +54,22 @@ INIT_SEG_RE = re.compile(r"^\.z_init_(?P<level>[A-Z_0-9]+)_P_(?P<prio>\d+)_SUB_(
 SYM_RE = re.compile(r"^\s+-\s+\d+:\s+D\s+<(?P<name>[^>]+)>\s+segment=(?P<seg>\d+)")
 SEG_RE = re.compile(r"^\s+-\s+(?P<idx>\d+):\s+(?P<name>\S+)\s")
 
-# The one list a new subsystem may have to be added to.
-#
-# Almost every iterable family is handled without naming it here: patch 0004
-# renames the section to a C identifier, wasm-ld synthesises its bounds, and
-# render_bounds() below covers a family that is referenced but never defined.
-#
-# An anchor is for the case that neither covers. These families are
-# pay-per-use, so their entries live only in objects the link may never pull
-# in: the section can be defined in some object of the tree and still be
-# absent from the image. A weak fallback cannot fix that, because it would
-# also suppress wasm-ld's real bounds wherever the section does exist. An
-# anchor member is unambiguous — it keeps the section present and does
-# nothing. Add a family here only after seeing the link fail on its bounds.
-#
-# Section base name -> element type. The section name follows
-# TYPE_SECTION_ITERABLE in iterable_sections.h as patch 0004 rewrites it.
-ANCHOR_FAMILIES = (
-    ("k_kernel_init_pre_entry", "struct k_kernel_init_pre_entry"),
-    ("k_kernel_init_post_entry", "struct k_kernel_init_post_entry"),
-)
+ITER_REF_RE = re.compile(r"__(?:start|stop)_z_iter_(\w+)")
+# A line of the linking section's segment info:  - 3: z_iter_k_msgq.my_q_ p2align=2
+ITER_SEG_RE = re.compile(r"^\s+-\s+\d+:\s+z_iter_(\w+)\.(\S+)\s+p2align=(\d+)", re.M)
 
 
-ITER_REF_RE = re.compile(r"__(?:start|stop)_(z_iter_\w+)")
-ITER_DEF_RE = re.compile(r"^\s+-\s+\d+:\s+(z_iter_\w+)\s", re.M)
-
-
-def scan_iter_sections(objdump: str, path: Path) -> tuple[set[str], set[str]]:
-    """Return (sections referenced, sections actually defined) for one object.
-
-    The distinction decides whether a family needs a fallback definition. A
-    weak fallback for a section that does exist would be worse than useless:
-    it gives wasm-ld a definition and so suppresses the synthesised bounds,
-    leaving the list permanently empty.
-    """
+def scan_iter_sections(objdump: str, path: Path) -> tuple[set[str], dict[str, tuple[set[str], int]]]:
+    """Return (families referenced, {family: (keys, largest p2align)}) for one object."""
     proc = subprocess.run([objdump, "-x", str(path)], capture_output=True, text=True)
     if proc.returncode != 0:
-        return set(), set()
-    return set(ITER_REF_RE.findall(proc.stdout)), set(ITER_DEF_RE.findall(proc.stdout))
+        return set(), {}
+    defs: dict[str, tuple[set[str], int]] = {}
+    for fam, key, p2 in ITER_SEG_RE.findall(proc.stdout):
+        keys, align = defs.get(fam, (set(), 0))
+        keys.add(key)
+        defs[fam] = (keys, max(align, int(p2)))
+    return set(ITER_REF_RE.findall(proc.stdout)), defs
 
 
 def scan_object(objdump: str, path: Path) -> list[tuple[str, str]]:
@@ -114,40 +104,55 @@ def scan_object(objdump: str, path: Path) -> list[tuple[str, str]]:
 
 def collect(objdump: str, paths: list[Path]):
     init_entries = []   # (level, prio, sub, symbol)
-    iter_refs: set[str] = set()
-    iter_defs: set[str] = set()
+    families: dict[str, tuple[set[str], int]] = {}
     for path in paths:
         refs, defs = scan_iter_sections(objdump, path)
-        iter_refs |= refs
-        iter_defs |= defs
+        # A family that is only referenced still needs its bounds: many lists
+        # are pay-per-use, and one with no entries is the empty list.
+        for fam in refs:
+            families.setdefault(fam, (set(), 0))
+        for fam, (keys, align) in defs.items():
+            have, a = families.get(fam, (set(), 0))
+            families[fam] = (have | keys, max(a, align))
         for name, seg in scan_object(objdump, path):
             m = INIT_SEG_RE.match(seg)
             if m and m.group("level") in LEVELS:
                 init_entries.append((m.group("level"), int(m.group("prio")),
                                      int(m.group("sub")), name))
-    # Only a family that is referenced and never defined needs a fallback.
-    return init_entries, sorted(iter_refs - iter_defs)
+    return init_entries, families
 
 
-def render_bounds(iter_refs) -> str:
-    """The weak bound fallbacks, in a file of their own.
+# The stop marker's section. Any name works, because the layout follows the
+# order names are first seen, not the names; this one reads as "after
+# everything" and cannot be a key, since keys end in "_".
+STOP = "~"
 
-    These cannot live beside the init arrays: that file includes Zephyr
-    headers, which declare some of the same symbols with real element types,
-    and a second declaration as char[0] is a conflict.
 
-    Many of these lists are deliberately pay-per-use, so a build that never
-    uses mailboxes has no mailbox entry and the section does not exist at all.
-    A linker script would yield an empty range; wasm-ld instead fails on a
-    reference to the bounds of a section nothing defines. A weak, zero-length
-    definition covers that: where the section really exists wasm-ld's own
-    strong symbols win, and where it does not, start and end land at the same
-    address and the list reads as the empty list it is.
+def render_bounds(families) -> str:
+    """Every iterable family's layout, in a file linked ahead of everything.
+
+    This file cannot include Zephyr headers: they declare the same bound
+    symbols with real element types, and a second declaration as char[0] is a
+    conflict. Nothing here needs a type, only an address.
+
+    Keys sort bytewise, as SORT_BY_NAME compares the ELF section names: those
+    share a prefix up to the key, so their order is the keys' order. The
+    markers take the family's largest alignment, so the start cannot land on
+    padding the linker inserts before the first entry.
     """
     out = ["/* Generated by scripts/gen_sections_wasm.py. Do not edit. */", ""]
-    for sec in iter_refs:
-        out.append(f"__attribute__((weak, used)) char __start_{sec}[0];")
-        out.append(f"__attribute__((weak, used)) char __stop_{sec}[0];")
+    n = 0
+    for fam in sorted(families):
+        keys, p2align = families[fam]
+        align = 1 << p2align
+        out.append(f'__attribute__((section("z_iter_{fam}."), used, aligned({align}))) '
+                   f"char __start_z_iter_{fam}[0];")
+        for key in sorted(keys, key=lambda k: k.encode()):
+            out.append(f'__attribute__((section("z_iter_{fam}.{key}"), used)) '
+                       f"static char z_wasm_iter_{n}[0];")
+            n += 1
+        out.append(f'__attribute__((section("z_iter_{fam}.{STOP}"), used, aligned({align}))) '
+                   f"char __stop_z_iter_{fam}[0];")
     out.append("")
     return "\n".join(out)
 
@@ -196,12 +201,6 @@ def render(init_entries) -> str:
     out.append(" * level's address well defined. */")
     out.append("static int z_wasm_init_nop(void) { return 0; }")
     out.append("")
-    out.append("/* One anchor member per family in ANCHOR_FAMILIES, for the sections a")
-    out.append(" * weak bound fallback cannot cover. See the comment on that list. */")
-    out.append("static void z_wasm_anchor_fn(void) { }")
-    for key, ctype in ANCHOR_FAMILIES:
-        out.append(f'__attribute__((section("z_iter_{key}"), used))')
-        out.append(f"const {ctype} z_wasm_anchor_{key} = {{ .init_fn = z_wasm_anchor_fn }};")
     for level in LEVELS:
         # A level with no entries must be zero-length, so its start coincides
         # with the next level's. Rounding up to one leaves a zeroed entry in
@@ -263,11 +262,10 @@ def main() -> int:
         # exercises -- bitarray.c, timer.c, mutex.c -- and Zephyr has a source
         # of that name too, so extracting every archive into one directory
         # silently overwrote one with the other. Whichever lost the race had
-        # its iterable-section entries disappear from this scan, and a family
-        # that is defined only in the loser was then given a weak empty
-        # fallback, which suppresses wasm-ld's real bounds and leaves the list
-        # permanently empty. That is how a parameterised ztest suite ran once
-        # with a null parameter instead of seven times with its values.
+        # its iterable-section entries disappear from this scan, and its
+        # list came out empty. That is how a parameterised ztest suite ran
+        # once with a null parameter instead of seven times with its values.
+        # check_sections_wasm.py now catches that class of mistake at link.
         tmp = tempfile.mkdtemp(prefix="wasm_sections_")
         for n, archive in enumerate(sorted(args.scan_dir.rglob("*.a"))):
             into = Path(tmp) / f"{n:03d}-{archive.stem}"
@@ -280,14 +278,14 @@ def main() -> int:
         sys.stderr.write("gen_sections_wasm: no objects to scan\n")
         return 1
 
-    init_entries, iter_refs = collect(args.objdump, paths)
+    init_entries, families = collect(args.objdump, paths)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(render(init_entries))
     bounds = args.output.with_name("wasm_section_bounds.c")
-    bounds.write_text(render_bounds(iter_refs))
+    bounds.write_text(render_bounds(families))
     if tmp:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"gen_sections_wasm: {len(init_entries)} init entries, {len(iter_refs)} iterable "
+    print(f"gen_sections_wasm: {len(init_entries)} init entries, {len(families)} iterable "
           f"families, from {len(paths)} objects")
     return 0
 

@@ -1,21 +1,23 @@
 diff --git a/include/zephyr/sys/iterable_sections.h b/include/zephyr/sys/iterable_sections.h
-index 1e34749eff4..b66a6eb02d9 100644
+index 1e34749eff4..9575b5c6f21 100644
 --- a/include/zephyr/sys/iterable_sections.h
 +++ b/include/zephyr/sys/iterable_sections.h
-@@ -47,9 +47,21 @@ extern "C" {
+@@ -47,9 +47,23 @@ extern "C" {
   * @param[in]  secname type name of iterable section.
   * @param[in]  section_postfix postfix to use in section name
   */
 +#ifdef CONFIG_WASM
-+/* wasm-ld has no linker script, but it does synthesise __start_<s>/__stop_<s>
-+ * for a section whose name is a C identifier. Zephyr's names contain dots, so
-+ * on wasm the section is renamed to an identifier and the list bounds become
-+ * those synthesised symbols. Ordering is unaffected: these lists do not depend
-+ * on it. See DESIGN.md D6 in the zephyr-wasm module.
++/* wasm-ld has no linker script, so nothing sorts these sections by name the
++ * way the ELF scripts' SORT_BY_NAME does, and some lists depend on that order
++ * (zbus groups a channel's observers by it). On wasm the section is named
++ * z_iter_<secname>.<key>, with the same key the ELF name sorts on, and the
++ * module's section generator lays every family out in key order and defines
++ * the list bounds around it. See DESIGN.md D6 in the zephyr-wasm module.
 + */
 +#define TYPE_SECTION_ITERABLE(type, varname, secname, section_postfix) \
 +	Z_DECL_ALIGN(type) varname \
-+	__attribute__((section("z_iter_" #secname))) __used __noasan
++	__attribute__((section("z_iter_" #secname "." \
++			       STRINGIFY(_CONCAT(section_postfix, _))))) __used __noasan
 +#else
  #define TYPE_SECTION_ITERABLE(type, varname, secname, section_postfix) \
  	Z_DECL_ALIGN(type) varname \
@@ -24,7 +26,7 @@ index 1e34749eff4..b66a6eb02d9 100644
  
  /**
   * @brief iterable section start symbol for a generic type
-@@ -60,7 +72,11 @@ extern "C" {
+@@ -60,7 +74,11 @@ extern "C" {
   * would be TYPE_SECTION_START(foobar)
   *
   */
@@ -36,7 +38,7 @@ index 1e34749eff4..b66a6eb02d9 100644
  
  /**
   * @brief iterable section end symbol for a generic type
-@@ -70,7 +86,11 @@ extern "C" {
+@@ -70,7 +88,11 @@ extern "C" {
   * @param[in]  secname type name of iterable section.  For 'struct foobar' this
   * would be TYPE_SECTION_START(foobar)
   */

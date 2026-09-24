@@ -55,6 +55,16 @@ function(wasm_add_asyncify_step)
   set(wasm_out ${PROJECT_BINARY_DIR}/zephyr.wasm)
   set(linked $<TARGET_FILE:${logical_target_for_zephyr_elf}>)
 
+  # First, before anything is built on top of the link: every iterable list
+  # must be laid out in upstream's order and between its bounds, or it is
+  # silently shorter than it should be. See DESIGN.md D6.
+  add_custom_command(
+    TARGET ${logical_target_for_zephyr_elf} POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${WASM_MODULE_DIR}/scripts/check_sections_wasm.py
+            $<TARGET_FILE_DIR:${logical_target_for_zephyr_elf}>/${logical_target_for_zephyr_elf}.map
+    COMMENT "Checking the iterable-section layout"
+  )
+
   if(CONFIG_WASM_SAFEPOINTS)
     set(wat_in  ${PROJECT_BINARY_DIR}/zephyr.wat)
     set(wat_out ${PROJECT_BINARY_DIR}/zephyr.safepoints.wat)

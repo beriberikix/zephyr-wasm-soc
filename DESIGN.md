@@ -114,48 +114,76 @@ The host keeps a clamped deadline as a real deadline and flags it. A run ends
 only after the kernel wakes from a clamped deadline, does nothing, and asks
 for another, twice in a row. Waking from a real deadline counts as progress.
 
-### D6. Linker sections: renaming where order is free, generation where it is not
+### D6. Linker sections: generated order, checked at link
 
-Spike A (`spikes/a-sections/`) showed wasm-ld synthesises `__start_`/`__stop_`
-for C-identifier section names but never orders segments by name, has no
-`--defsym`, and errors out on a reference to a section nothing defines.
+Spike A (`spikes/a-sections/`) showed that wasm-ld:
+- synthesises `__start_`/`__stop_` for sections whose names are C identifiers;
+- never orders segments by name;
+- has no `--defsym`;
+- errors out on a reference to a section nothing defines.
 
-The port therefore splits the problem:
+Zephyr's linker scripts do two kinds of placement that wasm-ld cannot:
 
-**Unordered families use renaming.** For iterable sections whose order carries
-no meaning, the module shadows the naming macros so the section name is a C
-identifier, and takes `__start_`/`__stop_` as the list bounds. This covers
-most of `STRUCT_SECTION_ITERABLE`. Because an absent section breaks the link,
-each family the kernel references gets one anchor entry emitted by the module.
-
-**Ordered families are generated.** Init entries cannot work this way:
+**Init entries** must be one contiguous block sorted by level, then priority:
 `z_sys_init_run_level` in `kernel/init.c` walks `levels[level]` to
-`levels[level+1]`, so all entries must be one contiguous block sorted by level
-then priority. Instead a build step reads the pass-1 objects, recovers each
-entry's level and priority from the segment name Zephyr already encodes
-(available in the `linking` custom section), sorts, and emits a C file that
-defines the six per-level arrays adjacently in one translation unit. Spike A
-question 9 confirmed those land contiguous in declaration order and that the
-kernel's own walk then visits the right entries, so `kernel/init.c` needs no
-patch.
+`levels[level+1]`. A build step reads the pass-1 objects and recovers each
+entry's level and priority from the segment name Zephyr already encodes. It
+then emits a C file that defines the six per-level arrays adjacently in one
+translation unit and fills them at boot by copying. Spike A question 9
+confirmed those arrays land contiguous and in declaration order. Nothing
+points at an init entry, so copying is safe.
 
-Device order is left as link order. With `CONFIG_DEVICE_DEPS=n` the device
-list is only iterated and bounded, never indexed by devicetree ordinal, so the
-numeric sort the ELF build does is not needed. This is a PoC simplification
-and is the first thing to revisit if device lookup misbehaves.
+**Iterable sections** are each collected with `SORT_BY_NAME`, which makes
+every family a contiguous list in key order. The first version of this port
+assumed the order carried no meaning and let wasm-ld synthesise bounds for an
+identifier-named section. It does carry meaning:
+- zbus groups a channel's observations by name, and `_zbus_init` computes
+  each channel's observer range from that grouping;
+- the log subsystem's source ids are positions in its section;
+- ztest runs suites in section order;
+- the shell lists commands in section order.
 
-As built, with the detail spike A could not have predicted: several iterable
-lists are pay-per-use and simply absent from a given image, which a linker
-script renders as an empty range and wasm-ld rejects outright. Every family is
-therefore given a weak, zero-length bound pair that the real symbols override
-wherever the section exists.
+The samples sweep found seven zbus applications failing on it.
 
-How fragile this is: the renaming half is solid, since `__start_`/`__stop_` is
-a documented wasm-ld feature. The generated half depends on two things that
-are conventions rather than guarantees: Zephyr keeping level and priority
-encoded in the section name, and wasm-ld keeping declaration order within a
-translation unit. Both are stable in practice, and both fail loudly rather
-than silently if they change.
+Entries cannot be copied into order the way init entries are, because code
+holds pointers to them. They are ordered in place:
+
+- Patch 0004 names each entry's section `z_iter_<family>.<key>_`, where the
+  key is the one the ELF section name sorts on.
+- wasm-ld makes one output segment per section name, in the order it first
+  meets each name across its inputs, and lays the segments out one after
+  another, padding only for alignment. An object file packs all of a
+  translation unit's entries for one name into one segment, so reordering
+  input files could not do this; per-key names can.
+- `gen_sections_wasm.py` writes a file that the build compiles into the
+  executable's own sources, so it opens the link line. For every family, in
+  order, it holds a zero-length start marker, one zero-length placeholder per
+  key in byte order, and a zero-length stop marker. The markers are aligned to
+  the family's largest entry. Every real entry joins its key's segment, so the
+  family comes out contiguous, in upstream's order, and bracketed by the
+  markers, which are the list bounds.
+- A family nothing linked contributes to, including the pay-per-use ones that
+  once needed anchors and weak fallbacks, is simply `start == stop`.
+
+The failure mode is quiet, so it is checked rather than trusted.
+`check_sections_wasm.py` reads the link map as the first post-link step and
+fails the build if any family is not exactly one unbroken run of start marker,
+keys in order, and stop marker. This catches an object the scan missed, which
+would otherwise leave a list silently short.
+
+Device order is now upstream's too, since devices are an iterable family keyed
+by level and priority. The same markers could also make patch 0007's
+`Z_DEVICE_API_EXT_END` exact, by generating the end of a class together with
+the classes that extend it. That has not been needed yet.
+
+How fragile this is: it depends on three things that wasm-ld does and does
+not document:
+- output segments in first-seen order;
+- zero-length retained segments surviving `--gc-sections`;
+- layout in segment order.
+
+Spike (tick 1 of this change) confirmed all three on LLVM 21, and the link-map
+check turns any change in them into a failed build rather than a wrong list.
 
 ### D7. Offsets header: constants as data, read from assembly
 
