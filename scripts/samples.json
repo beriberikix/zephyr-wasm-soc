@@ -70,22 +70,26 @@
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.open_addressing.djb2",
-      "status": "untried"
+      "status": "does-not-finish",
+      "cause": "gave-up",
+      "detail": "*** gave up: the guest ran without suspending ***"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.cxx_unordered_map.djb2",
-      "status": "untried"
+      "status": "build-fails",
+      "cause": "compile",
+      "detail": "'string.h' file not found"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.picolibc.separate_chaining.djb2",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.picolibc.open_addressing.djb2",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/basic/minimal",

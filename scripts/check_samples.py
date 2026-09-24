@@ -340,6 +340,19 @@ def save(record: dict):
     RECORD.write_text(json.dumps(record, indent=2) + "\n")
 
 
+def use_record(path: str | None):
+    """Point the sweep at a record other than the committed one.
+
+    A full sweep writes its record after every result for hours. Writing the
+    committed file means the working tree is never clean and every snapshot is
+    a commit, so a long sweep writes to a copy and the copy is brought back in
+    deliberately.
+    """
+    global RECORD
+    if path:
+        RECORD = pathlib.Path(path).resolve()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -357,9 +370,12 @@ def main() -> int:
     ap.add_argument("--update", action="store_true",
                     help="write each result into samples.json as it arrives")
     ap.add_argument("--keep-builds", action="store_true")
+    ap.add_argument("--record", help="read and write this record instead of "
+                                     "scripts/samples.json")
     ap.add_argument("--reclassify", action="store_true",
                     help="re-derive build-failure causes from recorded error lines")
     args = ap.parse_args()
+    use_record(args.record)
 
     record = json.loads(RECORD.read_text()) if RECORD.exists() else {}
 
