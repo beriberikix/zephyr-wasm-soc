@@ -72,8 +72,9 @@ BUILD_CAUSES = (
     ("kconfig", re.compile(r"(Aborting due to Kconfig warnings|"
                            r"was assigned the value .* but got the value|"
                            r"error: .*Kconfig)")),
+    ("kconfig-symbol", re.compile(r"undeclared identifier 'CONFIG_\w+'")),
     ("devicetree", re.compile(r"(devicetree error|__device_dts_ord_\d+|DT_N_\w+|"
-                              r"dts_ord|no such node|alias)")),
+                              r"dts_ord|no such node)")),
     ("link", re.compile(r"(undefined symbol|wasm-ld: error)")),
     ("compile", re.compile(r"(error: |fatal error: )")),
 )
@@ -253,9 +254,20 @@ def run_cause(out: str) -> str:
     return "regex-mismatch"
 
 
-def build_cause(log: str) -> str:
+def build_cause(error: str, log: str = "") -> str:
+    """Why a build failed, judged by its first error line where possible.
+
+    Scanning the whole log first was wrong: a build log mentions devicetree
+    aliases and modules in passing, so "use of undeclared identifier
+    CONFIG_FLASH_BASE_ADDRESS" came out as a devicetree failure. The error
+    line says what actually went wrong. The log is consulted only for the two
+    causes that announce themselves somewhere other than that line.
+    """
     for cause, pattern in BUILD_CAUSES:
-        if pattern.search(log):
+        if pattern.search(error):
+            return cause
+    for cause in ("kconfig", "module-missing"):
+        if dict(BUILD_CAUSES)[cause].search(log):
             return cause
     return "other"
 
@@ -271,7 +283,7 @@ def run_one(sample: dict, keep: bool) -> dict:
     shutil.rmtree(build_dir, ignore_errors=True)
     ok, err, log = sweeplib.build(app, build_dir, build_args(entry))
     if not ok:
-        result.update(status="build-fails", cause=build_cause(log), detail=err[:160])
+        result.update(status="build-fails", cause=build_cause(err, log), detail=err[:160])
         return result
 
     if entry.get("build_only"):
@@ -345,9 +357,23 @@ def main() -> int:
     ap.add_argument("--update", action="store_true",
                     help="write each result into samples.json as it arrives")
     ap.add_argument("--keep-builds", action="store_true")
+    ap.add_argument("--reclassify", action="store_true",
+                    help="re-derive build-failure causes from recorded error lines")
     args = ap.parse_args()
 
     record = json.loads(RECORD.read_text()) if RECORD.exists() else {}
+
+    if args.reclassify:
+        changed = 0
+        for sample in record.get("samples", []):
+            if sample.get("status") == "build-fails" and sample.get("detail"):
+                cause = build_cause(sample["detail"])
+                if cause != "other" and cause != sample.get("cause"):
+                    sample["cause"] = cause
+                    changed += 1
+        save(record)
+        print(f"reclassified {changed} build failures from their recorded error lines")
+        return 0
 
     if args.discover:
         save(discover(record))

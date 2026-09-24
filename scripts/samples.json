@@ -63,7 +63,9 @@
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.separate_chaining.djb2",
-      "status": "untried"
+      "status": "does-not-finish",
+      "cause": "gave-up",
+      "detail": "*** gave up: the guest ran without suspending ***"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
