@@ -31,8 +31,8 @@ log, including what did not work. `BRIEF.md` is the original task.
   controller, so the driver and subsystem code above them is the real thing.
 * `tests/drivers/entropy/api` passes, on a generator that is seeded by
   default so that runs stay reproducible.
-* 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
-  `scripts/kernel_tests.json` records every suite tried, including the nine
+* 17 of Zephyr's own kernel test suites pass outright, 450 cases in all.
+  `scripts/kernel_tests.json` records every suite tried, including the eight
   that do not pass and why.
 * Two runs in virtual time produce byte-identical output.
 * Two equal-priority threads that never yield are time-sliced against each

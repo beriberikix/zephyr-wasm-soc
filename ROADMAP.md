@@ -133,9 +133,13 @@ the kernel, so this comes first.
       - `DEVICE_API_IS()` on an extended class is wrong, which patch 0007
         says it would be. Now demonstrated by `tests/kernel/device` rather
         than predicted.
-- [ ] **The three suites that do not finish for unknown reasons**:
-      `threads/thread_apis`, `sched/schedule_api` and `mem_heap/k_heap_api`,
-      the last of which is also the only evidence about the heap.
+- [ ] **The two suites that do not finish for unknown reasons**:
+      `threads/thread_apis` and `sched/schedule_api`. There were three.
+      `mem_heap/k_heap_api` passes all 23 cases now that iterable sections
+      are in upstream's order, because ztest now runs the cases in upstream's
+      order too. In link order, a case that ran earlier left the heap's
+      spinlock held. Which case that was is still unknown; upstream's order
+      simply never exposes it.
 - [ ] **Timer accuracy.** `common`, `timer/timer_api` and
       `tickless/tickless_concept` all fail on how long something took, which
       is one question wearing three hats: a slice ends at the next safepoint

@@ -554,3 +554,12 @@ cheapest nine applications on the list.
 The ordering fix stays. It makes zbus notify and list in upstream's order,
 makes log ids and test order upstream's, retires the anchor list and the weak
 fallbacks, and turns the quietest failure the shim had into a build error.
+
+The kernel sweep under the new layout found one more thing it does:
+`mem_heap/k_heap_api` passes, all 23 cases, where it used to panic on a heap
+spinlock left held by an earlier case. ztest's suites and tests are iterable
+sections, so they now run in upstream's order, and in that order whatever
+left the lock held never runs first. The other 24 suites are exactly as
+recorded. That makes 17 suites passing outright and 450 cases, and one fewer
+mystery, though the case that left the lock held is still unidentified.
+
