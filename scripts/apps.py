@@ -24,8 +24,28 @@ APPS = HERE / "apps.json"
 
 
 def score(builds: list[dict]) -> int:
-    """Upstream samples that run unmodified. See ROADMAP.md."""
-    return sum(1 for b in builds if b.get("upstream") and b.get("kind") == "sample")
+    """Upstream samples that run unmodified. See ROADMAP.md.
+
+    Two sources, because upstream only states a run criterion for some of its
+    samples. scripts/samples.json holds every sample judged by upstream's own
+    criterion -- its console regex, its shell commands, or ztest -- as
+    scripts/check_samples.py last found it. Some samples have no such
+    criterion upstream: blinky's harness is an LED fixture and button is
+    build_only, so upstream CI never runs either. Those count through the
+    demo list instead, whose hand-written expectations CI checks on every
+    push. A sample counts once, whichever source it comes from.
+    """
+    return len(counted(builds))
+
+
+def counted(builds: list[dict]) -> set[str]:
+    ours = {b["app"] for b in builds if b.get("upstream") and b.get("kind") == "sample"}
+    record = HERE / "samples.json"
+    theirs = set()
+    if record.exists():
+        theirs = {s["path"] for s in json.loads(record.read_text()).get("samples", [])
+                  if s.get("status") == "passes"}
+    return ours | theirs
 
 
 def load(module: str) -> list[dict]:
