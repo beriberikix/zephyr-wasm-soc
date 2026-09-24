@@ -1,0 +1,1181 @@
+{
+  "summary": {
+    "upstream_apps": 650,
+    "upstream_entries": 1268,
+    "candidate_apps": 143,
+    "candidate_entries": 229,
+    "excluded_entries": {
+      "platform_allow names only hardware": 655,
+      "depends_on a feature this board lacks": 112,
+      "harness net needs hardware or a peer": 106,
+      "harness bluetooth needs hardware or a peer": 87,
+      "harness keyboard needs hardware or a peer": 21,
+      "harness sensor needs hardware or a peer": 16,
+      "harness shield needs hardware or a peer": 14,
+      "harness pytest needs hardware or a peer": 6,
+      "board, shield or SoC specific": 5,
+      "harness button needs hardware or a peer": 4,
+      "harness osdp needs hardware or a peer": 4,
+      "harness led needs hardware or a peer": 2,
+      "harness motor needs hardware or a peer": 1,
+      "harness buzzer needs hardware or a peer": 1,
+      "harness rtk needs hardware or a peer": 1,
+      "harness grove needs hardware or a peer": 1,
+      "harness fram needs hardware or a peer": 1,
+      "harness remote needs hardware or a peer": 1,
+      "harness robot needs hardware or a peer": 1
+    }
+  },
+  "samples": [
+    {
+      "path": "zephyr/samples/application_development/code_relocation_nocopy",
+      "entry": "sample.app_dev.code_relocation_nocopy",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/application_development/external_lib",
+      "entry": "sample.app_dev.external_lib",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/arch/mpu/mpu_test",
+      "entry": "sample.mpu.mpu_test",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/button",
+      "entry": "sample.basic.button",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.minimal.separate_chaining.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.minimal.open_addressing.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.newlib.separate_chaining.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.newlib.open_addressing.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.newlib.cxx_unordered_map.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.picolibc.separate_chaining.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/hash_map",
+      "entry": "sample.libraries.hash_map.picolibc.open_addressing.djb2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.mt.x86",
+      "status": "build-fails",
+      "cause": "kconfig",
+      "detail": "Aborting due to Kconfig warnings"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.mt-no-preempt.x86",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.mt-no-preempt-no-timers.x86",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.no-mt.x86",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.no-mt-no-timers.x86",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.arc.runtime",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/minimal",
+      "entry": "sample.minimal.riscv.runtime",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/basic/sys_heap",
+      "entry": "sample.basic.sys_heap",
+      "status": "passes"
+    },
+    {
+      "path": "zephyr/samples/basic/threads",
+      "entry": "sample.basic.threads",
+      "status": "does-not-finish",
+      "cause": "d8b",
+      "detail": "RuntimeError: null function or function signature mismatch"
+    },
+    {
+      "path": "zephyr/samples/bluetooth/central",
+      "entry": "sample.bluetooth.central.64b_ts",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/cpp/cpp_synchronization",
+      "entry": "sample.cpp.synchronization",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/cpp/cpp_synchronization",
+      "entry": "sample.cpp.synchronization.picolibc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/cpp/hello_world",
+      "entry": "sample.cpp.helloworld",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/data_structures/min-heap",
+      "entry": "sample.data_structures.min-heap",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/data_structures/rbtree",
+      "entry": "sample.data_structures.red-black-tree",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/audio/codec",
+      "entry": "sample.drivers.audio.codec",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/audio/dmic",
+      "entry": "sample.drivers.audio.dmic",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/auxdisplay_digits",
+      "entry": "sample.drivers.auxdisplay_digits",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/biometrics/fingerprint",
+      "entry": "sample.drivers.biometrics.fingerprint",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.mbedtls",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.bee",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.microchip",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.stm32",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.mcux_dcp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.si32",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.cc23x0_dma",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/crypto",
+      "entry": "sample.drivers.crypto.esp32",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/dali",
+      "entry": "sample.drivers.dali",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/display",
+      "entry": "sample.display.sdl",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/display",
+      "entry": "sample.display.dummy",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/display",
+      "entry": "sample.display.builtin",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/display",
+      "entry": "sample.display.shield",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/eeprom",
+      "entry": "sample.drivers.eeprom",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/ethernet/eth_ivshmem",
+      "entry": "sample.drivers.ethernet.eth_ivshmem",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/firmware/scmi",
+      "entry": "sample.drivers.firmware.scmi",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/flash_shell",
+      "entry": "sample.drivers.flash.shell",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/gnss",
+      "entry": "sample.drivers.gnss",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/i2s/echo",
+      "entry": "sample.drivers.i2s.echo",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/i2s/output",
+      "entry": "sample.drivers.i2s.output",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/interrupt_controller/intc_riscv_aia",
+      "entry": "sample.drivers.uart_echo_aia",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/ipm/ipm_ivshmem",
+      "entry": "sample.drivers.ipm.ipm_ivshmem",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/led/led_strip",
+      "entry": "sample.drivers.led_strip",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/mbox",
+      "entry": "sample.drivers.mbox",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/mbox_data",
+      "entry": "sample.drivers.mbox.mbox_data.real_hw",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/memc",
+      "entry": "sample.drivers.memc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/memc",
+      "entry": "sample.drivers.memc.mspi",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/memc",
+      "entry": "sample.drivers.memc.nrf_mspi",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/peci",
+      "entry": "sample.drivers.peci",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/ps2",
+      "entry": "sample.drivers.espi.ps2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/smbus",
+      "entry": "sample.drivers.smbus.shell",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/uart/async_api",
+      "entry": "sample.drivers.uart.async_api.console",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/uart/native_tty",
+      "entry": "sample.drivers.uart.native_tty",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/virtualization/ivshmem/doorbell",
+      "entry": "sample.drivers.virtualization.ivshmem.doorbell.arm64",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/drivers/virtualization/ivshmem/doorbell",
+      "entry": "sample.drivers.virtualization.ivshmem.doorbell.x64",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/hello_world",
+      "entry": "sample.basic.helloworld",
+      "status": "passes"
+    },
+    {
+      "path": "zephyr/samples/kernel/bootargs",
+      "entry": "sample.kernel.bootargs.multiboot",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/bootargs",
+      "entry": "sample.kernel.bootargs.efi",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/bootargs",
+      "entry": "sample.kernel.bootargs.tokenization",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/condition_variables/condvar",
+      "entry": "sample.kernel.cond_var",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/condition_variables/simple",
+      "entry": "sample.kernel.cond_var.simple",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/metairq_dispatch",
+      "entry": "sample.kernel.metairq_dispatch",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/kernel/msg_queue",
+      "entry": "sample.kernel.msgqueue",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/chre",
+      "entry": "sample.modules.chre",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/cmsis_dsp/moving_average",
+      "entry": "sample.modules.cmsis_dsp.moving_average",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/accelerometer_chart",
+      "entry": "sample.modules.lvgl.accelerometer_chart",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_music",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_benchmark",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_stress",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_widgets",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_keypad_encoder",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_render",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/demos",
+      "entry": "sample.modules.lvgl.demo_benchmark.lvgl_auto",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/multi_display",
+      "entry": "sample.modules.lvgl.multi_display",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/lvgl/screen_transparency",
+      "entry": "sample.modules.lvgl.screen_transparency",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/nanopb",
+      "entry": "sample.modules.nanopb",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/modules/tflite-micro/hello_world",
+      "entry": "sample.tensorflow.helloworld",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/net/dhcpv4_client",
+      "entry": "sample.net.dhcpv4_client.qemu",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/net/mcp/mcp_server_hello_world",
+      "entry": "sample.net.mcp.mcp_server_hello_world",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/net/zperf",
+      "entry": "sample.net.zperf.async_tx.stm32",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher",
+      "status": "passes"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.same_prio",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.static",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.semaphores",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.stacks",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.fifos",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.lifos",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.preempt_only",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/philosophers",
+      "entry": "sample.kernel.philosopher.coop_only",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/its",
+      "entry": "sample.psa.its.tfm",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/its",
+      "entry": "sample.psa.its.secure_storage.entropy_driver",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/its",
+      "entry": "sample.psa.its.secure_storage.entropy_not_secure",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/persistent_key",
+      "entry": "sample.psa.persistent_key.tfm",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/persistent_key",
+      "entry": "sample.psa.persistent_key.secure_storage.entropy_driver",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/psa/persistent_key",
+      "entry": "sample.psa.persistent_key.secure_storage.entropy_not_secure",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/6dof_fifo_stream",
+      "entry": "sample.sensor.6dof_fifo_stream",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/6dof_motion_drdy",
+      "entry": "sample.sensor.6dof_motion_drdy",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/accel_polling",
+      "entry": "sample.sensor.accel_polling",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/accel_stream",
+      "entry": "sample.sensor.accel_stream",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/accel_trig",
+      "entry": "sample.sensor.accel_trig",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/accel_trig",
+      "entry": "sample.sensor.accel_trig.generic-tap",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/clock",
+      "entry": "sample.sensor.clock.system",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/die_temp_polling",
+      "entry": "sample.sensor.die_temperature_polling",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/distance_polling",
+      "entry": "sample.sensor.distance_polling",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/flow_meter",
+      "entry": "sample.sensor.flow_meter",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/lsm6dso",
+      "entry": "sample.sensor.lsm6dso",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/magn_trig",
+      "entry": "sample.sensor.magn_trigger",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/pressure_interrupt",
+      "entry": "sample.sensor.pressure_interrupt",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/pressure_polling",
+      "entry": "sample.sensor.pressure_sensor",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/qdec",
+      "entry": "sample.sensor.qdec_sensor",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/stream_drdy",
+      "entry": "sample.sensor.stream_drdy",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/tdk_apex",
+      "entry": "sample.sensor.icm42670.apex",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/sensor/thermometer",
+      "entry": "sample.sensor.thermometer",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/bindesc/hello_bindesc",
+      "entry": "sample.bindesc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/bindesc/read_bindesc",
+      "entry": "sample.bindesc.read_bindesc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/cpu_freq/on_demand",
+      "entry": "sample.cpu_freq.soc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/cpu_freq/on_demand",
+      "entry": "sample.cpu_freq.stub",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/cpu_freq/pressure",
+      "entry": "sample.cpu_freq_pressure",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/debug/fuzz",
+      "entry": "sample.debug.fuzz",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/demand_paging",
+      "entry": "sample.demand_paging.ondemand_section",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/display/color_palette",
+      "entry": "sample.display.color_palette",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/display/lvgl",
+      "entry": "sample.display.lvgl.gui",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/display/lvgl",
+      "entry": "sample.display.lvgl.renesas_ra_glcdc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/ext2_fstab",
+      "entry": "sample.filesystem.ext2.fstab",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/fatfs_fstab",
+      "entry": "sample.filesystem.fat_fs.fstab",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/format",
+      "entry": "sample.filesystem.format.littlefs",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/format",
+      "entry": "sample.filesystem.format.fat_fs",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/fs_sample",
+      "entry": "sample.filesystem.fat_fs.has_sdmmc_disk",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/littlefs",
+      "entry": "sample.filesystem.littlefs",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/fs/virtiofs",
+      "entry": "sample.filesystem.virtiofs",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/input/draw_touch_events",
+      "entry": "sample.input.touch.native",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/input/input_dump",
+      "entry": "sample.input.input_dump",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/input/input_dump",
+      "entry": "sample.input.input_dump_shell",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/ipc/ipc_service/static_vrings",
+      "entry": "sample.ipc.static_vrings",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/ipc/openamp",
+      "entry": "sample.ipc.openamp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/kvss/zms",
+      "entry": "sample.zms.basic",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/kvss/zms",
+      "entry": "sample.zms.id_64bit",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/kvss/zms/zms_cycle_count",
+      "entry": "sample.zms.cycle_count",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/llext/edk/app",
+      "entry": "sample.llext.edk.app",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/llext/modules",
+      "entry": "sample.llext.modules.module_build",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/llext/modules",
+      "entry": "sample.llext.modules.builtin_build",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/dictionary",
+      "entry": "sample.logging.basic.dictionary",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/dictionary",
+      "entry": "sample.logging.basic.dictionary.fpu",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/dictionary",
+      "entry": "sample.logging.basic.dictionary.fpu.long_double",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/dictionary",
+      "entry": "sample.logging.basic.dictionary.uart_int_frontend",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/logger",
+      "entry": "sample.logging.basic",
+      "status": "passes"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.deferred",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.immediate",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.catalog.deferred",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.catalog.immediate",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.deferred_cpp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.immediate_cpp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.catalog.deferred_cpp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/logging/syst",
+      "entry": "sample.logging.syst.catalog.immediate_cpp",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/mgmt/mcumgr/smp_svr",
+      "entry": "sample.mcumgr.smp_svr.udp-dtls",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/pm/device_pm",
+      "entry": "sample.power.ospm.dev_idle_pm",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/pm/latency",
+      "entry": "sample.power.latency",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v1.philosopher",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v1.philosopher.same_prio",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v1.philosopher.semaphores",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/timer_synchronization",
+      "entry": "sample.portability.cmsis_rtos_v1.timer_synchronization",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v2/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v2.philosopher",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v2/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v2.philosopher.same_prio",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v2/philosophers",
+      "entry": "sample.portability.cmsis_rtos_v2.philosopher.semaphores",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/cmsis_rtos_v2/timer_synchronization",
+      "entry": "sample.portability.cmsis_rtos_v2.timer_synchronization",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/posix/env",
+      "entry": "sample.posix.env",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/posix/eventfd",
+      "entry": "sample.posix.eventfd",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/posix/philosophers",
+      "entry": "sample.posix.philosopher",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/portability/posix/uname",
+      "entry": "sample.posix.uname",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/rtio/producer_consumer",
+      "entry": "sample.rtio.producer_consumer",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/rtio/sensor_batch_processing",
+      "entry": "sample.rtio.sensor_batch_processing",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/sensing/simple",
+      "entry": "sample.sensing.simple",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/settings",
+      "entry": "sample.settings.nvs",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/settings",
+      "entry": "sample.settings.tfm-ps",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/settings",
+      "entry": "sample.settings.tfm-its",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/shell/shell_module",
+      "entry": "sample.shell.shell_module",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/smf/hsm_psicc2",
+      "entry": "sample.smf.hsm_psicc2",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/smf/smf_calculator",
+      "entry": "sample.smf.smf_calculator",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/testsuite/benchmark",
+      "entry": "sample.testing.ztest.benchmark",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/testsuite/integration",
+      "entry": "sample.testing.ztest",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/testsuite/pytest/shell",
+      "entry": "sample.harness.shell",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/basic",
+      "entry": "sample.tracing.user",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/basic",
+      "entry": "sample.tracing.transport.uart",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/basic",
+      "entry": "sample.tracing.transport.uart.ctf",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/basic",
+      "entry": "sample.tracing.transport.native.ctf",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/basic",
+      "entry": "sample.tracing.gpio",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/pipeline",
+      "entry": "sample.tracing.pipeline.native.ctf",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/tracing/pipeline",
+      "entry": "sample.tracing.pipeline.priority_inversion",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/usb/shell",
+      "entry": "sample.usbh.shell.virtual",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/uuid",
+      "entry": "sample.uuid",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/video/capture",
+      "entry": "sample.video.capture.shell",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/async_listeners",
+      "entry": "sample.zbus.async_listeners",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/benchmark",
+      "entry": "sample.zbus.benchmark_async",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/benchmark",
+      "entry": "sample.zbus.benchmark_async_msg_sub",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/benchmark",
+      "entry": "sample.zbus.benchmark_sync",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/confirmed_channel",
+      "entry": "sample.zbus.confirmed_message",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/dyn_channel",
+      "entry": "sample.zbus.dyn_channel",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/hello_world",
+      "entry": "sample.zbus.hello_world",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_dynamic",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_static",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_dynamic_isolated",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small_use_default",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_static_isolated",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_static_isolated_too_small_use_default",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/msg_subscriber",
+      "entry": "sample.zbus.msg_subscriber_static_isolated_too_small",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/priority_boost",
+      "entry": "sample.zbus.non_priority_boost",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/priority_boost",
+      "entry": "sample.zbus.priority_boost",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/remote_mock",
+      "entry": "sample.zbus.remote_mock",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/runtime_obs_registration",
+      "entry": "sample.zbus.runtime_os_registration",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/runtime_obs_registration",
+      "entry": "sample.zbus.runtime_os_registration_dynamic_alloc",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/uart_bridge",
+      "entry": "sample.zbus.uart_bridge_build",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/subsys/zbus/work_queue",
+      "entry": "sample.zbus.work_queue",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/synchronization",
+      "entry": "sample.kernel.synchronization",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/synchronization",
+      "entry": "sample.kernel.synchronization.cpu_mask",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/userspace/hello_world_user",
+      "entry": "sample.helloworld",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/userspace/prod_consumer",
+      "entry": "sample.userspace.prod_consumer",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/userspace/shared_mem",
+      "entry": "sample.kernel.memory_protection.shared_mem",
+      "status": "untried"
+    },
+    {
+      "path": "zephyr/samples/userspace/syscall_perf",
+      "entry": "sample.syscall_performances",
+      "status": "untried"
+    }
+  ],
+  "score": 4
+}
