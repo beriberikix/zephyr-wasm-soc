@@ -30,22 +30,25 @@
     {
       "path": "zephyr/samples/application_development/code_relocation_nocopy",
       "entry": "sample.app_dev.code_relocation_nocopy",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/application_development/external_lib",
       "entry": "sample.app_dev.external_lib",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/arch/mpu/mpu_test",
       "entry": "sample.mpu.mpu_test",
-      "status": "untried"
+      "status": "build-fails",
+      "cause": "devicetree",
+      "detail": "use of undeclared identifier 'CONFIG_FLASH_BASE_ADDRESS'"
     },
     {
       "path": "zephyr/samples/basic/button",
       "entry": "sample.basic.button",
-      "status": "untried"
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
@@ -959,7 +962,7 @@
     {
       "path": "zephyr/samples/subsys/shell/shell_module",
       "entry": "sample.shell.shell_module",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/smf/hsm_psicc2",
@@ -1149,7 +1152,7 @@
     {
       "path": "zephyr/samples/synchronization",
       "entry": "sample.kernel.synchronization",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/synchronization",
@@ -1177,5 +1180,5 @@
       "status": "untried"
     }
   ],
-  "score": 4
+  "score": 8
 }

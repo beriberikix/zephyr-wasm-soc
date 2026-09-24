@@ -337,6 +337,11 @@ def main() -> int:
                     help="run entries whose path starts with this (repeatable)")
     ap.add_argument("--only", help="comma-separated sample paths or entry names")
     ap.add_argument("--untried", action="store_true", help="only entries never run")
+    ap.add_argument("--recorded",
+                    help="only entries currently recorded with one of these "
+                         "comma-separated statuses, e.g. passes,runs. The weekly "
+                         "CI job uses this to guard what works without spending "
+                         "hours rebuilding what is known not to")
     ap.add_argument("--update", action="store_true",
                     help="write each result into samples.json as it arrives")
     ap.add_argument("--keep-builds", action="store_true")
@@ -361,6 +366,9 @@ def main() -> int:
         chosen = [s for s in chosen if s["path"] in want or s["entry"] in want]
     if args.untried:
         chosen = [s for s in chosen if s.get("status") == "untried"]
+    if args.recorded:
+        wanted = set(args.recorded.split(","))
+        chosen = [s for s in chosen if s.get("status") in wanted]
 
     worse, better = [], []
     index = {(s["path"], s["entry"]): i for i, s in enumerate(record.get("samples", []))}
