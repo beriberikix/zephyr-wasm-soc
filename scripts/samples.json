@@ -53,12 +53,12 @@
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.minimal.separate_chaining.djb2",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.minimal.open_addressing.djb2",
-      "status": "untried"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
@@ -1180,5 +1180,5 @@
       "status": "untried"
     }
   ],
-  "score": 8
+  "score": 9
 }
