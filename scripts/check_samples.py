@@ -14,6 +14,14 @@ same rules to the same patterns. A sample with no such criterion is recorded
 as running, and does not count towards the score, for the same reason
 basic/minimal never did.
 
+Whether an entry runs on this board at all is upstream's call too. An entry
+may carry a twister filter -- dt_alias_exists("accel0"), TOOLCHAIN_HAS_NEWLIB,
+CONFIG_ARCH_HAS_USERSPACE -- which twister evaluates after CMake, against the
+build's .config, CMake cache and devicetree, and an entry whose filter is false
+is never run on that board. This evaluates the same expression with twister's
+own parser against the same files, and records such an entry as filtered: not
+a failure, and not a candidate.
+
 Usage:
   scripts/check_samples.py --discover       refresh the candidate list
   scripts/check_samples.py [--match PREFIX] [--only path,path] [--update]
@@ -25,7 +33,9 @@ what it had. Read the diff before committing it.
 """
 import argparse
 import json
+import os
 import pathlib
+import pickle
 import re
 import shlex
 import shutil
@@ -186,6 +196,49 @@ def build_args(entry: dict) -> list[str]:
     return args
 
 
+# Twister's own filter evaluation, from scripts/pylib/twister. Its parser and
+# CMake cache reader are imported rather than copied, so an expression means
+# here exactly what it means to twister.
+sys.path.insert(0, str(ZEPHYR / "scripts" / "pylib" / "twister"))
+sys.path.insert(0, str(ZEPHYR / "scripts" / "dts" / "python-devicetree" / "src"))
+CONFIG_RE = re.compile(r'^(CONFIG_[A-Za-z0-9_]+)=\"?([^\"]*)\"?$')
+
+
+def upstream_filter(entry: dict, build_dir: pathlib.Path) -> bool | None:
+    """True if twister would run this entry here, False if it would not.
+
+    None when there is no filter, or when the build stopped before CMake wrote
+    what the filter reads, in which case twister would not have got as far as
+    asking either.
+    """
+    expr = entry.get("filter")
+    if not expr:
+        return None
+    config = build_dir / "zephyr" / ".config"
+    if not config.exists():
+        return None
+    os.environ.setdefault("ZEPHYR_BASE", str(ZEPHYR))   # twisterlib insists
+    import expr_parser
+    from twisterlib.cmakecache import CMakeCache
+
+    data = {"ARCH": ARCH, "PLATFORM": BOARD}
+    data.update(os.environ)
+    for line in config.read_text().splitlines():
+        m = CONFIG_RE.match(line)
+        if m:
+            data[m.group(1)] = m.group(2).strip()
+    try:
+        data.update({k.name: k.value for k in CMakeCache.from_file(str(build_dir / "CMakeCache.txt"))})
+    except FileNotFoundError:
+        pass
+    edt = None
+    pickled = build_dir / "zephyr" / "edt.pickle"
+    if pickled.exists():
+        with open(pickled, "rb") as f:
+            edt = pickle.load(f)
+    return bool(expr_parser.parse(expr, data, edt))
+
+
 def console_verdict(entry: dict, out: str) -> bool | None:
     """Twister's Console harness, applied to our output. None: no criterion.
 
@@ -287,6 +340,13 @@ def run_one(sample: dict, keep: bool) -> dict:
     build_dir = TOP / f"build-sample-{name.replace('/', '_')}"
     shutil.rmtree(build_dir, ignore_errors=True)
     ok, err, log = sweeplib.build(app, build_dir, build_args(entry))
+    if upstream_filter(entry, build_dir) is False:
+        # Twister asks this after CMake and before compiling, so whether the
+        # compile then worked is beside the point.
+        if not keep:
+            shutil.rmtree(build_dir, ignore_errors=True)
+        result.update(status="filtered", cause="upstream filter", detail=entry["filter"][:160])
+        return result
     if not ok:
         result.update(status="build-fails", cause=build_cause(err, log), detail=err[:160])
         return result
@@ -332,7 +392,10 @@ def run_one(sample: dict, keep: bool) -> dict:
 # ----------------------------------------------------------------------------
 
 
-RANK = ["untried", "build-fails", "does-not-finish", "fails", "runs", "builds", "passes"]
+# "filtered" sits between failing and working: an entry that stops failing
+# because upstream would not run it here is not a regression, and one that
+# stops passing for that reason is.
+RANK = ["untried", "build-fails", "does-not-finish", "fails", "filtered", "runs", "builds", "passes"]
 
 
 def score(record: dict) -> int:
@@ -342,6 +405,15 @@ def score(record: dict) -> int:
 
 def save(record: dict):
     record["score"] = score(record)
+    samples = record.get("samples", [])
+    filtered = [s for s in samples if s.get("status") == "filtered"]
+    if "summary" in record:
+        # What is left once upstream's filters have had their say: the entries
+        # twister itself would run on this board.
+        live = [s for s in samples if s.get("status") != "filtered"]
+        record["summary"]["filtered_entries"] = len(filtered)
+        record["summary"]["runnable_entries"] = len(live)
+        record["summary"]["runnable_apps"] = len({s["path"] for s in live})
     RECORD.write_text(json.dumps(record, indent=2) + "\n")
 
 
