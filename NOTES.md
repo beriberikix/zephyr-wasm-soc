@@ -514,3 +514,43 @@ finishes, deterministically and identically on both engines; and
 `smf/hsm_psicc2`, a hierarchical state machine driven from a shell, so
 someone can type events at it and watch the transitions.
 
+
+### Tick 44 — the right fix for the wrong reason
+
+Tick 43 recorded seven zbus applications as failing on iterable-section
+order: `_zbus_init` expects a channel's observers to be contiguous, upstream's
+linker scripts sort them to make it so, and the shim did not. That is true of
+the code and was not why they failed.
+
+The ordering got fixed first, and properly. Patch 0004 now keeps the sort key
+in the section name. `gen_sections_wasm.py` links a file ahead of everything
+that names every family's sections in key order, between start and stop
+markers. wasm-ld makes output segments in the order it first meets their
+names, so that file decides the layout. `check_sections_wasm.py` then reads
+the link map and fails the build if any family is not one unbroken, ordered
+run between its markers. A spike confirmed each assumption on LLVM 21 first:
+- zero-length retained segments survive gc;
+- output segments follow first-seen order;
+- entries from later objects join the earlier segment;
+- the markers align;
+- linked in the wrong order, a list silently shrinks, which is what the check
+  exists to catch.
+
+Everything built, CI went green, and the zbus samples trapped exactly as
+before. So one sample got a scratch copy with nothing changed but its thread
+entry, `void subscriber_task(void)` made to take three pointers. It ran in
+full under the new layout. Then under the old layout too. The only difference
+between the two runs was the order of the observers list, which the new layout
+gets right.
+
+Every one of the seven declares a thread entry `void f(void)` or
+`void f(void *)`. They are D8b, and the triage said otherwise because V8 gives
+a null function pointer and a wrong signature the same message, and because
+reading `_zbus_init` produced a plausible story that nobody tested. The
+record now says D8b for all seventeen entries, with the function named. D8b
+is nine applications, not two, and the upstream signature fixes are the
+cheapest nine applications on the list.
+
+The ordering fix stays. It makes zbus notify and list in upstream's order,
+makes log ids and test order upstream's, retires the anchor list and the weak
+fallbacks, and turns the quietest failure the shim had into a build error.

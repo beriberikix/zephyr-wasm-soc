@@ -52,32 +52,41 @@ Why the rest do not pass, the largest groups first (the long tail is in
 | Cause | entries | what it is |
 |---|---:|---|
 | No such device | 36 | the sample wants a devicetree node this board has no driver for (`__device_dts_ord_N`) |
+| Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
 | Missing module | 19 | LVGL (13 entries, counting its Kconfig), FatFs, TFLite, PSA |
-| Iterable-section ordering | 17 | 7 zbus applications; a port bug, below |
 | Kconfig refuses | 16 | options the board cannot satisfy, mostly hardware drivers |
 | No C library headers | 16 | C++, POSIX, `syst` and the benchmarks need a libc with `string.h`; only the minimal one is here |
 | Gave up | 8 | runs and never suspends: `hash_map` with newlib, four sensor samples, `flash_shell`, `tracing.gpio` |
 | Needs a crypto driver | 7 | "You need to enable one crypto device" |
 | Link | 7 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand) |
 | Fails its regex | 6 | codec, `uart async_api`, PM latency, settings on NVS, the two TF-M storage samples |
-| Wasm's indirect-call check | 4 | 2 applications; D8b, below |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
 
-**The D8b ceiling is small.** Wasm type-checks indirect calls, and before the
-sweep nobody knew what that cost. It costs two applications: `basic/threads`,
-whose thread entries are declared `void f(void)`, and
-`cmsis_rtos_v1/philosophers`, where the bug is not in the sample at all but in
-Zephyr's `zephyr_thread_wrapper`, which calls a `void (*)(void const *)`
-through a `void *(*)(void *)`. Both are one-line fixes upstream and both are
-undefined behaviour on every target.
+**D8b is the largest thing between a sample that builds and one that runs.**
+Wasm type-checks indirect calls, and before the sweep nobody knew what that
+cost. It costs nine applications:
+- `basic/threads`;
+- seven zbus samples (`hello_world`, `benchmark`, `confirmed_channel`,
+  `dyn_channel`, `msg_subscriber`, `runtime_obs_registration`, `work_queue`);
+- `cmsis_rtos_v1/philosophers`.
 
-**Section ordering is a bigger problem than D8b.** `_zbus_init` assumes each
-channel's observers sit next to each other in the `zbus_channel_observation`
-section. Upstream's linker scripts guarantee that with `SORT_BY_NAME`; the
-section shim in patch 0004 renames the sections and loses the ordering. Seven
-zbus applications fail on that alone. It is the most valuable single port fix
-the sweep found, and it is a design change to the shim rather than a patch to
-zbus, so it is recorded here and not attempted in the same change as the sweep.
+In all but the last, a thread entry is declared `void f(void)` (or
+`void f(void *)`) and handed to `K_THREAD_DEFINE`. In the last, the bug is not
+in the sample at all but in Zephyr's `zephyr_thread_wrapper`, which calls a
+`void (*)(void const *)` through a `void *(*)(void *)`.
+
+Each is a one-line fix upstream, and each is undefined behaviour on every
+target. Correcting zbus/hello_world's one signature makes it run in full here.
+That makes the upstream signature fixes the most valuable next step for the
+score: nine applications for about a dozen lines.
+
+The zbus seven were first recorded as a section-ordering bug. V8 reports a
+null function pointer and a wrong signature with the same message, and
+`_zbus_init` does depend on the order of its sections, so the explanation fit.
+It was wrong. With the signature corrected, zbus/hello_world runs under the
+old section layout as well as the new one. The ordering was worth fixing
+anyway (see "Iterable sections have an order", below), but it was not what
+stopped these samples.
 
 The sweep runs weekly in CI (`.github/workflows/samples.yml`), re-running
 everything recorded as working and failing if any of it got worse. Dispatching
@@ -301,12 +310,21 @@ type-checks indirect calls, so upstream code that casts a thread entry to
 `k_thread_entry_t` traps where every other target shrugs. That is not
 fixable here and not worth working around: the honest answer is to fix those
 entry points upstream, where the cast is undefined behaviour anyway. The
-samples sweep measured the edge: two upstream applications.
+samples sweep measured the edge: nine upstream applications.
 
-**Iterable sections have an order, and some code depends on it.** The shim
-keeps every entry of a family but not the `SORT_BY_NAME` order upstream's
-linker scripts give it. Most consumers do not care. zbus does, and seven of
-its samples fail for it.
+**Iterable sections have an order, and some code depends on it.** Upstream
+collects every iterable family with `SORT_BY_NAME`:
+- zbus uses that order to group a channel's observers and rank them by
+  notification priority;
+- log source ids are positions in their section;
+- ztest runs in section order;
+- the shell lists commands in it.
+
+The port now reproduces the order, and checks the layout from the link map at
+every build (`DESIGN.md` D6). Before that, the port kept only link order.
+Nothing in the sweep failed on it, but zbus listed its observers in a different
+order from upstream, and a channel whose observers were spread across files
+could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk and it is the right one. Two of its failure modes

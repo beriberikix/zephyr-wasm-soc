@@ -1369,113 +1369,113 @@
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async_msg_sub",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_sync",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/confirmed_channel",
       "entry": "sample.zbus.confirmed_message",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: bar_sub1_task and friends are declared void f(void) (src/main.c:37) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/dyn_channel",
       "entry": "sample.zbus.dyn_channel",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_thread are declared void f(void) (src/producer.c:15) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/hello_world",
       "entry": "sample.zbus.hello_world",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: subscriber_task is declared void subscriber_task(void) (src/main.c:86) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small_use_default",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small_use_default",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/priority_boost",
@@ -1498,17 +1498,17 @@
       "path": "zephyr/samples/subsys/zbus/runtime_obs_registration",
       "entry": "sample.zbus.runtime_os_registration",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/runtime_obs_registration",
       "entry": "sample.zbus.runtime_os_registration_dynamic_alloc",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/subsys/zbus/uart_bridge",
@@ -1521,9 +1521,9 @@
       "path": "zephyr/samples/subsys/zbus/work_queue",
       "entry": "sample.zbus.work_queue",
       "status": "does-not-finish",
-      "cause": "section-order",
+      "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "Not D8b. _zbus_init assumes each channel's observations are contiguous in the zbus_channel_observation section, which upstream's linker script guarantees by sorting every iterable section by name. Patch 0004 gives that ordering up, so a channel's range is computed wrong and an observer is called through a garbage pointer, which V8 reports with the same message as a signature mismatch. A port bug: iterable-section ordering."
+      "note": "D8b: thread_handler1_task and friends are declared void f(void) (src/main.c:131) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
     },
     {
       "path": "zephyr/samples/synchronization",
