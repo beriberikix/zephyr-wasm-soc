@@ -48,6 +48,14 @@
     border: 1px solid var(--line); border-radius: 8px; background: var(--term-bg);
   }
   #board[hidden] { display: none; }
+  /* The board's display: 320x240 guest pixels, drawn twice the size and
+   * kept square-edged, since blurring the pixels would misrepresent them. */
+  #screen {
+    display: block; width: 640px; max-width: 100%; height: auto;
+    margin: 0 0 12px; image-rendering: pixelated;
+    border: 1px solid var(--line); border-radius: 4px; background: #000;
+  }
+  #screen[hidden] { display: none; }
   .part { display: flex; flex-direction: column; align-items: center; gap: 5px; }
   .part small { color: var(--muted); font-size: 11px; }
   .led {
@@ -118,6 +126,10 @@
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
 
+  <!-- The board's display, for builds that draw. See wasm,host-display. -->
+  <canvas id="screen" width="320" height="240" tabindex="0" hidden
+          aria-label="the board's display"></canvas>
+
   <div id="term" tabindex="0" role="log" aria-live="polite"></div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
@@ -150,6 +162,30 @@
  */
 const termEl = document.getElementById('term');
 const boardEl = document.getElementById('board');
+const screenEl = document.getElementById('screen');
+const screenCtx = screenEl.getContext('2d');
+let screenInfo = { frames: 0, colours: 0, blank: true };
+
+/* Draw a frame from the worker: RGBA, the display's own size. A blanked
+ * display shows black, as a panel with its backlight off would. */
+function showFrame({ width, height, blank, frames, rgba }) {
+  if (screenEl.width !== width || screenEl.height !== height) {
+    screenEl.width = width;
+    screenEl.height = height;
+  }
+  const pixels = new Uint8ClampedArray(rgba);
+  if (blank) {
+    screenCtx.fillStyle = '#000';
+    screenCtx.fillRect(0, 0, width, height);
+  } else {
+    screenCtx.putImageData(new ImageData(pixels, width, height), 0, 0);
+  }
+  /* For the browser check: how much the page has actually drawn. */
+  const seen = new Set();
+  const view = new Uint32Array(pixels.buffer);
+  for (let i = 0; i < view.length && seen.size < 64; i += 7) seen.add(view[i]);
+  screenInfo = { frames, colours: blank ? 1 : seen.size, blank };
+}
 const statusEl = document.getElementById('status');
 const buildEl = document.getElementById('build');
 const runEl = document.getElementById('run');
@@ -404,6 +440,7 @@ async function start() {
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
     else if (data.type === 'flash') saveFlash(build.name, data.image);
+    else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       setRunning(false);
       statusEl.textContent = `finished with exit code ${data.code}`;
@@ -416,6 +453,10 @@ async function start() {
 
   showLeds(0);
   boardEl.hidden = false;
+  screenEl.hidden = !build.display;
+  screenCtx.fillStyle = '#000';
+  screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
+  screenInfo = { frames: 0, colours: 0, blank: true };
   kernelEl.classList.remove('on');
   threadsEl.innerHTML = '';
   paused = false;
@@ -483,6 +524,7 @@ window.zephyrType = (text) => {
 };
 window.zephyrOutput = () => term.lines.join('\n');
 window.zephyrRunning = () => running;
+window.zephyrDisplay = () => screenInfo;
 window.zephyrEraseFlash = (name) => eraseFlash(name);
 window.zephyrFlashSaved = () => flashSaving;
 window.zephyrBuilds = () => builds;

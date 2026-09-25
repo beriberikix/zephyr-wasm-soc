@@ -190,6 +190,21 @@ for (const b of manifest.builds) {
     }
   }
 
+  /* For a build that draws, check the page did: the terminal can be right
+   * while the canvas stays black. */
+  if (ok && b.display) {
+    const least = b.display.colors_at_least ?? 2;
+    try {
+      await page.waitForFunction((n) => window.zephyrDisplay().colours >= n, least,
+                                 { timeout: 30_000, polling: 200 });
+    } catch {
+      ok = false;
+      const got = await page.evaluate(() => window.zephyrDisplay());
+      fail(b.name, `the canvas showed ${got.colours} colours after ${got.frames} frames, ` +
+                   `expected at least ${least}`);
+    }
+  }
+
   if (ok) console.log(`  ok    ${b.name.padEnd(8)} ${b.title}`);
 
   await page.click('#stop').catch(() => {});

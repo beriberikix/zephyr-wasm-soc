@@ -94,6 +94,18 @@ function sameBytes(a, b) {
   return true;
 }
 
+/* The display: a frame goes to the page when something was drawn, at most
+ * once per timer tick, as RGBA the canvas can take as it is. Transferred,
+ * not copied: the core already made a private copy of guest memory. */
+function sendFrame() {
+  if (!host?.displayDirty()) return;
+  const frame = host.displayFrame();
+  if (!frame) return;
+  self.postMessage({ type: 'frame', width: frame.width, height: frame.height,
+                     blank: frame.blank, frames: frame.frames, rgba: frame.rgba.buffer },
+                   [frame.rgba.buffer]);
+}
+
 function sendFlash(image) {
   if (!image || sameBytes(image, lastFlash)) return;
   lastFlash = image;
@@ -167,11 +179,13 @@ self.onmessage = async (event) => {
     let ticks = 0;
     const tick = setInterval(() => {
       if (stopRequested) host.done = true;
+      sendFrame();
       if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
     }, 50);
     const code = await host.run();
     clearInterval(tick);
     if (host.storage) sendFlash(host.flashImage());
+    sendFrame();
     host = null;
     self.postMessage({ type: 'done', code });
   } catch (err) {

@@ -14,6 +14,7 @@
 // Usage: node scripts/check_site.mjs [_site] [--only name,name]
 
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
@@ -30,7 +31,7 @@ const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !==
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -39,6 +40,7 @@ function run(wasm, maxTimeMs, stdin, gpio) {
   /* Scripted pin movements happen at a stated guest time, so a sample that
    * waits for a button gives the same output every run. */
   for (const event of gpio ?? []) argv.push('--gpio', event);
+  if (screenshot) argv.push('--screenshot', screenshot);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -53,6 +55,26 @@ function run(wasm, maxTimeMs, stdin, gpio) {
   });
 }
 
+/* The number of distinct colours in a binary PPM, as written by
+ * run.mjs --screenshot. */
+async function distinctColours(file) {
+  const data = await readFile(file);
+  let pos = 0;
+  const tokens = [];
+  while (tokens.length < 4) {
+    while (/\s/.test(String.fromCharCode(data[pos]))) pos++;
+    const start = pos;
+    while (!/\s/.test(String.fromCharCode(data[pos]))) pos++;
+    tokens.push(data.subarray(start, pos).toString());
+  }
+  pos++;
+  const seen = new Set();
+  for (let i = pos; i + 2 < data.length; i += 3) {
+    seen.add((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+  }
+  return seen.size;
+}
+
 const manifest = JSON.parse(await readFile(path.join(site, 'manifest.json'), 'utf8'));
 let failures = 0;
 
@@ -64,7 +86,11 @@ for (const b of manifest.builds) {
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
   const stdin = b.ci_stdin;
-  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio);
+  /* A build with a display is also judged by what it drew: the last frame
+   * has to show at least display.colors_at_least distinct colours, so a
+   * blank or black screen fails even when the console looks right. */
+  const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
+  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot);
 
   const problems = [];
   /* A build that never finishes ends at --max-time, which is exit 2 and is
@@ -81,8 +107,18 @@ for (const b of manifest.builds) {
     if (n < least) problems.push(`${n} lines match /${pattern}/, expected at least ${least}`);
   }
 
+  let drew = '';
+  if (shot) {
+    const colours = await distinctColours(shot).catch(() => 0);
+    const least = b.display.colors_at_least ?? 2;
+    if (colours < least) {
+      problems.push(`the display showed ${colours} colours, expected at least ${least}`);
+    }
+    drew = ` (display: ${colours} colours)`;
+  }
+
   if (problems.length === 0) {
-    console.log(`  ok    ${b.name.padEnd(8)} ${b.title}`);
+    console.log(`  ok    ${b.name.padEnd(8)} ${b.title}${drew}`);
   } else {
     failures++;
     console.log(`  FAIL  ${b.name.padEnd(8)} ${b.title}`);
