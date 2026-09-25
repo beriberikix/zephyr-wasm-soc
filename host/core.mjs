@@ -72,6 +72,12 @@ const DEFAULT_SEED = 0x5eed0001;
  * clamp. */
 const PACE_MAX_NS = 5_000_000_000n;
 
+/* How far a paced guest may fall behind the wall clock before the pacing
+ * stops trying to make it up. Behind by less, it runs without waiting until
+ * it has caught up; behind by more, the work simply takes longer than real
+ * time and there is nothing to catch up to. */
+const PACE_BEHIND_MS = 250;
+
 /* Virtual time charged per safepoint progress report. With the default of
  * 20000 safepoints between reports this makes a spinning thread advance the
  * clock at a plausible rate rather than a meaningful one; what matters is
@@ -118,6 +124,7 @@ export class Host {
     this.pending = null;         // the switch the guest just asked for
     this.resumeSame = false;     // set by an idle suspension
     this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
+    this.pace = null;            // paced runs: when guest and wall clocks lined up
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
     /* Physical pin levels, per port. Outputs are what the guest last drove;
@@ -784,16 +791,34 @@ export class Host {
      * however long the host actually slept -- so pacing changes when a thing
      * is shown and never what it is. timeScale divides the wait: 10 is ten
      * times faster than real, 0.1 is slow motion.
+     *
+     * The wait is against an anchor, a moment when guest and wall clocks
+     * were lined up, and not just the time the last step covered. Waiting
+     * that long after each step added the step's own work on top: a sample
+     * that redraws its display every 100 ms of guest time spent 350 ms
+     * drawing, and its clock ran at a fifth of real time. Against the
+     * anchor the work is counted, and the wait is only what is left over.
+     * When the guest cannot keep up at all, the anchor moves with it rather
+     * than letting a debt build up to be paid back in a burst.
      */
     const paced = this.opts.clock === 'paced';
-    let pacedFrom = this.nowNs;
+    let lastNow = this.nowNs;
+    const reanchor = () => {
+      this.pace = { guest: this.nowNs, wall: this.platform.nowNs(),
+                    scale: this.opts.timeScale || 1 };
+    };
+    if (paced) reanchor();
 
     while (!this.done) {
       /* Paused between steps, which is where the guest is unwound and the
        * kernel's state is consistent enough to be looked at. */
-      while (this.paused && this.stepsLeft === 0 && !this.done) {
-        this.report();
-        await this.platform.wait(50);
+      if (this.paused && this.stepsLeft === 0) {
+        while (this.paused && this.stepsLeft === 0 && !this.done) {
+          this.report();
+          await this.platform.wait(50);
+        }
+        /* The wall clock went on while the guest was held. */
+        reanchor();
       }
       if (this.done) break;
       if (this.stepsLeft > 0) {
@@ -837,16 +862,24 @@ export class Host {
       this.report();
 
       if (paced) {
-        const advanced = this.nowNs - pacedFrom;
-        pacedFrom = this.nowNs;
-        if (advanced > 0n && advanced <= PACE_MAX_NS) {
-          const ms = Number(advanced) / 1e6 / (this.opts.timeScale || 1);
-          if (ms >= 1) {
-            this.yieldToHost = false;
-            await this.platform.wait(ms);
-            continue;
-          }
+        const scale = this.opts.timeScale || 1;
+        /* Start again from here after a change of speed, a step back (which
+         * moves the guest clock backwards), or a jump longer than is worth
+         * waiting out -- the kernel's "nothing soon" clamp is two days. */
+        if (scale !== this.pace.scale || this.nowNs < lastNow ||
+            this.nowNs - lastNow > PACE_MAX_NS) {
+          reanchor();
         }
+        lastNow = this.nowNs;
+        const dueNs = this.pace.wall +
+          BigInt(Math.round(Number(this.nowNs - this.pace.guest) / scale));
+        const aheadMs = Number(dueNs - this.platform.nowNs()) / 1e6;
+        if (aheadMs >= 1) {
+          this.yieldToHost = false;
+          await this.platform.wait(aheadMs);
+          continue;
+        }
+        if (aheadMs < -PACE_BEHIND_MS) reanchor();
       }
       if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a
@@ -922,7 +955,17 @@ export class Host {
         /* Let input arrive before deciding there is nothing to do. */
         this.yieldToHost = true;
         if (pending === 0) {
-          this.advanceToNextDeadline();
+          if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
+            /* Paced, and nothing to wake for but a person: time passes as
+             * it does for them. Jumping to the next deadline would leave
+             * the clock standing still until they did something, and a
+             * five-second press would be logged as lasting no time. */
+            const byWall = this.pace.guest +
+              BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+            if (byWall > this.nowNs) this.nowNs = byWall;
+          } else {
+            this.advanceToNextDeadline();
+          }
         }
         return true;
       }
