@@ -523,6 +523,58 @@ window.zephyrType = (text) => {
   return true;
 };
 window.zephyrOutput = () => term.lines.join('\n');
+/* Touch and keys into the input subsystem, through wasm,host-input.
+ *
+ * A press on the canvas is a touch, reported the way native_sim's SDL touch
+ * reports one: X and Y in display pixels, then BTN_TOUCH with sync, repeated
+ * while the pointer moves, and BTN_TOUCH 0 on release. A key pressed while
+ * the canvas has focus is its Linux key code. */
+const EV_KEY = 0x01, EV_ABS = 0x03, BTN_TOUCH = 0x14a;
+const KEY_CODES = {
+  Escape: 1, Backspace: 14, Tab: 15, Enter: 28, Space: 57,
+  ArrowUp: 103, ArrowLeft: 105, ArrowRight: 106, ArrowDown: 108,
+  Digit1: 2, Digit2: 3, Digit3: 4, Digit4: 5, Digit5: 6,
+  Digit6: 7, Digit7: 8, Digit8: 9, Digit9: 10, Digit0: 11,
+};
+'QWERTYUIOP'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 16 + i; });
+'ASDFGHJKL'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 30 + i; });
+'ZXCVBNM'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 44 + i; });
+
+let touching = false;
+function sendInput(events) {
+  if (running && worker) worker.postMessage({ type: 'input-events', events });
+}
+function touchAt(e) {
+  const r = screenEl.getBoundingClientRect();
+  const x = Math.max(0, Math.min(screenEl.width - 1,
+    Math.floor((e.clientX - r.left) * screenEl.width / r.width)));
+  const y = Math.max(0, Math.min(screenEl.height - 1,
+    Math.floor((e.clientY - r.top) * screenEl.height / r.height)));
+  sendInput([[EV_ABS, 0, x, 0], [EV_ABS, 1, y, 0], [EV_KEY, BTN_TOUCH, 1, 1]]);
+}
+screenEl.addEventListener('pointerdown', (e) => {
+  touching = true;
+  screenEl.focus();
+  screenEl.setPointerCapture(e.pointerId);
+  touchAt(e);
+});
+screenEl.addEventListener('pointermove', (e) => { if (touching) touchAt(e); });
+const release = () => {
+  if (!touching) return;
+  touching = false;
+  sendInput([[EV_KEY, BTN_TOUCH, 0, 1]]);
+};
+screenEl.addEventListener('pointerup', release);
+screenEl.addEventListener('pointercancel', release);
+for (const [type, value] of [['keydown', 1], ['keyup', 0]]) {
+  screenEl.addEventListener(type, (e) => {
+    const code = KEY_CODES[e.code];
+    if (code === undefined || e.repeat) return;
+    e.preventDefault();
+    sendInput([[EV_KEY, code, value, 1]]);
+  });
+}
+
 window.zephyrRunning = () => running;
 window.zephyrDisplay = () => screenInfo;
 window.zephyrEraseFlash = (name) => eraseFlash(name);

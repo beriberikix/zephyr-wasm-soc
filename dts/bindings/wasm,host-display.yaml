@@ -10,3 +10,14 @@ description: |
 compatible: "wasm,host-display"
 
 include: display-controller.yaml
+
+properties:
+  pixel-format:
+    type: int
+    required: true
+    description: |
+      The one pixel format this display takes, stated in devicetree because
+      samples read it from here to size their buffers: draw_touch_events, for
+      one, assumes ARGB8888 when it is absent.
+    enum:
+      - 16 # PANEL_PIXEL_FORMAT_RGB_565

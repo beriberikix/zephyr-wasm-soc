@@ -9,6 +9,7 @@
 /dts-v1/;
 
 #include <mem.h>
+#include <zephyr/dt-bindings/display/panel.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/arch/wasm/wasm_irq_lines.h>
@@ -29,6 +30,7 @@
 		zephyr,flash-controller = &flashcontroller0;
 		zephyr,code-partition = &slot0_partition;
 		zephyr,display = &display0;
+		zephyr,touch = &host_input;
 	};
 
 	aliases {
@@ -220,8 +222,19 @@
 		display0: display {
 			compatible = "wasm,host-display";
 			status = "okay";
+			pixel-format = <PANEL_PIXEL_FORMAT_RGB_565>;
 			width = <320>;
 			height = <240>;
+		};
+
+		/*
+		 * Touch and keys from the page: pressing on the display's canvas
+		 * and typing while it has focus. See wasm,host-input.
+		 */
+		host_input: input {
+			compatible = "wasm,host-input";
+			status = "okay";
+			interrupts = <WASM_IRQ_INPUT>;
 		};
 
 		/* Upstream's RAM-backed EEPROM simulator, as on native_sim. */

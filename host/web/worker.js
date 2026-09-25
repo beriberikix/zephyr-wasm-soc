@@ -137,6 +137,13 @@ self.onmessage = async (event) => {
     return;
   }
 
+  if (msg.type === 'input-events') {
+    /* Touch and keys from the page. Queued and applied at the top of the
+     * driver loop, like a button press. */
+    host?.pushInput(msg.events);
+    return;
+  }
+
   if (msg.type === 'input') {
     for (const b of msg.bytes) {
       if (b === 3 && interrupt) {      // Ctrl-C

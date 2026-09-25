@@ -31,7 +31,7 @@ const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !==
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -41,6 +41,7 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot) {
    * waits for a button gives the same output every run. */
   for (const event of gpio ?? []) argv.push('--gpio', event);
   if (screenshot) argv.push('--screenshot', screenshot);
+  for (const touch of touches ?? []) argv.push('--touch', touch);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -90,7 +91,7 @@ for (const b of manifest.builds) {
    * has to show at least display.colors_at_least distinct colours, so a
    * blank or black screen fails even when the console looks right. */
   const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
-  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot);
+  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch);
 
   const problems = [];
   /* A build that never finishes ends at --max-time, which is exit 2 and is

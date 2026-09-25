@@ -152,6 +152,16 @@ export class Host {
     this.storageImage = opts.flashImage ?? null;
     this.reboots = 0;
     this.maxReboots = opts.maxReboots ?? 64;
+    /* Input events waiting for the guest's ISR: [type, code, value, sync]. */
+    this.inputQueue = [];
+  }
+
+  /* Queue input events and tell the guest. Safe at any time, like
+   * setGpioInput: the interrupt is applied at the top of the driver loop. */
+  pushInput(events) {
+    if (events.length === 0) return;
+    this.inputQueue.push(...events);
+    this.injectIrq(IRQ.INPUT);
   }
 
   /* The display as RGBA, ready for a canvas's ImageData: a copy, taken
@@ -443,6 +453,14 @@ export class Host {
           self.platform.displayChanged?.();
         },
 
+        /* Input: one queued event per call, as the ISR drains them. */
+        input_poll(ptr) {
+          const ev = self.inputQueue.shift();
+          if (!ev) return 0;
+          new Int32Array(self.mem.buffer, ptr, 4).set(ev);
+          return 1;
+        },
+
         display_blank(on) {
           if (!self.display) return;
           self.display.blank = !!on;
@@ -613,12 +631,22 @@ export class Host {
    * same output every time: the press happens at a stated guest time rather
    * than whenever a person got round to it. */
   advanceToNextDeadline() {
-    const event = this.opts.gpio?.[0];
-    if (event && (this.alarmNs === null || event.atNs <= this.alarmNs)) {
-      this.opts.gpio.shift();
-      if (event.atNs > this.nowNs) this.nowNs = event.atNs;
+    /* The next scripted event, of either kind: a pin moving or input
+     * arriving. Scripted input counts as a deadline for the same reason a
+     * scripted button press does. */
+    const pin = this.opts.gpio?.[0];
+    const input = this.opts.inputScript?.[0];
+    const next = pin && (!input || pin.atNs <= input.atNs) ? pin : input;
+    if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
+      if (next.atNs > this.nowNs) this.nowNs = next.atNs;
       this.quiescentRounds = 0;
-      this.setGpioInput(event.port, event.pin, event.level);
+      if (next === pin) {
+        this.opts.gpio.shift();
+        this.setGpioInput(pin.port, pin.pin, pin.level);
+      } else {
+        this.opts.inputScript.shift();
+        this.pushInput(input.events);
+      }
       return true;
     }
     if (this.alarmNs === null) return false;

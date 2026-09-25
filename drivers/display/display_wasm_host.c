@@ -125,6 +125,8 @@ static DEVICE_API(display, wasm_display_api) = {
 };
 
 #define WASM_DISPLAY_DEFINE(n)                                                                     \
+	BUILD_ASSERT(DT_INST_PROP(n, pixel_format) == PIXEL_FORMAT_RGB_565,                         \
+		     "this display is RGB565 only");                                               \
 	static uint8_t wasm_display_fb_##n[DT_INST_PROP(n, width) * DT_INST_PROP(n, height) *      \
 					   BYTES_PER_PIXEL] __aligned(4);                          \
 	static const struct wasm_display_config wasm_display_config_##n = {                        \

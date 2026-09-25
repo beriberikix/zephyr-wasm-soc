@@ -35,6 +35,7 @@ I64 = ValType.i64()
 # because this host is deliberately a separate implementation.
 IRQ_TIMER = 0
 IRQ_GPIO = 1
+IRQ_INPUT = 2
 
 # Must match DEFAULT_SEED and nextRandomByte() in host/core.mjs: a build that
 # prints random numbers has to print the same ones under both hosts, which is
@@ -201,6 +202,10 @@ class Host:
         def display_blank(on):
             pass
 
+        # Nothing here types or touches, so there is never an event.
+        def input_poll(ptr):
+            return 0
+
         def uart_poll_out(c):
             sys.stdout.write(chr(c & 0xFF))
             sys.stdout.flush()
@@ -226,6 +231,7 @@ class Host:
             "display_attach": (display_attach, [I32, I32, I32, I32], []),
             "display_flush": (display_flush, [I32, I32, I32, I32], []),
             "display_blank": (display_blank, [I32], []),
+            "input_poll": (input_poll, [I32], [I32]),
         }
 
         # Imports are positional, so build the list in the order the module
