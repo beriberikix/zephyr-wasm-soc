@@ -584,7 +584,9 @@ const pageChecks = [
     const [sw, kstat] = await page.evaluate(() =>
       [window.zephyrState().switches, document.getElementById('kstat').textContent]);
     if (sw < 100) throw new Error(`the page shows ${sw} switches for a run of thousands`);
-    if (!kstat.startsWith('At the end of the run')) throw new Error(`the stats read ${JSON.stringify(kstat)}`);
+    if (!kstat.startsWith('At the end of the run') || /pending|deadline/.test(kstat)) {
+      throw new Error(`the stats read ${JSON.stringify(kstat)}`);
+    }
     return `after the run the stats are its last: ${kstat}`;
   }],
   ['clear', async () => {
@@ -594,9 +596,75 @@ const pageChecks = [
     await page.click('#clear');
     await until('Clear took the prompt with it',
                 () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ ');
+    /* Straight on typing, without clicking back into the output. */
+    await page.keyboard.type('kernel version');
+    await page.keyboard.press('Enter');
+    await until('after Clear the keyboard no longer reached the shell',
+                () => window.zephyrScreen().some((l) => l.startsWith('Zephyr version')));
     await page.click('#stop');
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
-    return 'Clear keeps the shell\'s prompt';
+    return 'Clear keeps the shell\'s prompt and the keyboard';
+  }],
+  ['cursor', async () => {
+    /* No cursor where nothing reads the keyboard, a blinking one where
+     * something does -- including after the one before hid it. */
+    await page.selectOption('#build', 'philo');
+    await page.click('#run');
+    await until('the philosophers never started', () => window.zephyrOutput().includes('Philosopher'), null, 30_000);
+    if (!(await page.evaluate(() => window.zephyrCursor().hidden))) {
+      throw new Error('a build that reads no keyboard showed a cursor');
+    }
+    await page.selectOption('#build', 'shell');
+    await page.click('#run');
+    await until('the shell never prompted', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
+    const cur = await page.evaluate(() => window.zephyrCursor());
+    if (cur.hidden || !cur.blink) throw new Error('the shell had no blinking cursor');
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    return 'no cursor for the philosophers, a blinking one for the shell';
+  }],
+  ['pace', async () => {
+    /* A paced build keeps to the wall clock, whether its steps are heavy
+     * (touch redraws every frame) or it is waiting on a person with no
+     * timer running (touch between presses): a five-second press has to
+     * be logged as five seconds. */
+    await page.selectOption('#build', 'touch');
+    await page.click('#run');
+    await until('the touch sample never started', () => window.zephyrState() !== null, null, 30_000);
+    const g0 = await page.evaluate(() => window.zephyrState().nowMs);
+    const t0 = Date.now();
+    await page.waitForTimeout(5000);
+    const g1 = await page.evaluate(() => window.zephyrState().nowMs);
+    const wall = Date.now() - t0;
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    if (Math.abs((g1 - g0) - wall) > wall * 0.25) {
+      throw new Error(`the guest clock moved ${g1 - g0} ms in ${wall} ms of wall time`);
+    }
+    return `the guest clock moved ${g1 - g0} ms in ${wall} ms of wall time`;
+  }],
+  ['fetch', async () => {
+    /* A server error on the module: one is retried and the run goes
+     * ahead; one that persists is reported, and leaves nothing broken for
+     * the next Run. */
+    let failures = 1;
+    await page.route('**/m/hello.wasm', (route) =>
+      (failures-- > 0 ? route.fulfill({ status: 503, body: 'busy' }) : route.continue()));
+    await page.selectOption('#build', 'hello');
+    await page.click('#run');
+    await until('a single 503 was not retried', () => window.zephyrOutput().includes('Hello World'), null, 30_000);
+    failures = 1000;
+    await page.click('#run');
+    await until('a persistent 503 was not reported',
+                () => window.zephyrOutput().includes('could not fetch'), null, 30_000);
+    await until('the failed run did not end', () => !window.zephyrRunning(), null, 10_000);
+    await page.waitForTimeout(500);
+    const out = await page.evaluate(() => window.zephyrOutput());
+    if (/worker error|Cannot read/.test(out)) throw new Error(`the failed fetch left an error behind: ${out.trim()}`);
+    await page.unroute('**/m/hello.wasm');
+    await page.click('#run');
+    await until('Run did not work after a failed fetch', () => window.zephyrOutput().includes('Hello World'), null, 30_000);
+    return 'one 503 is retried; a persistent one is reported cleanly, and the next Run works';
   }],
 ];
 for (const [name, check] of pageChecks) {

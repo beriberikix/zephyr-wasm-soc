@@ -520,8 +520,10 @@ function showKernel(state) {
 
   const bits = [`${state.nowMs} ms`,
                 `${state.switches} switch${state.switches === 1 ? '' : 'es'}`];
-  if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
-  if (state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
+  /* The next deadline and the pending interrupts describe a kernel that is
+   * still going; once the run has ended they mean nothing. */
+  if (running && state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
+  if (running && state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
   kstatEl.textContent = (running ? '' : 'At the end of the run: ') + bits.join(' · ');
 
   if (!state.threads) {
@@ -649,6 +651,11 @@ async function start() {
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
   xterm.options.disableStdin = !interactive;
+  /* A cursor says "type here". Where nothing reads the keyboard it only
+   * marks wherever the guest last wrote, which for the philosophers is the
+   * middle of their table. Written to the screen, not to the log, and said
+   * both ways, because xterm's reset leaves a hidden cursor hidden. */
+  xterm.write(interactive ? '\x1b[?25h' : '\x1b[?25l');
 
   worker?.terminate();
   const w = new Worker('./worker.js', { type: 'module' });
@@ -717,7 +724,14 @@ buildEl.onchange = () => {
 
 runEl.onclick = start;
 stopEl.onclick = () => stopRun();
-clearEl.onclick = () => term.clear();
+/* Clear, then hand the keyboard back to whatever the running build reads
+ * it from: the button took focus away from it. */
+clearEl.onclick = () => {
+  term.clear();
+  if (running && currentBuild?.interactive) {
+    currentBuild.display ? screenEl.focus() : xterm.focus();
+  }
+};
 eraseFlashEl.onclick = async () => {
   await eraseFlash(buildEl.value);
   statusEl.textContent = 'Flash erased: the next run starts on a new board.';
@@ -749,7 +763,10 @@ window.zephyrScreen = () => {
 };
 window.zephyrCursor = () => {
   const buf = xterm.buffer.active;
-  return { x: buf.cursorX, y: buf.cursorY, blink: xterm.options.cursorBlink };
+  /* Whether the guest, or the page, has hidden it (DECTCEM). xterm has no
+   * public way to ask, so this reads the vendored version's own flag. */
+  const hidden = !!xterm._core?.coreService?.isCursorHidden;
+  return { x: buf.cursorX, y: buf.cursorY, blink: xterm.options.cursorBlink, hidden };
 };
 /* Touch and keys into the input subsystem, through wasm,host-input.
  *

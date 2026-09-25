@@ -25,7 +25,13 @@ let host = null;           // the running Host, so buttons can reach it
 
 const browserPlatform = {
   async loadModule(url) {
-    const res = await fetch(url);
+    let res = await fetch(url);
+    /* A static host has the odd bad moment -- GitHub Pages answered one
+     * first Run with a 503 -- so a server error gets one more try. */
+    if (res.status >= 500) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      res = await fetch(url);
+    }
     if (!res.ok) {
       throw new Error(`could not fetch ${url}: ${res.status} ${res.statusText}`);
     }
@@ -184,28 +190,31 @@ self.onmessage = async (event) => {
   };
   lastFlash = msg.flashImage ?? null;
 
+  /* Stop has to reach a run that is already going, and the only safe moment
+   * is between suspensions, which is where the core checks `done`. The same
+   * timer saves the flash every couple of seconds. It only fires while the
+   * driver loop is yielded, which is when the guest is unwound and its
+   * memory can be read. It is cleared however the run ends: left running
+   * after a run that failed to start, it read a host that was gone. */
+  let ticks = 0;
+  const tick = setInterval(() => {
+    if (!host) return;
+    if (stopRequested) host.done = true;
+    sendFrame();
+    if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
+  }, 50);
   try {
     host = new Host(browserPlatform, opts);
-    /* Stop has to reach a run that is already going, and the only safe moment
-     * is between suspensions, which is where the core checks `done`. */
-    /* The same timer saves the flash every couple of seconds. It only fires
-     * while the driver loop is yielded, which is when the guest is unwound
-     * and its memory can be read. */
-    let ticks = 0;
-    const tick = setInterval(() => {
-      if (stopRequested) host.done = true;
-      sendFrame();
-      if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
-    }, 50);
     const code = await host.run();
     clearInterval(tick);
     if (host.storage) sendFlash(host.flashImage());
     sendFrame();
-    host = null;
     self.postMessage({ type: 'done', code });
   } catch (err) {
-    host = null;
     self.postMessage({ type: 'err', text: `\n*** harness error: ${err.message} ***\n` });
     self.postMessage({ type: 'done', code: 1 });
+  } finally {
+    clearInterval(tick);
+    host = null;
   }
 };
