@@ -237,6 +237,12 @@
 			interrupts = <WASM_IRQ_INPUT>;
 		};
 
+		/* LVGL reads its pointer from the same touches. */
+		lvgl_pointer: lvgl-pointer {
+			compatible = "zephyr,lvgl-pointer-input";
+			input = <&host_input>;
+		};
+
 		/* Upstream's RAM-backed EEPROM simulator, as on native_sim. */
 		eeprom0: eeprom {
 			compatible = "zephyr,sim-eeprom";

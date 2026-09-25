@@ -27,7 +27,9 @@ manifest:
       # Without this, `west build` is not available in the workspace.
       west-commands: scripts/west-commands.yml
       import:
-        # The file systems upstream's storage samples use (ROADMAP Phase 3).
+        # The file systems upstream's storage samples use (ROADMAP Phase 3),
+        # and the graphics library its display samples use (Phase 4).
         name-allowlist:
           - fatfs
           - littlefs
+          - lvgl

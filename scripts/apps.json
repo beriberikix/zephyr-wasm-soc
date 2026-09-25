@@ -34,7 +34,9 @@
     "  at least display.colors_at_least distinct colours.",
     "ci_touch: scripted touches, <ms>:<x>,<y> in display pixels: run.mjs",
     "  --touch for the Node check, a real click on the canvas for the",
-    "  browser check."
+    "  browser check.",
+    "args: build arguments, only ever the upstream entry's own extra_configs",
+    "  (the LVGL demos app chooses its demo that way)."
   ],
   "builds": [
     {
@@ -230,6 +232,28 @@
       ],
       "display": {
         "colors_at_least": 2
+      }
+    },
+    {
+      "name": "lvgl",
+      "app": "zephyr/samples/modules/lvgl/demos",
+      "kind": "sample",
+      "title": "LVGL widgets (touch the display)",
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "args": [
+        "-DCONFIG_LV_Z_DEMO_WIDGETS=y"
+      ],
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 5000,
+      "expect": [
+        "free bytes",
+        "allocated bytes"
+      ],
+      "display": {
+        "colors_at_least": 20
       }
     },
     {
