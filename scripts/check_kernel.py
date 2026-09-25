@@ -22,12 +22,12 @@ import json
 import pathlib
 import re
 import shutil
-import subprocess
 import sys
 
+import sweeplib
+
 HERE = pathlib.Path(__file__).resolve().parent
-MODULE = HERE.parent
-TOP = MODULE.parent
+TOP = sweeplib.TOP
 LIST = HERE / "kernel_tests.json"
 
 PASS_RE = re.compile(r"^ PASS", re.M)
@@ -37,27 +37,19 @@ FAIL_RE = re.compile(r"^ FAIL", re.M)
 def run_one(entry: dict, keep: bool) -> dict:
     """Build and run one suite; return what happened, in the recorded shape."""
     name = entry["path"]
-    build = TOP / f"build-kernel-{name.replace('/', '_')}"
-    app = f"zephyr/tests/kernel/{name}"
+    build_dir = TOP / f"build-kernel-{name.replace('/', '_')}"
     result = {"path": name}
 
-    built = subprocess.run(
-        [str(MODULE / "scripts" / "build.sh"), str(build), app],
-        cwd=TOP, capture_output=True, text=True)
-    if built.returncode != 0:
-        err = re.search(r"error: (.*)", built.stdout + built.stderr)
+    ok, err, _ = sweeplib.build(f"zephyr/tests/kernel/{name}", build_dir)
+    if not ok:
         result["status"] = "build-fails"
-        result["note"] = (err.group(1) if err else built.stderr.strip().split("\n")[-1])[:160]
+        result["note"] = err[:160]
         return result
 
-    ran = subprocess.run(
-        ["node", str(MODULE / "host" / "run.mjs"),
-         "--max-time", str(entry.get("max_time_ms", 120000)),
-         str(build / "zephyr" / "zephyr.wasm")],
-        cwd=TOP, capture_output=True, text=True, timeout=900)
-    out = ran.stdout + ran.stderr
+    code, out = sweeplib.run(build_dir / "zephyr" / "zephyr.wasm",
+                             entry.get("max_time_ms", 120000))
     if not keep:
-        shutil.rmtree(build, ignore_errors=True)
+        shutil.rmtree(build_dir, ignore_errors=True)
 
     passed, failed = len(PASS_RE.findall(out)), len(FAIL_RE.findall(out))
     result["passes"] = passed
@@ -68,10 +60,7 @@ def run_one(entry: dict, keep: bool) -> dict:
         result["failures"] = failed
     else:
         result["status"] = "does-not-finish"
-        # The boot banner is also *** wrapped ***, so look for what went
-        # wrong rather than for the first thing that matches the shape.
-        hint = re.search(r"(RuntimeError: [^\n]*|\*\*\* (?:fatal|gave up)[^\n]*)", out)
-        result["note"] = (hint.group(1) if hint else f"exit {ran.returncode}")[:160]
+        result["note"] = sweeplib.trouble(out) or f"exit {code}"
     return result
 
 

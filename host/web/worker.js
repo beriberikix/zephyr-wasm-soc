@@ -75,7 +75,30 @@ const browserPlatform = {
   onState(state) {
     self.postMessage({ type: 'state', state });
   },
+
+  /* A reboot: the flash is about to carry over to a new instance, and the
+   * page keeps a copy in case the tab goes before the next save. */
+  flashChanged(image) {
+    sendFlash(image);
+  },
 };
+
+/* The simulated flash goes to the page to keep, in IndexedDB. Sent only when
+ * it has changed, which for most builds is never, because most builds have
+ * no flash at all. */
+let lastFlash = null;
+
+function sameBytes(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function sendFlash(image) {
+  if (!image || sameBytes(image, lastFlash)) return;
+  lastFlash = image;
+  self.postMessage({ type: 'flash', image });
+}
 
 self.onmessage = async (event) => {
   const msg = event.data;
@@ -130,15 +153,25 @@ self.onmessage = async (event) => {
     clock: msg.clock ?? 'virtual',
     timeScale: msg.timeScale ?? 1,
     wasm: msg.url,
+    flashImage: msg.flashImage ?? null,
   };
+  lastFlash = msg.flashImage ?? null;
 
   try {
     host = new Host(browserPlatform, opts);
     /* Stop has to reach a run that is already going, and the only safe moment
      * is between suspensions, which is where the core checks `done`. */
-    const tick = setInterval(() => { if (stopRequested) host.done = true; }, 50);
+    /* The same timer saves the flash every couple of seconds. It only fires
+     * while the driver loop is yielded, which is when the guest is unwound
+     * and its memory can be read. */
+    let ticks = 0;
+    const tick = setInterval(() => {
+      if (stopRequested) host.done = true;
+      if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
+    }, 50);
     const code = await host.run();
     clearInterval(tick);
+    if (host.storage) sendFlash(host.flashImage());
     host = null;
     self.postMessage({ type: 'done', code });
   } catch (err) {

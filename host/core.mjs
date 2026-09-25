@@ -40,6 +40,11 @@ const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
  * checkDeadline(). */
 class GaveUp extends Error {}
 
+/* Thrown out of the reboot import, through the guest's frames, to the run
+ * loop. The instance it leaves in a mess is discarded, so there is nothing
+ * to unwind cleanly. */
+class Reboot extends Error {}
+
 /* Anything at or beyond this is the kernel saying "nothing soon" rather than
  * naming a deadline it cares about. It clamps to roughly INT32_MAX ticks. */
 const CLAMP_NS = 100_000_000_000n;
@@ -140,6 +145,21 @@ export class Host {
      * further than this by hand. */
     this.history = [];
     this.historyMax = opts.historyMax ?? 64;
+    /* Storage. The guest attaches the simulated flash at boot and the host
+     * fills it from this image, if there is one; flashImage() reads it back.
+     * No image means the flash starts erased, which keeps runs repeatable. */
+    this.storage = null;
+    this.storageImage = opts.flashImage ?? null;
+    this.reboots = 0;
+    this.maxReboots = opts.maxReboots ?? 64;
+  }
+
+  /* A copy of the attached flash as it is now, or the image it was given if
+   * the guest has not attached one. Only meaningful while the guest is not
+   * running, which is whenever anyone outside the driver loop can ask. */
+  flashImage() {
+    if (!this.storage || !this.mem) return this.storageImage;
+    return new Uint8Array(this.mem.buffer, this.storage.ptr, this.storage.len).slice();
   }
 
   /* Snapshot and restore, which is what makes stepping backwards possible.
@@ -358,6 +378,22 @@ export class Host {
             self.quiescentRounds = 0;
             self.raiseIrq(IRQ.TIMER);
           }
+        },
+
+        storage_attach(ptr, len) {
+          self.storage = { ptr, len };
+          const img = self.storageImage;
+          if (!img) return;
+          if (img.length !== len) {
+            self.platform.writeErr(`\n*** flash image is ${img.length} bytes and the ` +
+              `flash is ${len}; starting erased ***\n`);
+            return;
+          }
+          new Uint8Array(self.mem.buffer, ptr, len).set(img);
+        },
+
+        reboot(type) {
+          throw new Reboot(`reboot (type ${type})`);
         },
 
         fatal(reason, arg) {
@@ -586,11 +622,15 @@ export class Host {
     }
   }
 
-  async run() {
-    const bytes = await this.platform.loadModule(this.opts.wasm);
-    const { instance } = await WebAssembly.instantiate(bytes, this.imports());
+  /* Instantiate the module and set up to enter it at its boot path. Runs
+   * once per boot: at the start, and again for every warm reboot, which is a
+   * new instance of the same module with the flash image carried over. */
+  async boot() {
+    this.moduleBytes ??= await this.platform.loadModule(this.opts.wasm);
+    const { instance } = await WebAssembly.instantiate(this.moduleBytes, this.imports());
     this.ex = instance.exports;
     this.mem = this.ex.memory;
+    this.storage = null;
 
     for (const name of ['z_wasm_boot', 'z_wasm_switch_block_addr',
                         'z_wasm_irq_pending_addr', 'z_wasm_thread_entry',
@@ -608,6 +648,32 @@ export class Host {
 
     /* The first context is the boot path itself. */
     this.current = { entry: 'z_wasm_boot', arg: 0, buf: this.scratchBuf, sp: null, fresh: true };
+  }
+
+  /* Everything a reset clears. RAM goes with the old instance; this is the
+   * host's side of it. The guest's clock starts again from zero, as uptime
+   * does, and the time already used comes off the run's allowance, so a
+   * sample that reboots for ever still ends. Pending input is kept: it is
+   * whatever someone typed, and a reset does not un-type it. */
+  resetForReboot() {
+    const used = this.timeNs;
+    this.deadlineNs -= used;
+    this.nowNs = 0n;
+    this.startedAt = this.platform.nowNs();
+    this.alarmNs = null;
+    this.alarmIsClamp = false;
+    this.quiescentRounds = 0;
+    this.contexts = new Map();
+    this.pending = null;
+    this.resumeSame = false;
+    this.pendingFatal = false;
+    this.unwoundInto = undefined;
+    this.history = [];
+    this.gpio[0].out = 0;
+  }
+
+  async run() {
+    await this.boot();
     this.startInput();
 
     this.deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
@@ -657,6 +723,20 @@ export class Host {
         }
         if (!this.step()) break;
       } catch (err) {
+        if (err instanceof Reboot) {
+          /* Keep the flash, as a reset does, and hand it to the platform to
+           * save before booting again. */
+          this.storageImage = this.flashImage();
+          this.platform.flashChanged?.(this.storageImage, 'reboot');
+          if (++this.reboots > this.maxReboots) {
+            this.platform.writeErr(`\n*** gave up after ${this.maxReboots} reboots ***\n`);
+            this.exitCode = 2;
+            break;
+          }
+          this.resetForReboot();
+          await this.boot();
+          continue;
+        }
         if (!(err instanceof GaveUp)) throw err;
         this.platform.writeErr(`\n*** ${err.message} ***\n`);
         this.exitCode = 2;

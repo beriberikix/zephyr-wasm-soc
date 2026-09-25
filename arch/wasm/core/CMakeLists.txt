@@ -11,3 +11,4 @@ zephyr_library_sources(
   thread.c
 )
 zephyr_library_sources_ifdef(CONFIG_WASM_INSPECT inspect.c)
+zephyr_library_sources_ifdef(CONFIG_REBOOT reboot.c)

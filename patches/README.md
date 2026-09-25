@@ -52,13 +52,33 @@ declare them `static`. The patch makes the storage class conditional, so only
 Nothing points *at* an init entry, so copying them is safe; what matters is
 only that the entries are reachable and in order.
 
+## 0004-iterable-sections-identifier-names-on-wasm.patch
+
+`STRUCT_SECTION_ITERABLE` puts each entry in a section named
+`._<family>.static.<key>_`, and the ELF linker scripts collect every family
+with `SORT_BY_NAME`, so a list is contiguous and in key order. Some code
+depends on the order: zbus names a channel's observations so that sorting
+groups them by channel and puts them in notification priority, and
+`_zbus_init` works out each channel's range from that.
+
+wasm-ld has no linker script and never sorts by name. On wasm the patch names
+the section `z_iter_<family>.<key>_`, keeping the same key, and points the
+list bounds at `__start_z_iter_<family>` and `__stop_z_iter_<family>`.
+`scripts/gen_sections_wasm.py` defines those and lays the family out in key
+order (`DESIGN.md` D6), and `scripts/check_sections_wasm.py` checks the result
+in the link map.
+
+The first version of this patch dropped the key and let wasm-ld synthesise the
+bounds for an identifier-named section, on the assumption that these lists do
+not depend on order. Seven zbus samples showed that they do.
+
 ## 0005-ztest-bounds-through-the-section-macros.patch
 
 ztest places its unit tests with `STRUCT_SECTION_ITERABLE` but then names the
 list bounds directly, as `_ztest_unit_test_list_start` and friends. That
 spelling is the one a linker script produces. On wasm there is no linker
-script, and patch 0004 makes the bounds resolve to the symbols wasm-ld
-synthesises for the renamed section, so the hardcoded names do not exist.
+script, and patch 0004 makes the bounds resolve to symbols the module's
+section generator defines, so the hardcoded names do not exist.
 
 The patch routes the declarations through `TYPE_SECTION_START` and friends,
 which is what the rest of Zephyr does and which produces the identical symbols

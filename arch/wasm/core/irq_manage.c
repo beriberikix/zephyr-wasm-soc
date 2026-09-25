@@ -15,6 +15,7 @@
 #include <kernel_arch_func.h>
 #include <zephyr/sw_isr_table.h>
 #include <zephyr/irq_offload.h>
+#include <zephyr/tracing/tracing.h>
 #include <ksched.h>
 
 volatile uint32_t z_wasm_irq_pending;
@@ -110,11 +111,16 @@ void z_wasm_irq_dispatch(void)
 
 		z_wasm_irq_pending &= ~BIT(irq);
 
+		/* Traced per handler, as every other architecture's ISR wrapper
+		 * does, so tracing backends see interrupts here too.
+		 */
+		sys_trace_isr_enter();
 		_kernel.cpus[0].nested++;
 		if (isr_table[irq].isr != NULL) {
 			isr_table[irq].isr(isr_table[irq].arg);
 		}
 		_kernel.cpus[0].nested--;
+		sys_trace_isr_exit();
 	}
 }
 

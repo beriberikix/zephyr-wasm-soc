@@ -7,16 +7,37 @@
 #include <zephyr/arch/wasm/wasm_host.h>
 #include <kernel_arch_func.h>
 #include <ksched.h>
+#include <zephyr/tracing/tracing.h>
 
 void z_wasm_irq_dispatch(void);
 
+/* The idle notifications every architecture gives tracing and CPU load,
+ * around the point where the CPU would sleep. Here that is the host wait.
+ */
+static inline void idle_enter(void)
+{
+#if defined(CONFIG_SYS_IDLE_HOOKS)
+	sys_trace_idle();
+#endif
+}
+
+static inline void idle_exit(void)
+{
+#if defined(CONFIG_SYS_IDLE_HOOKS)
+	sys_trace_idle_exit();
+#endif
+}
+
 void arch_cpu_idle(void)
 {
+	idle_enter();
+
 	/* Check before suspending: an interrupt may already be waiting, and
 	 * the host has no way to interrupt us once we are running.
 	 */
 	z_wasm_irq_masked = 0U;
 	if (z_wasm_irq_pending != 0U) {
+		idle_exit();
 		z_wasm_irq_dispatch();
 		return;
 	}
@@ -25,6 +46,7 @@ void arch_cpu_idle(void)
 	 * the next deadline rather than waiting.
 	 */
 	wasm_host_wait_for_event();
+	idle_exit();
 
 	if (z_wasm_irq_pending != 0U) {
 		z_wasm_irq_dispatch();
@@ -40,11 +62,14 @@ void arch_cpu_idle(void)
 
 void arch_cpu_atomic_idle(unsigned int key)
 {
+	idle_enter();
 	z_wasm_irq_masked = 0U;
 	if (z_wasm_irq_pending != 0U) {
+		idle_exit();
 		z_wasm_irq_dispatch();
 	} else {
 		wasm_host_wait_for_event();
+		idle_exit();
 		if (z_wasm_irq_pending != 0U) {
 			z_wasm_irq_dispatch();
 		}

@@ -47,13 +47,20 @@ function(wasm_add_sections_step)
     COMMENT "Scanning objects for linker-section symbols"
     VERBATIM
   )
-  add_library(wasm_sections OBJECT ${sections_c} ${bounds_c})
+  add_library(wasm_sections OBJECT ${sections_c})
   target_link_libraries(wasm_sections PRIVATE zephyr_interface)
-  # kernel_internal.h declares the pay-per-use init entry structs the anchors
-  # need, and it is a private kernel header.
   target_include_directories(wasm_sections PRIVATE ${ZEPHYR_BASE}/kernel/include)
   target_link_libraries(${logical_target_for_zephyr_elf} $<TARGET_OBJECTS:wasm_sections>)
   add_dependencies(${logical_target_for_zephyr_elf} wasm_sections)
+
+  # The iterable-section layout has to be the first thing wasm-ld sees: it
+  # places output segments in the order it first meets their names, so this
+  # file decides the order only if it is ahead of every archive. A source of
+  # the executable itself is compiled into the objects that open the link
+  # line, ahead of anything named as a library. It includes no headers and
+  # needs no flags beyond the target's. check_sections_wasm.py verifies the
+  # result from the link map.
+  target_sources(${logical_target_for_zephyr_elf} PRIVATE ${bounds_c})
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${ZEPHYR_BASE}" CALL wasm_add_sections_step)

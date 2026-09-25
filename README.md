@@ -31,13 +31,27 @@ log, including what did not work. `BRIEF.md` is the original task.
   controller, so the driver and subsystem code above them is the real thing.
 * `tests/drivers/entropy/api` passes, on a generator that is seeded by
   default so that runs stay reproducible.
-* 16 of Zephyr's own kernel test suites pass outright, 441 cases in all.
-  `scripts/kernel_tests.json` records every suite tried, including the nine
+* 17 of Zephyr's own kernel test suites pass outright, 450 cases in all.
+  `scripts/kernel_tests.json` records every suite tried, including the eight
   that do not pass and why.
 * Two runs in virtual time produce byte-identical output.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
 * `samples/subsys/shell/shell_module` runs interactively over a polled UART.
+* Flash and EEPROM, as upstream's simulators, with NVS, ZMS and settings on
+  top. `sys_reboot()` is a warm reboot that keeps the flash, and the flash
+  survives the run too: in a file under Node, in IndexedDB in a browser.
+  `samples/subsys/kvss/nvs` on the page counts its reboots in flash and
+  still finds what it stored after the page is reloaded.
+* File systems: FAT and ext2 on a RAM disk, and littlefs on the flash, so
+  it persists as the flash does.
+* 37 upstream samples pass their own twister criterion, unmodified, out of
+  the 92 that twister itself would run on this board. Among them the
+  meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
+  samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
+  which is on the page as something to type events into.
+  `scripts/samples.json` records every candidate tried, with a cause for each
+  one that does not pass.
 
 Not done: twister builds for this board but cannot find the module's SoC. It
 takes a `--board-root` and no `--soc-root`, relying on module discovery, and
@@ -102,6 +116,9 @@ west init -l zephyr-wasm
 west update
 zephyr-wasm/scripts/apply_patches.sh
 ```
+
+`west update` also fetches the two file-system modules, FatFs and littlefs,
+and nothing else: `west.yml` imports them from Zephyr's manifest by name.
 
 The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; four of the five are the same underlying
@@ -276,6 +293,7 @@ under wasmtime. The kernel is the same module in all three.
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
+| `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
 
 ## Continuous integration
 
@@ -294,7 +312,18 @@ node zephyr-wasm/scripts/check_site.mjs        # every build, under Node
 node zephyr-wasm/scripts/check_browser.mjs     # every build, in Chromium
 zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
 python3 zephyr-wasm/scripts/check_kernel.py    # Zephyr's kernel suites
+python3 zephyr-wasm/scripts/check_samples.py --recorded passes  # upstream samples
 ```
+
+`check_samples.py` builds each upstream sample entry the way twister would and
+judges it by the entry's own `harness_config`. An entry whose twister
+`filter:` is false on this board is recorded as filtered, not failed; that is
+evaluated with twister's own parser, which needs `pip install ply`. It
+compares against `scripts/samples.json` and exits non-zero on anything that
+did worse. `--match samples/kernel` narrows it to one area; `--discover`
+regenerates the candidate list from upstream's `tests.yaml` files. All 229
+candidates take a few hours, so CI runs them weekly in
+`.github/workflows/samples.yml` rather than on every push.
 
 The browser check needs Playwright (`npm install --no-save playwright && npx
 playwright install chromium`); nothing else here does, which is why it is not
@@ -338,8 +367,9 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 `ROADMAP.md` is the plan underneath it, including the order the work is done in
 and what the issue did not account for.
 
-Progress is measured in upstream Zephyr samples that run unmodified, which is
-eight today. `scripts/apps.py score` is what counts it.
+Progress is measured in upstream Zephyr samples that pass their own
+acceptance criterion unmodified, which is 39 today. `scripts/apps.py score`
+is what counts it, from the samples sweep.
 
 ## Feedback
 

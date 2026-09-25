@@ -5,6 +5,10 @@
 #ifndef ZEPHYR_INCLUDE_ARCH_WASM_ARCH_H_
 #define ZEPHYR_INCLUDE_ARCH_WASM_ARCH_H_
 
+/* Every in-tree architecture's arch.h includes this, and Zephyr code relies
+ * on getting the devicetree macros that way: ext2's fstab support, for one,
+ * never includes it itself. */
+#include <zephyr/devicetree.h>
 #include <zephyr/arch/wasm/thread.h>
 #include <zephyr/arch/wasm/exception.h>
 #include <zephyr/arch/wasm/irq.h>

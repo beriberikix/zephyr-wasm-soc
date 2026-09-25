@@ -6,8 +6,10 @@
 #
 # Zephyr is pinned to a main commit rather than a release tag so the port is
 # developed against the same tree the design notes were written from.
-# No Zephyr modules are imported: the port uses the minimal libc and needs no
-# HAL, so `import` is deliberately absent to keep the workspace small.
+# Zephyr modules are imported narrowly: only the ones something here uses,
+# at the revisions Zephyr itself pins, so they move with the Zephyr pin. The
+# port uses the minimal libc and needs no HAL, and a full import would pull in
+# hundreds of megabytes of vendor code for nothing.
 
 manifest:
   self:
@@ -24,3 +26,8 @@ manifest:
       path: zephyr
       # Without this, `west build` is not available in the workspace.
       west-commands: scripts/west-commands.yml
+      import:
+        # The file systems upstream's storage samples use (ROADMAP Phase 3).
+        name-allowlist:
+          - fatfs
+          - littlefs

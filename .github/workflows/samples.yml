@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Re-run Zephyr's own samples against what scripts/samples.json records.
+#
+# The score in ROADMAP.md is upstream samples that pass upstream's own
+# criterion, and that record is only worth anything if it stays true. This
+# checks it weekly, and on demand, without adding hours to every push: the
+# Pages build stays fast and keeps its own concurrency group.
+#
+# By default it re-runs only what is recorded as working -- passes, runs,
+# builds -- which is where a regression would show. Dispatching it with
+# "everything" re-runs all the candidates too, which takes most of the six
+# hours a job is allowed and is how an improvement is noticed.
+name: sweep upstream samples
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'   # Mondays, 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      everything:
+        description: 'Re-run every candidate, not only what is recorded as working'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: samples-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Check out the module
+        uses: actions/checkout@v4
+        with:
+          path: zephyr-wasm
+
+      - name: Install the toolchain
+        env:
+          LLVM_VERSION: '21'
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            binaryen wabt ninja-build cmake python3-pip lsb-release wget software-properties-common gnupg
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y --no-install-recommends "lld-$LLVM_VERSION"
+          echo "/usr/lib/llvm-$LLVM_VERSION/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up the west workspace
+        run: |
+          pip install --break-system-packages west
+          west init -l zephyr-wasm
+          west update --narrow -o=--filter=blob:none
+          pip install --break-system-packages -r zephyr/scripts/requirements-base.txt
+          # check_samples.py evaluates each entry's twister filter with
+          # twister's own parser, which needs ply.
+          pip install --break-system-packages ply
+
+      - name: Apply the patches to Zephyr
+        run: ./zephyr-wasm/scripts/apply_patches.sh
+
+      # One at a time: building several at once has raced on a generated
+      # header, and a sweep that reports failures it caused is worse than a
+      # slow one. Exits non-zero if anything did worse than recorded.
+      - name: Sweep the samples
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.everything }}" = "true" ]; then
+            python3 zephyr-wasm/scripts/check_samples.py | tee sweep.log
+          else
+            python3 zephyr-wasm/scripts/check_samples.py --recorded passes,runs,builds | tee sweep.log
+          fi
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: samples-sweep
+          path: sweep.log

@@ -30,6 +30,7 @@ function parseArgs(argv) {
     else if (a === '--trace-gpio') opts.traceGpio = true;
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
     else if (a === '--interactive') opts.interactive = true;
+    else if (a === '--flash') opts.flashFile = argv[++i];
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -75,7 +76,10 @@ function usage() {
   --gpio <ms>:<pin>=<0|1>
                      move an input pin at a given guest time, repeatable.
                      Levels are physical, so a button wired active low is
-                     pressed at 0 and released at 1.`);
+                     pressed at 0 and released at 1.
+  --flash <file>     keep the simulated flash in this file: loaded before
+                     boot if it exists, written back on reboot and at the
+                     end. Without it the flash starts erased every run`);
 }
 
 const nodePlatform = {
@@ -165,4 +169,16 @@ if (opts.threads) {
   };
 }
 
-process.exitCode = await new Host(nodePlatform, opts).run();
+/* The simulated flash, kept in a file between runs and across reboots. */
+if (opts.flashFile) {
+  if (fs.existsSync(opts.flashFile)) {
+    opts.flashImage = new Uint8Array(fs.readFileSync(opts.flashFile));
+  }
+  nodePlatform.flashChanged = (image) => {
+    if (image) fs.writeFileSync(opts.flashFile, image);
+  };
+}
+
+const host = new Host(nodePlatform, opts);
+process.exitCode = await host.run();
+if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());

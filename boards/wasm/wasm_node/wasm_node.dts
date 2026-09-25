@@ -8,6 +8,7 @@
 
 /dts-v1/;
 
+#include <mem.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/arch/wasm/wasm_irq_lines.h>
@@ -24,6 +25,9 @@
 		zephyr,shell-uart = &host_uart;
 		zephyr,sram = &ram0;
 		zephyr,entropy = &host_rng;
+		zephyr,flash = &flash0;
+		zephyr,flash-controller = &flashcontroller0;
+		zephyr,code-partition = &slot0_partition;
 	};
 
 	aliases {
@@ -33,6 +37,7 @@
 		led3 = &led3;
 		sw0 = &sw0;
 		sw1 = &sw1;
+		eeprom-0 = &eeprom0;
 	};
 
 	/*
@@ -158,6 +163,58 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 			ngpios = <8>;
+		};
+
+		/*
+		 * Upstream's flash simulator, the same one native_sim uses. Off the
+		 * posix arch it keeps the whole device as a static array, which
+		 * here is part of linear memory. That is why it is 256 KB and not
+		 * native_sim's 2 MB: every step-back snapshot copies linear
+		 * memory, and the storage samples need 16 erase blocks, not 512.
+		 * The host can restore and save the array between steps; see
+		 * DESIGN.md.
+		 */
+		flashcontroller0: flash-controller@0 {
+			compatible = "zephyr,sim-flash";
+			reg = <0x0 DT_SIZE_K(256)>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			erase-value = <0xff>;
+
+			flash0: flash@0 {
+				status = "okay";
+				compatible = "soc-nv-flash";
+				erase-block-size = <4096>;
+				write-block-size = <1>;
+				reg = <0x0 DT_SIZE_K(256)>;
+
+				partitions {
+					compatible = "fixed-partitions";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					/* Nothing is loaded from here: the image is the
+					 * wasm module. It exists because
+					 * zephyr,code-partition must name something.
+					 */
+					slot0_partition: partition@0 {
+						label = "image-0";
+						reg = <0x0 DT_SIZE_K(192)>;
+					};
+
+					storage_partition: partition@30000 {
+						label = "storage";
+						reg = <0x30000 DT_SIZE_K(64)>;
+					};
+				};
+			};
+		};
+
+		/* Upstream's RAM-backed EEPROM simulator, as on native_sim. */
+		eeprom0: eeprom {
+			compatible = "zephyr,sim-eeprom";
+			status = "okay";
+			size = <DT_SIZE_K(32)>;
 		};
 
 		host_rng: rng {

@@ -2,8 +2,9 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 3 upstream
-samples and `scripts/apps.py score` is what counts it.
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 39 upstream
+samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
+is what counts it.
 
 
 ### Tick 30 — in a browser
@@ -468,3 +469,221 @@ reports failures it caused itself is worse than a slow one, and the
 distinction matters more here than elsewhere: the whole value of
 `kernel_tests.json` is that a line moving means something.
 
+
+### Tick 43 — every sample that could run, tried
+
+The score was 8 because nobody had tried the others. Now all have been.
+Upstream declares its samples in `tests.yaml`: 650 applications, 1268
+entries. Of those, 229 entries in 143 applications could plausibly run here;
+the rest name only hardware platforms, need a feature the board lacks, or use
+a harness that needs a peer. `scripts/check_samples.py` builds each one with
+the entry's own arguments and judges it by twister's own rules, so the score
+is upstream's opinion, not this port's.
+
+29 applications pass. With blinky and button, which upstream only builds,
+the score is 31.
+
+Five things this tick got wrong on the way, all corrected:
+
+- The first build classifier read the whole log, so a missing `CONFIG_`
+  symbol came out as a devicetree failure because some devicetree line
+  appeared earlier. It now classifies by the error line and only falls back
+  to the log for Kconfig and missing modules.
+- The first sweep rewrote `samples.json` inside the repository while it ran,
+  so every push cancelled CI. `--record` now takes a path outside it.
+- ccache did not make the sweep faster. Zephyr refuses anything below 4.12
+  unless told otherwise and Ubuntu has 4.9, so it was never used; what got
+  faster was builds that fail in the first second.
+- Every `null function or function signature mismatch` trap was tagged
+  `d8b`, and seven of them were not. V8 says the same thing for a null
+  pointer as for a wrong signature. The zbus ones are null: `_zbus_init`
+  expects each channel's observers to be contiguous, upstream's linker
+  script sorts them by name to make it so, and patch 0004's shim does not.
+  The automatic tag is now `indirect-call`, and the notes in the record say
+  which ones are really D8b. Two applications are.
+- `drivers/display` passing does not mean the display works. Its regex is
+  the banner. It and two others are marked `boot-only`.
+
+Blinky has no candidate entry at all: its harness is `led`, a fixture label
+twister has no class for, so upstream never runs it. Button is `build_only`.
+That is why the score is the union of the sweep and `apps.json`.
+
+Two passing samples are worth watching and are now on the page:
+`kernel/metairq_dispatch`, which prints per-thread dispatch latency and
+finishes, deterministically and identically on both engines; and
+`smf/hsm_psicc2`, a hierarchical state machine driven from a shell, so
+someone can type events at it and watch the transitions.
+
+
+### Tick 44 — the right fix for the wrong reason
+
+Tick 43 recorded seven zbus applications as failing on iterable-section
+order: `_zbus_init` expects a channel's observers to be contiguous, upstream's
+linker scripts sort them to make it so, and the shim did not. That is true of
+the code and was not why they failed.
+
+The ordering got fixed first, and properly. Patch 0004 now keeps the sort key
+in the section name. `gen_sections_wasm.py` links a file ahead of everything
+that names every family's sections in key order, between start and stop
+markers. wasm-ld makes output segments in the order it first meets their
+names, so that file decides the layout. `check_sections_wasm.py` then reads
+the link map and fails the build if any family is not one unbroken, ordered
+run between its markers. A spike confirmed each assumption on LLVM 21 first:
+- zero-length retained segments survive gc;
+- output segments follow first-seen order;
+- entries from later objects join the earlier segment;
+- the markers align;
+- linked in the wrong order, a list silently shrinks, which is what the check
+  exists to catch.
+
+Everything built, CI went green, and the zbus samples trapped exactly as
+before. So one sample got a scratch copy with nothing changed but its thread
+entry, `void subscriber_task(void)` made to take three pointers. It ran in
+full under the new layout. Then under the old layout too. The only difference
+between the two runs was the order of the observers list, which the new layout
+gets right.
+
+Every one of the seven declares a thread entry `void f(void)` or
+`void f(void *)`. They are D8b, and the triage said otherwise because V8 gives
+a null function pointer and a wrong signature the same message, and because
+reading `_zbus_init` produced a plausible story that nobody tested. The
+record now says D8b for all seventeen entries, with the function named. D8b
+is nine applications, not two, and the upstream signature fixes are the
+cheapest nine applications on the list.
+
+The ordering fix stays. It makes zbus notify and list in upstream's order,
+makes log ids and test order upstream's, retires the anchor list and the weak
+fallbacks, and turns the quietest failure the shim had into a build error.
+
+The kernel sweep under the new layout found one more thing it does:
+`mem_heap/k_heap_api` passes, all 23 cases, where it used to panic on a heap
+spinlock left held by an earlier case. ztest's suites and tests are iterable
+sections, so they now run in upstream's order, and in that order whatever
+left the lock held never runs first. The other 24 suites are exactly as
+recorded. That makes 17 suites passing outright and 450 cases, and one fewer
+mystery, though the case that left the lock held is still unidentified.
+
+
+### Tick 45 — the samples that "gave up" mostly should never have run
+
+Seven entries were recorded as running for ever without passing:
+- `hash_map` with newlib;
+- `flash_shell`;
+- four sensor polling samples;
+- `tracing.gpio`.
+
+The obvious suspects were a busy loop the safepoints miss and a clock that
+never moves. It was neither, for six of the seven.
+
+`accel_polling` builds its sensor list from the aliases `accel0` to `accel9`.
+This board has none, so the list is empty and `main` sleeps for ever, printing
+nothing. That is what it would do on any board without an accelerometer, and
+upstream knows it: the entry says `filter: dt_alias_exists("accel0")`, and
+twister never runs it on such a board. The same goes for the others:
+- `die-temp0` and `distance0`;
+- a chosen flash controller;
+- `TOOLCHAIN_HAS_NEWLIB`, which is `OFF` for this toolchain.
+
+The sweep had never looked at `filter:`. It now evaluates each filter with
+twister's own `expr_parser`, against the build's `.config`, CMake cache and
+`edt.pickle`, exactly as twister does after CMake, and records a false filter
+as `filtered`. Run over every candidate that has a filter, that removed 87 of
+the 229 entries. What twister itself would run on this board is 142 entries in
+89 applications. The score does not move, and the denominator is now honest.
+
+Two entries moved the wrong way, correctly:
+- `synchronization.cpu_mask` passed, but needs SMP with more than one CPU, so
+  upstream would never run it here. The app still counts through its main
+  entry.
+- `firmware/scmi` built, but needs `CONFIG_ARM_SCMI`.
+
+The seventh was real. `tracing.gpio` printed every line upstream wants except
+the last, `sys_trace_.*_user.*`. Every other architecture calls:
+- `sys_trace_isr_enter/exit` around interrupt handlers;
+- `sys_trace_idle/idle_exit` around the CPU's sleep.
+
+This one called neither, so tracing backends and CPU load never saw an
+interrupt or an idle period. Both now happen, in the dispatcher and around the
+host wait, and the entry passes.
+
+One slip, caught in the output: re-running an entry kept its hand-written note
+but replaced a hand-confirmed `d8b` with the automatic `indirect-call`, which
+is only a guess. It no longer does.
+
+### Tick 46 — flash, and a board that remembers
+
+Upstream's flash simulator needed nothing from the port. Off the posix arch
+it keeps the device as one static array, here in linear memory, so giving
+the board a `zephyr,sim-flash` node with a storage partition was the whole
+job. The EEPROM simulator was the same. Five storage samples passed on the
+first build:
+- settings on NVS;
+- all three ZMS entries;
+- `drivers/eeprom`;
+- `flash_shell`, through its scripted shell session.
+
+The size was the only decision. native_sim has 2 MB. Every step-back snapshot
+copies linear memory, so that would have made each one sixteen times larger,
+for storage the samples use 12 KB of. 256 KB, with a 64 KB storage partition.
+
+`kvss/nvs` then failed to link on `sys_arch_reboot`, because it proves
+persistence by rebooting itself and counting. Rebooting and persistence turned
+out to be the same feature:
+- A reboot keeps the flash and loses RAM.
+- The flash is an array in linear memory.
+- So a reboot is a new instance of the module with the old array copied into
+  the new one.
+
+`flash_wasm_host.c` tells the host where the array is, straight after the
+driver erases it at boot, and the host fills it from an image if it has one.
+The `reboot` import throws out of the guest. The instance is being discarded,
+so there is no point unwinding it, and the host boots a new one.
+
+The ROADMAP had framed persistence as a choice between a suspending import
+and an image loaded before the run. It was the second, and the reason is
+simple: the host can read and write linear memory whenever the guest is
+paused, and the guest is paused most of the time. So:
+- the page loads the build's image from IndexedDB before starting the worker;
+- the worker sends a copy back when it changes;
+- the page saves it without anyone waiting.
+
+`kvss/nvs` now shows six boots and a reboot counter kept in flash. With
+`--flash`, the next run finds what this one stored. V8 and wasmtime print the
+same output and leave byte-identical images. On the page, the browser check
+runs it, reloads, runs it again, and fails if the second run finds an empty
+flash.
+
+Score 37: 35 swept samples plus blinky and button.
+
+### Tick 47 — file systems, and two bugs that were waiting for them
+
+FatFs and littlefs are Zephyr modules. `west.yml` now imports exactly those
+two from Zephyr's own manifest, so they move with the Zephyr pin, and a plain
+`west update` fetches them here and in CI. `fs/fatfs_fstab` passed on its first
+build: FAT on the RAM disk its own overlay declares.
+
+`fs/ext2_fstab` needs no module, and it had been failing with an implicit
+int at `ext2_ops.c:659`. The overlay, the binding and the generated macros
+were all correct. Preprocessing showed the cause: `DT_INST_FOREACH_STATUS_OKAY`
+itself was undefined, because `<zephyr/devicetree.h>` was never included.
+Every in-tree architecture's `arch.h` includes it and Zephyr code leans on
+that; this one did not. With the include, ext2 formats its RAM disk and
+passes. Re-sweeping every build failure found nothing else it fixed, which
+settles the guess that `DT_ON_BUS` and friends were the same problem: they
+are not.
+
+`fs/littlefs` linked and then failed in the safepoint pass: "z_wasm_safepoint
+is not exported". It was exported. The sample sets `CONFIG_DEBUG=y`, the
+build is `-O0`, and the module keeps its name section, so `wasm2wat` prints
+`(func $z_wasm_safepoint` where the pass only understood `(func 20)`. Any
+debug build of anything would have hit this. The pass now takes either
+spelling, and its output for index-form modules is byte-identical to
+before. littlefs then mounted the board's storage partition, formatted it
+and kept a boot counter, which persists in the browser the way NVS does.
+
+Score 39: fatfs and ext2 fstab samples. The format and littlefs samples are
+build-only upstream.
+
+The sweep harness also stopped decoding guest output strictly. The ext2
+sample prints its UUID as raw bytes, and a checker that dies on 0xff says
+nothing about the sample.

@@ -46,9 +46,17 @@ class GaveUp(Exception):
     """Raised out of an import to stop a guest that will not stop by itself."""
 
 
+class Reboot(Exception):
+    """Raised out of the reboot import; the instance it leaves is discarded."""
+
+
+MAX_REBOOTS = 64   # as maxReboots in host/core.mjs
+
+
 class Host:
     def __init__(self, path: Path, max_time_ms: int, trace_gpio: bool = False,
-                 seed: int | None = None, true_random: bool = False):
+                 seed: int | None = None, true_random: bool = False,
+                 flash_file: Path | None = None):
         self.max_time_ns = max_time_ms * 1_000_000
         self.trace_gpio = trace_gpio
         self.true_random = true_random
@@ -64,13 +72,31 @@ class Host:
         self.unwound_into = None
         self.pending_fatal = False
         self.out = bytearray()
+        # The simulated flash: attached by the guest at boot, filled from the
+        # image if there is one, carried across reboots, saved at the end.
+        self.flash_file = flash_file
+        self.storage: tuple[int, int] | None = None
+        self.storage_image = (flash_file.read_bytes()
+                              if flash_file is not None and flash_file.exists() else None)
+        self.reboots = 0
 
         self.store = Store(Engine())
         self.module = Module.from_file(self.store.engine, str(path))
+        self.boot()
+
+    def boot(self):
+        """Instantiate the module: once at the start and once per reboot."""
+        self.storage = None
         self.instance = Instance(self.store, self.module, self._imports())
         self.ex = self.instance.exports(self.store)
         self.mem = self.ex["memory"]
         self.sp = self.ex["__stack_pointer"]
+
+    def flash_image(self) -> bytes | None:
+        if self.storage is None:
+            return self.storage_image
+        ptr, length = self.storage
+        return self.mem.read(self.store, ptr, ptr + length)
 
     # --- memory helpers -------------------------------------------------
     def u32(self, addr: int) -> int:
@@ -148,6 +174,20 @@ class Host:
             self.exit_code = 1
             self.suspend(idle=False, fatal=True)
 
+        def storage_attach(ptr, length):
+            self.storage = (ptr, length)
+            img = self.storage_image
+            if img is None:
+                return
+            if len(img) != length:
+                sys.stderr.write(f"\n*** flash image is {len(img)} bytes and the flash "
+                                 f"is {length}; starting erased ***\n")
+                return
+            self.mem.write(self.store, img, ptr)
+
+        def reboot(kind):
+            raise Reboot(f"reboot (type {kind})")
+
         def uart_poll_out(c):
             sys.stdout.write(chr(c & 0xFF))
             sys.stdout.flush()
@@ -168,6 +208,8 @@ class Host:
             "fatal": (fatal, [I32, I32], []),
             "uart_poll_out": (uart_poll_out, [I32], []),
             "uart_poll_in": (uart_poll_in, [], [I32]),
+            "storage_attach": (storage_attach, [I32, I32], []),
+            "reboot": (reboot, [I32], []),
         }
 
         # Imports are positional, so build the list in the order the module
@@ -266,21 +308,56 @@ class Host:
         if self.now_ns > self.max_time_ns:
             raise GaveUp(f"gave up after {self.max_time_ns // 1_000_000} ms of guest time")
 
-    def run(self) -> int:
+    def enter_boot(self):
         self.block_addr = self.call("z_wasm_switch_block_addr")
         self.irq_addr = self.call("z_wasm_irq_pending_addr")
         self.scratch = self.call("z_wasm_boot_scratch_addr")
         self.current = {"entry": "z_wasm_boot", "arg": 0, "buf": self.scratch,
                         "sp": None, "fresh": True}
+
+    def reset_for_reboot(self):
+        """As resetForReboot() in host/core.mjs: uptime restarts, and the
+        time already used comes off the allowance."""
+        self.max_time_ns -= self.now_ns
+        self.now_ns = 0
+        self.alarm_ns = None
+        self.alarm_is_clamp = False
+        self.quiescent = 0
+        self.contexts = {}
+        self.resume_same = False
+        self.unwound_into = None
+        self.pending_fatal = False
+
+    def save_flash(self):
+        image = self.flash_image()
+        if self.flash_file is not None and image is not None:
+            self.flash_file.write_bytes(bytes(image))
+
+    def run(self) -> int:
+        self.enter_boot()
+        code = None
         while not self.done:
             try:
                 self.check_deadline()
                 if not self.step():
                     break
+            except Reboot:
+                self.storage_image = bytes(self.flash_image() or b"") or None
+                self.save_flash()
+                self.reboots += 1
+                if self.reboots > MAX_REBOOTS:
+                    sys.stderr.write(f"\n*** gave up after {MAX_REBOOTS} reboots ***\n")
+                    code = 2
+                    break
+                self.reset_for_reboot()
+                self.boot()
+                self.enter_boot()
             except GaveUp as gave_up:
                 sys.stderr.write(f"\n*** {gave_up} ***\n")
-                return 2
-        return self.exit_code
+                code = 2
+                break
+        self.save_flash()
+        return self.exit_code if code is None else code
 
 
 def main() -> int:
@@ -294,9 +371,11 @@ def main() -> int:
                     help="take entropy from the platform, ending reproducibility")
     ap.add_argument("--trace-gpio", action="store_true",
                     help="log every GPIO output change to stderr")
+    ap.add_argument("--flash", type=Path, default=None,
+                    help="keep the simulated flash in this file, as run.mjs --flash does")
     args = ap.parse_args()
     return Host(args.wasm, args.max_time, args.trace_gpio,
-                args.seed, args.true_random).run()
+                args.seed, args.true_random, args.flash).run()
 
 
 if __name__ == "__main__":

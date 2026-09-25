@@ -266,6 +266,45 @@ if (stepper) {
   }
 }
 
+/* Flash that outlives the page. A build with persist_expect is run on an
+ * erased flash, the page is reloaded -- which is the tab closing and
+ * opening again, as far as the page can tell -- and it is run again. The
+ * second run has to find what the first one stored. */
+for (const b of manifest.builds.filter((x) => x.persist_expect)) {
+  const runToEnd = async () => {
+    await page.selectOption('#build', b.name);
+    await page.click('#run');
+    await page.waitForFunction((w) => window.zephyrOutput().includes(w), b.expect.at(-1),
+                               { timeout: 60_000, polling: 250 });
+    await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 30_000 });
+    await page.evaluate(() => window.zephyrFlashSaved());
+    return page.evaluate(() => window.zephyrOutput());
+  };
+  try {
+    await page.click('#stop').catch(() => {});
+    await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 });
+    await page.evaluate((n) => window.zephyrEraseFlash(n), b.name);
+    const first = await runToEnd();
+    if (!first.includes(b.persist_absent)) {
+      throw new Error(`on an erased flash it should print ${JSON.stringify(b.persist_absent)}`);
+    }
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null,
+                               { timeout: 15_000 });
+    const second = await runToEnd();
+    if (!second.includes(b.persist_expect)) {
+      throw new Error(`after a reload it never printed ${JSON.stringify(b.persist_expect)}`);
+    }
+    if (second.includes(b.persist_absent)) {
+      throw new Error(`after a reload it printed ${JSON.stringify(b.persist_absent)}: the flash was not kept`);
+    }
+    console.log(`  ok    ${b.name.padEnd(8)} flash survived a page reload`);
+  } catch (err) {
+    fail(b.name, `flash across a reload: ${err.message.split('\n')[0]}`,
+         await page.evaluate(() => window.zephyrOutput()).catch(() => ''));
+  }
+}
+
 await browser.close();
 server.close();
 

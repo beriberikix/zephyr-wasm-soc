@@ -24,7 +24,11 @@
     "  tests, which prove the port rather than the samples.",
     "kind: sample or test. The score in ROADMAP.md counts upstream samples,",
     "  because the samples are the teaching material. An upstream test suite",
-    "  is evidence for the port and is not a sample."
+    "  is evidence for the port and is not a sample.",
+    "persist_expect / persist_absent: for a build that keeps",
+    "  simulated flash. The browser check runs it, reloads the page and runs",
+    "  it again: the second run must print persist_expect and must not print",
+    "  persist_absent, which is what it prints when the flash is empty."
   ],
   "builds": [
     {
@@ -34,7 +38,10 @@
       "title": "hello_world",
       "upstream": true,
       "max_time_ms": 10000,
-      "expect": ["Booting Zephyr OS", "Hello World! wasm_node"]
+      "expect": [
+        "Booting Zephyr OS",
+        "Hello World! wasm_node"
+      ]
     },
     {
       "name": "sync",
@@ -56,8 +63,12 @@
       "title": "ztest: kernel semaphore",
       "upstream": true,
       "max_time_ms": 60000,
-      "expect": ["PROJECT EXECUTION SUCCESSFUL"],
-      "expect_at_least": { "^ PASS": 32 },
+      "expect": [
+        "PROJECT EXECUTION SUCCESSFUL"
+      ],
+      "expect_at_least": {
+        "^ PASS": 32
+      },
       "deterministic": true
     },
     {
@@ -67,7 +78,9 @@
       "title": "timeslice: two spinners",
       "upstream": false,
       "max_time_ms": 30000,
-      "expect": ["PASS: both threads ran, so preemption works"]
+      "expect": [
+        "PASS: both threads ran, so preemption works"
+      ]
     },
     {
       "name": "blinky",
@@ -79,7 +92,10 @@
       "max_time_ms": 60000,
       "ci_max_time_ms": 6000,
       "endless": true,
-      "expect": ["LED state: ON", "LED state: OFF"],
+      "expect": [
+        "LED state: ON",
+        "LED state: OFF"
+      ],
       "deterministic": true
     },
     {
@@ -92,8 +108,15 @@
       "interactive": true,
       "max_time_ms": 600000,
       "ci_max_time_ms": 4000,
-      "ci_gpio": ["1000:4=0", "1400:4=1"],
-      "expect": ["Press the button", "Button 11 pressed at", "Button 11 released at"]
+      "ci_gpio": [
+        "1000:4=0",
+        "1400:4=1"
+      ],
+      "expect": [
+        "Press the button",
+        "Button 11 pressed at",
+        "Button 11 released at"
+      ]
     },
     {
       "name": "entropy",
@@ -102,7 +125,10 @@
       "title": "ztest: entropy API",
       "upstream": true,
       "max_time_ms": 30000,
-      "expect": ["PROJECT EXECUTION SUCCESSFUL", "random device is "],
+      "expect": [
+        "PROJECT EXECUTION SUCCESSFUL",
+        "random device is "
+      ],
       "deterministic": true
     },
     {
@@ -115,7 +141,11 @@
       "max_time_ms": 120000,
       "ci_max_time_ms": 20000,
       "endless": true,
-      "expect": ["Dining Philosophers", "Philosopher 0", "EATING"]
+      "expect": [
+        "Dining Philosophers",
+        "Philosopher 0",
+        "EATING"
+      ]
     },
     {
       "name": "logger",
@@ -139,7 +169,53 @@
       "title": "sys_heap",
       "upstream": true,
       "max_time_ms": 20000,
-      "expect": ["System heap sample", "allocated 156, free 36, max allocated 156, heap size 256"]
+      "expect": [
+        "System heap sample",
+        "allocated 156, free 36, max allocated 156, heap size 256"
+      ]
+    },
+    {
+      "name": "metairq",
+      "app": "zephyr/samples/kernel/metairq_dispatch",
+      "kind": "sample",
+      "title": "meta-IRQ dispatch",
+      "upstream": true,
+      "max_time_ms": 30000,
+      "expect": [
+        "Starting Thread0 at priority -2",
+        "MetaIRQ Test Complete"
+      ],
+      "deterministic": true
+    },
+    {
+      "name": "nvs",
+      "app": "zephyr/samples/subsys/kvss/nvs",
+      "kind": "sample",
+      "title": "NVS in flash (reboots itself; run again after a reload)",
+      "upstream": true,
+      "max_time_ms": 60000,
+      "deterministic": true,
+      "expect": [
+        "Id: 3, Reboot_counter: 5",
+        "Reboot counter reached max value"
+      ],
+      "persist_expect": "Id: 1, Address: 192.168.1.1",
+      "persist_absent": "No address found"
+    },
+    {
+      "name": "hsm",
+      "app": "zephyr/samples/subsys/smf/hsm_psicc2",
+      "kind": "sample",
+      "title": "state machine (type events into the shell)",
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "expect": [
+        "State Machine Framework Demo",
+        "hsm_psicc2_thread: s211_entry"
+      ]
     },
     {
       "name": "shell",
@@ -151,7 +227,11 @@
       "max_time_ms": 600000,
       "ci_max_time_ms": 20000,
       "ci_stdin": "kernel version\ndemo ping\n",
-      "expect": ["uart:~$", "Zephyr version 4.4.99", "pong"]
+      "expect": [
+        "uart:~$",
+        "Zephyr version 4.4.99",
+        "pong"
+      ]
     }
   ]
 }

@@ -26,7 +26,11 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-No Zephyr modules are imported; the port needs no HAL and uses the minimal libc.
+Two Zephyr modules are imported, `fatfs` and `littlefs`, through Zephyr's own
+manifest so they stay at Zephyr's pins. Nothing else is: the port needs no HAL
+and uses the minimal libc, and a full import is hundreds of megabytes of
+vendor code. Module code goes through the same section generator and
+link-map check as everything else (D6).
 
 ### D2. Toolchain
 Homebrew LLVM (clang + wasm-ld, matched versions) driven through a module-owned
@@ -114,48 +118,76 @@ The host keeps a clamped deadline as a real deadline and flags it. A run ends
 only after the kernel wakes from a clamped deadline, does nothing, and asks
 for another, twice in a row. Waking from a real deadline counts as progress.
 
-### D6. Linker sections: renaming where order is free, generation where it is not
+### D6. Linker sections: generated order, checked at link
 
-Spike A (`spikes/a-sections/`) showed wasm-ld synthesises `__start_`/`__stop_`
-for C-identifier section names but never orders segments by name, has no
-`--defsym`, and errors out on a reference to a section nothing defines.
+Spike A (`spikes/a-sections/`) showed that wasm-ld:
+- synthesises `__start_`/`__stop_` for sections whose names are C identifiers;
+- never orders segments by name;
+- has no `--defsym`;
+- errors out on a reference to a section nothing defines.
 
-The port therefore splits the problem:
+Zephyr's linker scripts do two kinds of placement that wasm-ld cannot:
 
-**Unordered families use renaming.** For iterable sections whose order carries
-no meaning, the module shadows the naming macros so the section name is a C
-identifier, and takes `__start_`/`__stop_` as the list bounds. This covers
-most of `STRUCT_SECTION_ITERABLE`. Because an absent section breaks the link,
-each family the kernel references gets one anchor entry emitted by the module.
-
-**Ordered families are generated.** Init entries cannot work this way:
+**Init entries** must be one contiguous block sorted by level, then priority:
 `z_sys_init_run_level` in `kernel/init.c` walks `levels[level]` to
-`levels[level+1]`, so all entries must be one contiguous block sorted by level
-then priority. Instead a build step reads the pass-1 objects, recovers each
-entry's level and priority from the segment name Zephyr already encodes
-(available in the `linking` custom section), sorts, and emits a C file that
-defines the six per-level arrays adjacently in one translation unit. Spike A
-question 9 confirmed those land contiguous in declaration order and that the
-kernel's own walk then visits the right entries, so `kernel/init.c` needs no
-patch.
+`levels[level+1]`. A build step reads the pass-1 objects and recovers each
+entry's level and priority from the segment name Zephyr already encodes. It
+then emits a C file that defines the six per-level arrays adjacently in one
+translation unit and fills them at boot by copying. Spike A question 9
+confirmed those arrays land contiguous and in declaration order. Nothing
+points at an init entry, so copying is safe.
 
-Device order is left as link order. With `CONFIG_DEVICE_DEPS=n` the device
-list is only iterated and bounded, never indexed by devicetree ordinal, so the
-numeric sort the ELF build does is not needed. This is a PoC simplification
-and is the first thing to revisit if device lookup misbehaves.
+**Iterable sections** are each collected with `SORT_BY_NAME`, which makes
+every family a contiguous list in key order. The first version of this port
+assumed the order carried no meaning and let wasm-ld synthesise bounds for an
+identifier-named section. It does carry meaning:
+- zbus groups a channel's observations by name, and `_zbus_init` computes
+  each channel's observer range from that grouping;
+- the log subsystem's source ids are positions in its section;
+- ztest runs suites in section order;
+- the shell lists commands in section order.
 
-As built, with the detail spike A could not have predicted: several iterable
-lists are pay-per-use and simply absent from a given image, which a linker
-script renders as an empty range and wasm-ld rejects outright. Every family is
-therefore given a weak, zero-length bound pair that the real symbols override
-wherever the section exists.
+The samples sweep found seven zbus applications failing on it.
 
-How fragile this is: the renaming half is solid, since `__start_`/`__stop_` is
-a documented wasm-ld feature. The generated half depends on two things that
-are conventions rather than guarantees: Zephyr keeping level and priority
-encoded in the section name, and wasm-ld keeping declaration order within a
-translation unit. Both are stable in practice, and both fail loudly rather
-than silently if they change.
+Entries cannot be copied into order the way init entries are, because code
+holds pointers to them. They are ordered in place:
+
+- Patch 0004 names each entry's section `z_iter_<family>.<key>_`, where the
+  key is the one the ELF section name sorts on.
+- wasm-ld makes one output segment per section name, in the order it first
+  meets each name across its inputs, and lays the segments out one after
+  another, padding only for alignment. An object file packs all of a
+  translation unit's entries for one name into one segment, so reordering
+  input files could not do this; per-key names can.
+- `gen_sections_wasm.py` writes a file that the build compiles into the
+  executable's own sources, so it opens the link line. For every family, in
+  order, it holds a zero-length start marker, one zero-length placeholder per
+  key in byte order, and a zero-length stop marker. The markers are aligned to
+  the family's largest entry. Every real entry joins its key's segment, so the
+  family comes out contiguous, in upstream's order, and bracketed by the
+  markers, which are the list bounds.
+- A family nothing linked contributes to, including the pay-per-use ones that
+  once needed anchors and weak fallbacks, is simply `start == stop`.
+
+The failure mode is quiet, so it is checked rather than trusted.
+`check_sections_wasm.py` reads the link map as the first post-link step and
+fails the build if any family is not exactly one unbroken run of start marker,
+keys in order, and stop marker. This catches an object the scan missed, which
+would otherwise leave a list silently short.
+
+Device order is now upstream's too, since devices are an iterable family keyed
+by level and priority. The same markers could also make patch 0007's
+`Z_DEVICE_API_EXT_END` exact, by generating the end of a class together with
+the classes that extend it. That has not been needed yet.
+
+How fragile this is: it depends on three things that wasm-ld does and does
+not document:
+- output segments in first-seen order;
+- zero-length retained segments surviving `--gc-sections`;
+- layout in segment order.
+
+Spike (tick 1 of this change) confirmed all three on LLVM 21, and the link-map
+check turns any change in them into a failed build rather than a wrong list.
 
 ### D7. Offsets header: constants as data, read from assembly
 
@@ -401,6 +433,47 @@ steps, where its state is `NORMAL`.
 Snapshots are taken only while paused, and bounded. Copying 128 KB on every
 suspension would be thousands of copies a second in service of nothing;
 copying it when a person asks for a step is free.
+
+### D8h. Flash lives in linear memory, and the host keeps it
+
+The board's flash is upstream's flash simulator (`zephyr,sim-flash`), the
+one native_sim uses. Off the posix arch it keeps the whole device as one
+static array, which on this board is part of linear memory, and it erases
+it at init. It needs no port code.
+
+It is 256 KB rather than native_sim's 2 MB, because every step-back
+snapshot (D8g) copies linear memory. That is room for the storage samples:
+- a 64 KB `storage_partition`, 16 erase blocks, where NVS, ZMS and settings
+  live;
+- a 192 KB slot that only exists because `zephyr,code-partition` has to name
+  something.
+
+**Keeping it needs no asynchronous import.** Persistent storage is
+asynchronous in a browser (IndexedDB) and the driver loop is not, so the
+host does all of it from outside the guest:
+- `flash_wasm_host.c` runs straight after the driver, at `POST_KERNEL`
+  priority 51. The priority is checked against `CONFIG_FLASH_INIT_PRIORITY`
+  at build time.
+- It calls `storage_attach(ptr, len)`, a synchronous import, so the host can
+  copy a saved image into the array before anything reads it.
+- The host reads the array back whenever the guest is not running. The page
+  loads its image from IndexedDB before the run starts, and saves each copy
+  the worker sends without anyone waiting on the write.
+
+A host with no image leaves the flash erased, so runs stay repeatable and the
+determinism and two-engine checks are untouched.
+
+**A reboot is a new instance with the flash carried over.** This is what a
+reset means on hardware. `sys_arch_reboot` calls the `reboot` import, which
+throws out of the guest instead of unwinding: the instance it leaves behind is
+discarded, so there is nothing to unwind cleanly. The host then:
+- keeps the attached image;
+- instantiates the same module again;
+- restarts uptime, taking the time already used off the run's allowance;
+- stops after 64 reboots, so a sample that reboots for ever still ends.
+
+Snapshots include flash for free, since it is linear memory, so stepping
+backwards over a write undoes the write.
 
 ### D9. Link with wasm-ld directly
 
