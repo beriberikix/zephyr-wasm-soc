@@ -52,7 +52,7 @@ def counted(builds: list[dict]) -> set[str]:
     return ours | theirs
 
 
-USES = {"gpio", "flash"}
+USES = {"leds", "buttons", "flash"}
 
 
 def load(module: str) -> list[dict]:
@@ -76,7 +76,8 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
     Display and flash must match both ways: a canvas or an Erase button that
     does nothing is as wrong as one that is missing. GPIO only one way,
     because input drivers pull it in for builds with nothing to show on the
-    LED strip.
+    LED strip. The LEDs and the buttons are shown separately: blinky has no
+    use for the buttons.
     """
     problems = []
     for b in builds:
@@ -95,9 +96,10 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
                 problems.append(f"{b['name']}: CONFIG_{use.upper()} is "
                                 f"{'set' if use in on else 'unset'} but the page "
                                 f"{'does not show' if use in on else 'shows'} it")
-        if "gpio" in shown and "gpio" not in on:
-            problems.append(f"{b['name']}: the page shows the LEDs and buttons "
-                            "but CONFIG_GPIO is unset")
+        for part in ("leds", "buttons"):
+            if part in shown and "gpio" not in on:
+                problems.append(f"{b['name']}: the page shows the {part} "
+                                "but CONFIG_GPIO is unset")
     return problems
 
 
