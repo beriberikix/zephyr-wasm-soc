@@ -2,11 +2,11 @@
   "summary": {
     "upstream_apps": 650,
     "upstream_entries": 1268,
-    "candidate_apps": 143,
-    "candidate_entries": 229,
+    "candidate_apps": 144,
+    "candidate_entries": 230,
     "excluded_entries": {
       "platform_allow names only hardware": 655,
-      "depends_on a feature this board lacks": 112,
+      "depends_on a feature this board lacks": 111,
       "harness net needs hardware or a peer": 106,
       "harness bluetooth needs hardware or a peer": 87,
       "harness keyboard needs hardware or a peer": 21,
@@ -25,14 +25,9 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "boot_only_passes": [
-      "application_development/code_relocation_nocopy",
-      "drivers/display",
-      "drivers/smbus"
-    ],
-    "filtered_entries": 87,
-    "runnable_entries": 142,
-    "runnable_apps": 89
+    "filtered_entries": 85,
+    "runnable_entries": 145,
+    "runnable_apps": 92
   },
   "samples": [
     {
@@ -323,9 +318,7 @@
     {
       "path": "zephyr/samples/drivers/eeprom",
       "entry": "sample.drivers.eeprom",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_eeprom_0_ORD'"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/ethernet/eth_ivshmem",
@@ -344,9 +337,7 @@
     {
       "path": "zephyr/samples/drivers/flash_shell",
       "entry": "sample.drivers.flash.shell",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FLASH_HAS_DRIVER_ENABLED and dt_chosen_enabled('zephyr,flash-controller') and not CONFIG_SOC_SERIES_BSIM_NRFXX"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/gnss",
@@ -1003,25 +994,26 @@
       "detail": "dt_chosen_enabled(\"zephyr,ipc\") and dt_chosen_enabled(\"zephyr,ipc_shm\") and not CONFIG_SOC_ESP32_APPCPU_TARGET"
     },
     {
+      "path": "zephyr/samples/subsys/kvss/nvs",
+      "entry": "sample.nvs.basic",
+      "status": "build-fails",
+      "cause": "link",
+      "detail": "zephyr/libzephyr.a(reboot.c.obj): undefined symbol: sys_arch_reboot"
+    },
+    {
       "path": "zephyr/samples/subsys/kvss/zms",
       "entry": "sample.zms.basic",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_storage_partition_PARENT_PARENT_ORD'"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/kvss/zms",
       "entry": "sample.zms.id_64bit",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_storage_partition_PARENT_PARENT_ORD'"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/kvss/zms/zms_cycle_count",
       "entry": "sample.zms.cycle_count",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_storage_partition_PARENT_PARENT_ORD'"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/llext/edk/app",
@@ -1248,9 +1240,7 @@
     {
       "path": "zephyr/samples/subsys/settings",
       "entry": "sample.settings.nvs",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_label_with_parent_compat_enabled(\"storage_partition\", \"fixed-partitions\") or dt_label_compat_enabled(\"storage_partition\", \"zephyr,mapped-partition\") and not "
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/settings",
@@ -1573,5 +1563,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 29
+  "score": 34
 }

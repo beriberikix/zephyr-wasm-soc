@@ -58,7 +58,7 @@ SIMULATION = "custom"
 
 # Features this board provides. A sample that depends on anything else needs
 # hardware or a host peer this port does not have yet.
-SUPPORTED = {"gpio", "entropy"}
+SUPPORTED = {"gpio", "entropy", "flash", "nvs", "eeprom"}   # as wasm_node.yaml
 
 # Harnesses that judge by console output or not at all. The rest need
 # hardware or a peer on the other end: net, bluetooth, sensor, pytest...
