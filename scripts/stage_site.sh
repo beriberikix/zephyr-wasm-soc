@@ -55,5 +55,13 @@ done < <(python3 "$here/apps.py" --module "$module" list)
 # What the page shows for each build -- the LEDs, the canvas, Erase flash --
 # comes from apps.json, so check it against what each build actually has.
 python3 "$here/apps.py" --module "$module" --topdir "$topdir" check-uses
-python3 "$here/apps.py" --module "$module" manifest > "$site/manifest.json"
+# The revisions this site was built from, for the page's footer. A module
+# with uncommitted changes says so, since its commit alone would not
+# reproduce it. Zephyr is always patched, so its revision is the base.
+commit="$(git -C "$module" rev-parse HEAD 2>/dev/null || echo unknown)"
+if ! git -C "$module" diff --quiet HEAD 2>/dev/null; then commit="$commit-dirty"; fi
+SITE_COMMIT="$commit" \
+SITE_ZEPHYR="$(git -C "$topdir/zephyr" rev-parse HEAD 2>/dev/null || echo unknown)" \
+SITE_BUILT="$(date -u +%Y-%m-%dT%H:%MZ)" \
+  python3 "$here/apps.py" --module "$module" manifest > "$site/manifest.json"
 echo "staged $site"

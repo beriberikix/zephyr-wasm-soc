@@ -22,9 +22,22 @@
     font: 15px/1.5 system-ui, -apple-system, sans-serif;
   }
   main { max-width: 900px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 { font-size: 20px; margin: 0; }
+  /* The title, and the way to the source at the other end of its line. */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin: 0 0 4px;
+  }
+  a.octocat { color: var(--fg); display: flex; padding: 4px; border-radius: 6px; }
+  a.octocat:hover { color: var(--accent); }
+  a.octocat svg { width: 24px; height: 24px; fill: currentColor; }
+  header + p.sub { margin-bottom: 20px; }
+  footer {
+    margin: 24px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
+    color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  footer a { color: inherit; }
   p.sub { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-  p.repo { margin: 0 0 20px; font-size: 14px; }
   #help { margin: 20px 0 0; font-size: 13px; }
   a { color: var(--accent); }
   a:hover { text-decoration: none; }
@@ -100,17 +113,21 @@
 </head>
 <body>
 <main>
-  <h1>Zephyr on WebAssembly</h1>
+  <header>
+    <h1>Zephyr on WebAssembly</h1>
+    <!-- GitHub's mark, from Primer Octicons (MIT): mark-github, 16px. -->
+    <a class="octocat" href="https://github.com/beriberikix/zephyr-wasm-soc"
+       target="_blank" rel="noopener"
+       title="Source, design notes and the seven patches to Zephyr, on GitHub"
+       aria-label="Source on GitHub">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+    </a>
+  </header>
   <p class="sub">
     The kernel runs freestanding in one wasm32 linear memory. This page is the
     SoC: it provides the <code>zephyr_host</code> imports and drives the
     Asyncify loop that makes context switching possible. The guest runs in a
     Worker, because it blocks its thread between suspensions.
-  </p>
-  <p class="repo">
-    <a href="https://github.com/beriberikix/zephyr-wasm-soc"
-       target="_blank" rel="noopener">Source, design notes and the seven
-      patches to Zephyr &rarr;</a>
   </p>
 
   <div class="bar">
@@ -170,6 +187,8 @@
     control, which changes how fast they go and not what they do. Choosing
     another build stops the one running.
   </p>
+  <!-- Which build this is, from the manifest: see loadManifest(). -->
+  <footer id="buildinfo"></footer>
 </main>
 
 <script type="module">
@@ -232,12 +251,39 @@ let stopping = false;
  * generated from scripts/apps.json. The page used to carry its own copy of
  * the list, which meant adding a build meant editing two files that had to
  * agree, and nothing checked that they did. */
+/* The foot of the page: which commit of this repository the site was built
+ * from, and which Zephyr, each linking to it. The guest's boot banner names
+ * the same Zephyr revision. */
+function showBuildInfo(site) {
+  const el = document.getElementById('buildinfo');
+  if (!site?.commit) return;
+  const link = (text, href) => {
+    const a = document.createElement('a');
+    a.textContent = text;
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    return a;
+  };
+  const [sha, dirty] = site.commit.split('-');
+  el.append('build ',
+            link(sha.slice(0, 7), `https://github.com/beriberikix/zephyr-wasm-soc/commit/${sha}`),
+            dirty ? ` (${dirty})` : '');
+  if (site.zephyr && site.zephyr !== 'unknown') {
+    el.append(' · zephyr ',
+              link(site.zephyr.slice(0, 12), `https://github.com/zephyrproject-rtos/zephyr/commit/${site.zephyr}`));
+  }
+  if (site.built) el.append(` · ${site.built.replace('T', ' ')}`);
+  window.zephyrBuildInfo = () => el.textContent;
+}
+
 async function loadManifest() {
   try {
     const res = await fetch('./manifest.json');
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const manifest = await res.json();
     builds = manifest.builds;
+    showBuildInfo(manifest.site);
     buildEl.innerHTML = '';
     for (const b of builds) {
       const opt = document.createElement('option');

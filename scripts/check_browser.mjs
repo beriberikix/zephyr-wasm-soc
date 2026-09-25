@@ -309,6 +309,17 @@ await page.goto(base, { waitUntil: 'load' });
 await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null,
                            { timeout: 15_000 });
 const listed = await page.evaluate(() => window.zephyrBuilds().map((b) => b.name));
+
+/* The foot of the page says which build this is, so that a report about the
+ * page can say which build it was about. */
+if (manifest.site?.commit) {
+  const shown = await page.evaluate(() => window.zephyrBuildInfo?.() ?? '');
+  if (!shown.includes(manifest.site.commit.slice(0, 7))) {
+    fail('footer', `the page does not show its build: ${JSON.stringify(shown)}`);
+  } else {
+    console.log(`  ok    footer    ${shown}`);
+  }
+}
 if (listed.length !== manifest.builds.length) {
   fail('manifest', `page lists ${listed.length} builds, manifest has ${manifest.builds.length}`);
 } else {
