@@ -154,6 +154,35 @@ export class Host {
     this.maxReboots = opts.maxReboots ?? 64;
   }
 
+  /* The display as RGBA, ready for a canvas's ImageData: a copy, taken
+   * between steps like everything else the host reads out of the guest.
+   * Returns null when the guest has no display. Clears the dirty region,
+   * so a caller that only wants to draw changes can ask whether there are
+   * any first (displayDirty()). */
+  displayDirty() {
+    return !!this.display?.dirty;
+  }
+
+  displayFrame() {
+    const d = this.display;
+    if (!d || !this.mem) return null;
+    const n = d.width * d.height;
+    const px = new Uint16Array(this.mem.buffer, d.ptr, n);
+    const rgba = new Uint8ClampedArray(n * 4);
+    for (let i = 0; i < n; i++) {
+      const v = px[i];
+      /* RGB565, native little-endian: widen each channel by repeating its
+       * top bits, so full intensity is 255 and not 248. */
+      const r = (v >> 11) & 0x1f, g = (v >> 5) & 0x3f, b = v & 0x1f;
+      rgba[i * 4] = (r << 3) | (r >> 2);
+      rgba[i * 4 + 1] = (g << 2) | (g >> 4);
+      rgba[i * 4 + 2] = (b << 3) | (b >> 2);
+      rgba[i * 4 + 3] = 255;
+    }
+    d.dirty = null;
+    return { width: d.width, height: d.height, blank: d.blank, frames: d.frames, rgba };
+  }
+
   /* A copy of the attached flash as it is now, or the image it was given if
    * the guest has not attached one. Only meaningful while the guest is not
    * running, which is whenever anyone outside the driver loop can ask. */
@@ -396,6 +425,30 @@ export class Host {
           throw new Reboot(`reboot (type ${type})`);
         },
 
+        /* The display. The framebuffer is guest memory; the host only keeps
+         * where it is and which part has changed since it was last drawn. */
+        display_attach(ptr, width, height, format) {
+          self.display = { ptr, width, height, format, blank: true, dirty: null, frames: 0 };
+        },
+
+        display_flush(x, y, w, h) {
+          const d = self.display;
+          if (!d) return;
+          const r = d.dirty;
+          d.dirty = r
+            ? { x0: Math.min(r.x0, x), y0: Math.min(r.y0, y),
+                x1: Math.max(r.x1, x + w), y1: Math.max(r.y1, y + h) }
+            : { x0: x, y0: y, x1: x + w, y1: y + h };
+          d.frames++;
+          self.platform.displayChanged?.();
+        },
+
+        display_blank(on) {
+          if (!self.display) return;
+          self.display.blank = !!on;
+          self.platform.displayChanged?.();
+        },
+
         fatal(reason, arg) {
           const name = FATAL_REASONS[reason] ?? `reason ${reason}`;
           self.platform.writeErr(`\n*** fatal: ${name} (arg ${arg}) ***\n`);
@@ -631,6 +684,7 @@ export class Host {
     this.ex = instance.exports;
     this.mem = this.ex.memory;
     this.storage = null;
+    this.display = null;
 
     for (const name of ['z_wasm_boot', 'z_wasm_switch_block_addr',
                         'z_wasm_irq_pending_addr', 'z_wasm_thread_entry',

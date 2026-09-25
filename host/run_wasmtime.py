@@ -87,6 +87,7 @@ class Host:
     def boot(self):
         """Instantiate the module: once at the start and once per reboot."""
         self.storage = None
+        self.display = None
         self.instance = Instance(self.store, self.module, self._imports())
         self.ex = self.instance.exports(self.store)
         self.mem = self.ex["memory"]
@@ -188,6 +189,18 @@ class Host:
         def reboot(kind):
             raise Reboot(f"reboot (type {kind})")
 
+        # The display: nothing here draws, but the framebuffer is guest
+        # memory, so --screenshot can still read it, and the two engines'
+        # frames can be compared byte for byte.
+        def display_attach(ptr, width, height, fmt):
+            self.display = (ptr, width, height)
+
+        def display_flush(x, y, w, h):
+            pass
+
+        def display_blank(on):
+            pass
+
         def uart_poll_out(c):
             sys.stdout.write(chr(c & 0xFF))
             sys.stdout.flush()
@@ -210,6 +223,9 @@ class Host:
             "uart_poll_in": (uart_poll_in, [], [I32]),
             "storage_attach": (storage_attach, [I32, I32], []),
             "reboot": (reboot, [I32], []),
+            "display_attach": (display_attach, [I32, I32, I32, I32], []),
+            "display_flush": (display_flush, [I32, I32, I32, I32], []),
+            "display_blank": (display_blank, [I32], []),
         }
 
         # Imports are positional, so build the list in the order the module
@@ -328,6 +344,20 @@ class Host:
         self.unwound_into = None
         self.pending_fatal = False
 
+    def screenshot(self, path: Path) -> bool:
+        """The display's last frame as a binary PPM, as run.mjs --screenshot."""
+        if self.display is None:
+            return False
+        ptr, width, height = self.display
+        raw = self.mem.read(self.store, ptr, ptr + width * height * 2)
+        rgb = bytearray()
+        for i in range(0, len(raw), 2):
+            v = raw[i] | (raw[i + 1] << 8)
+            r, g, b = (v >> 11) & 0x1F, (v >> 5) & 0x3F, v & 0x1F
+            rgb += bytes(((r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)))
+        path.write_bytes(f"P6\n{width} {height}\n255\n".encode() + bytes(rgb))
+        return True
+
     def save_flash(self):
         image = self.flash_image()
         if self.flash_file is not None and image is not None:
@@ -373,9 +403,16 @@ def main() -> int:
                     help="log every GPIO output change to stderr")
     ap.add_argument("--flash", type=Path, default=None,
                     help="keep the simulated flash in this file, as run.mjs --flash does")
+    ap.add_argument("--screenshot", type=Path, default=None,
+                    help="write the display's last frame as a binary PPM")
     args = ap.parse_args()
-    return Host(args.wasm, args.max_time, args.trace_gpio,
-                args.seed, args.true_random, args.flash).run()
+    host = Host(args.wasm, args.max_time, args.trace_gpio,
+                args.seed, args.true_random, args.flash)
+    code = host.run()
+    if args.screenshot is not None and not host.screenshot(args.screenshot):
+        sys.stderr.write("--screenshot: this build has no display\n")
+        code = code or 1
+    return code
 
 
 if __name__ == "__main__":

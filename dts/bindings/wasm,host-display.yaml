@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  A display the host draws: on the page, a <canvas>.
+
+  The framebuffer is an array in the guest's linear memory, RGB565, which is
+  LVGL's default colour depth, so its samples run unmodified. The guest names
+  it to the host at init and reports each region it writes; the host reads
+  the pixels whenever the guest is not running. Nothing waits on the host.
+
+compatible: "wasm,host-display"
+
+include: display-controller.yaml

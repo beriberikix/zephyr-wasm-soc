@@ -28,6 +28,7 @@
 		zephyr,flash = &flash0;
 		zephyr,flash-controller = &flashcontroller0;
 		zephyr,code-partition = &slot0_partition;
+		zephyr,display = &display0;
 	};
 
 	aliases {
@@ -208,6 +209,19 @@
 					};
 				};
 			};
+		};
+
+		/*
+		 * A display the host draws: a <canvas> on the page. 320x240 as on
+		 * native_sim, but RGB565, which is LVGL's default colour depth,
+		 * so its samples run unmodified; and at 150 KB of linear memory it
+		 * keeps step-back snapshots affordable.
+		 */
+		display0: display {
+			compatible = "wasm,host-display";
+			status = "okay";
+			width = <320>;
+			height = <240>;
 		};
 
 		/* Upstream's RAM-backed EEPROM simulator, as on native_sim. */

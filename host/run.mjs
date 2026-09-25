@@ -31,6 +31,7 @@ function parseArgs(argv) {
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
     else if (a === '--interactive') opts.interactive = true;
     else if (a === '--flash') opts.flashFile = argv[++i];
+    else if (a === '--screenshot') opts.screenshot = argv[++i];
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -79,7 +80,9 @@ function usage() {
                      pressed at 0 and released at 1.
   --flash <file>     keep the simulated flash in this file: loaded before
                      boot if it exists, written back on reboot and at the
-                     end. Without it the flash starts erased every run`);
+                     end. Without it the flash starts erased every run
+  --screenshot <file>
+                     write the display's last frame as a binary PPM`);
 }
 
 const nodePlatform = {
@@ -182,3 +185,21 @@ if (opts.flashFile) {
 const host = new Host(nodePlatform, opts);
 process.exitCode = await host.run();
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
+
+/* The display's last frame, as a PPM: the simplest image format there is,
+ * and one every viewer and converter reads. */
+if (opts.screenshot) {
+  const frame = host.displayFrame();
+  if (!frame) {
+    process.stderr.write('--screenshot: this build has no display\n');
+    process.exitCode ||= 1;
+  } else {
+    const { width, height, rgba } = frame;
+    const rgb = Buffer.alloc(width * height * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4) {
+      rgb[j++] = rgba[i]; rgb[j++] = rgba[i + 1]; rgb[j++] = rgba[i + 2];
+    }
+    fs.writeFileSync(opts.screenshot,
+                     Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), rgb]));
+  }
+}
