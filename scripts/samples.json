@@ -996,9 +996,7 @@
     {
       "path": "zephyr/samples/subsys/kvss/nvs",
       "entry": "sample.nvs.basic",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/libzephyr.a(reboot.c.obj): undefined symbol: sys_arch_reboot"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/kvss/zms",
@@ -1563,5 +1561,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 34
+  "score": 35
 }

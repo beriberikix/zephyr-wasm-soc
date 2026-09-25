@@ -88,6 +88,19 @@ WASM_HOST_IMPORT(safepoint_tick) void wasm_host_safepoint_tick(void);
  */
 WASM_HOST_IMPORT(fatal) void wasm_host_fatal(int32_t reason, int32_t arg);
 
+/* Storage. The guest names a region of its own memory -- the simulated
+ * flash -- and the host may fill it from a saved image during this call.
+ * The host reads it back whenever the guest is paused, so neither this nor
+ * anything else about storage suspends.
+ */
+WASM_HOST_IMPORT(storage_attach) void wasm_host_storage_attach(void *buf, int32_t len);
+
+/* A warm reboot: the host starts a new instance of the same module, keeping
+ * the attached storage, as hardware keeps its flash across a reset. Does not
+ * return.
+ */
+WASM_HOST_IMPORT(reboot) void wasm_host_reboot(int32_t type);
+
 /*
  * What the host is told about a thread.
  *

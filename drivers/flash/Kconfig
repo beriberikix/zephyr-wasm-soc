@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# In variables because Kconfig splits a function's arguments on commas.
+DT_CHOSEN_WASM_FLASH_CONTROLLER := zephyr,flash-controller
+DT_COMPAT_WASM_SIM_FLASH := zephyr,sim-flash
+
+config FLASH_WASM_HOST
+	bool "Let the host keep the simulated flash between runs"
+	default y
+	depends on FLASH_SIMULATOR
+	depends on $(dt_chosen_has_compat,$(DT_CHOSEN_WASM_FLASH_CONTROLLER),$(DT_COMPAT_WASM_SIM_FLASH))
+	help
+	  Tells the host where the flash simulator's array is, right after the
+	  driver has erased it at boot, so the host can fill it with an image it
+	  kept from an earlier run or from before a reboot, and read it back
+	  whenever the guest is paused. The guest's view is unchanged: it is
+	  still upstream's flash simulator, and a host with no image leaves it
+	  erased.
