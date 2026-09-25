@@ -742,3 +742,51 @@ with nothing on the LED strip. Parts are named by their devicetree labels.
 The controls follow the selection, not the Run button. `check_browser.mjs
 --screenshots` saves each build's page to look at, since nothing checks what
 a page looks like.
+
+### Tick 50 — the terminal was never tested by typing
+
+The user tried the shell and found no cursor, and a Backspace that did not
+delete. The browser check had always passed. It typed through a hook
+that posted bytes straight to the worker, and it pressed buttons the same
+way. It then looked for substrings in everything that was printed. It never
+pressed a key, never looked at the screen, and never used Backspace, the
+arrows or Tab.
+
+The page's terminal kept text and dropped every escape sequence. Its
+comment said that was enough to read the output. That holds for printk and
+nowhere else:
+- The shell's line editor draws Backspace as cursor left, reprint the rest,
+  clear to end of line. With the escapes dropped, the deleted character
+  stayed on screen, while the shell had deleted it.
+- The philosophers position six rows with cursor addressing. They scrolled
+  instead.
+- The shell's log backend erases the prompt before a log line and redraws
+  it after. The prompt stayed glued to the front of every log line, in
+  LVGL, hsm and the shell.
+- There was no cursor, and the arrow keys were never sent.
+- Ctrl+C ended the run in the worker, as `run.mjs` does in a real terminal
+  that has no other way to stop. The page has a Stop button, so Ctrl+C now
+  goes to the guest, where the shell abandons the line with it.
+
+The page now uses xterm.js 6.0.0, vendored with its licence in
+`host/web/vendor/`. `zephyrOutput()` still returns the printed text, so every
+expectation means what it did. `zephyrScreen()` and `zephyrCursor()` return
+what is shown.
+
+`check_browser.mjs` now uses the keyboard and the mouse:
+- the ci_stdin lines are typed, and ci_gpio presses are the mouse held on
+  the button;
+- the shell takes a typo and Backspace, the up arrow, an edit mid-line,
+  Ctrl+C and Tab, and the screen has to match after each;
+- the philosophers have to show six rows, one per philosopher;
+- LED 0 has to be lit only while Button 0 is held;
+- blinky has to speed up at 4×;
+- a drag on the touch sample has to be followed;
+- LVGL's Analytics tab has to respond to a click;
+- no shell build may show a log line behind a prompt.
+
+The first run of that caught two errors in the check itself. One expected
+the wrong text after a mid-line edit. The other passed LVGL's prompt test
+on an empty screen, because its log output takes three seconds to arrive
+behind the first frames. That test now requires the text on screen before
+judging it.

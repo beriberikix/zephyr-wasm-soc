@@ -84,7 +84,7 @@ try {
 
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.json': 'application/json', '.wasm': 'application/wasm',
+  '.json': 'application/json', '.wasm': 'application/wasm', '.css': 'text/css',
 };
 
 /* A server, because file:// blocks both Workers and fetch. Bound to the
@@ -115,6 +115,177 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(m.text()); });
 
+/* What a person would do with each build, and what they would see. Each
+ * returns a line saying what it checked, or throws saying what was wrong. */
+const screen = () => page.evaluate(() => window.zephyrScreen());
+const screenText = async () => (await screen()).join('\n');
+const until = async (what, fn, arg, timeout = 10_000) => {
+  try {
+    await page.waitForFunction(fn, arg, { timeout, polling: 100 });
+  } catch {
+    throw new Error(`${what}; the screen showed:`);
+  }
+};
+/* The row the cursor is on, as shown. */
+const cursorRow = () => page.evaluate(() => window.zephyrScreen()[window.zephyrCursor().y]);
+const canvasHash = () => page.evaluate(() => {
+  const c = document.getElementById('screen');
+  const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let h = 0;
+  for (let i = 0; i < px.length; i += 4) h = (h * 31 + px[i] + px[i + 1] * 7 + px[i + 2] * 13) >>> 0;
+  return h;
+});
+async function onCanvas(x, y) {
+  await page.locator('#screen').scrollIntoViewIfNeeded();
+  const box = await page.locator('#screen').boundingBox();
+  const [w, h] = await page.evaluate(() => {
+    const c = document.getElementById('screen');
+    return [c.width, c.height];
+  });
+  return [box.x + (x + 0.5) * box.width / w, box.y + (y + 0.5) * box.height / h];
+}
+async function ledToggles(ms) {
+  return page.evaluate((span) => new Promise((resolve) => {
+    let last = window.zephyrLeds() & 1, n = 0;
+    const t = setInterval(() => {
+      const v = window.zephyrLeds() & 1;
+      if (v !== last) { n++; last = v; }
+    }, 20);
+    setTimeout(() => { clearInterval(t); resolve(n); }, span);
+  }), ms);
+}
+
+const PERSON = {
+  async shell() {
+    await page.click('#term');
+    const cur = await page.evaluate(() => window.zephyrCursor());
+    if (!cur.blink) throw new Error('the cursor does not blink');
+    /* A typo, Backspace, and the rest. The shell deletes the character and
+     * redraws the line with cursor movement; the screen has to follow. */
+    await page.keyboard.type('kernel verz');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type('sion');
+    await until('Backspace did not remove the character from the screen',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ kernel version');
+    const { x } = await page.evaluate(() => window.zephyrCursor());
+    if (x !== 'uart:~$ kernel version'.length) {
+      throw new Error(`the cursor is at column ${x}, not after the text`);
+    }
+    await page.keyboard.press('Enter');
+    await until('the command did not run',
+                () => window.zephyrScreen().some((l) => l.startsWith('Zephyr version')));
+    /* History: the arrow brings the last command back. */
+    await page.keyboard.press('ArrowUp');
+    await until('ArrowUp did not bring back the last command',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ kernel version');
+    /* Editing in the middle: Left twice puts the cursor before the "o";
+     * Backspace takes out the "i", and typing puts it back. */
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Backspace');
+    await until('Backspace in the middle of the line did not redraw it',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ kernel verson');
+    await page.keyboard.type('i');
+    await until('typing in the middle of the line did not redraw it',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ kernel version');
+    /* Ctrl+C abandons the line. */
+    await page.keyboard.press('Control+c');
+    await until('Ctrl+C did not give a fresh prompt',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ ');
+    /* Tab completes. */
+    await page.keyboard.type('kern');
+    await page.keyboard.press('Tab');
+    await until('Tab did not complete "kern"',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ kernel ');
+    await page.keyboard.press('Control+c');
+    return 'typed with Backspace, history, editing mid-line, Ctrl+C and Tab; the screen followed';
+  },
+
+  async hsm() {
+    await page.click('#term');
+    await page.keyboard.type('hsm_psicc2 event A');
+    await page.keyboard.press('Enter');
+    await until('the state machine did not show taking event A',
+                () => window.zephyrScreen().some((l) => l.includes('received EVENT_A')));
+    const shown = await screen();
+    const glued = shown.filter((l) => /^uart:~\$ (\[|\*\*\*)/.test(l));
+    if (glued.length) throw new Error(`log lines shown behind a prompt: ${glued[0]}`);
+    return 'took event A typed on the keyboard; log lines are not behind prompts';
+  },
+
+  async philo() {
+    /* The sample draws a table with cursor addressing, one row per
+     * philosopher, and rewrites the rows in place. */
+    await page.waitForTimeout(3000);
+    const rows = (await screen()).filter((l) => /Philosopher \d/.test(l));
+    const ids = rows.map((l) => /Philosopher (\d)/.exec(l)[1]);
+    if (rows.length !== 6 || new Set(ids).size !== 6) {
+      throw new Error(`expected one row for each of six philosophers, saw ${rows.length} rows for ${[...new Set(ids)].sort()}`);
+    }
+    return 'six philosophers, one row each, redrawn in place';
+  },
+
+  async blinky() {
+    const at1 = await ledToggles(2500);
+    await page.selectOption('#speed', '4');
+    const at4 = await ledToggles(2500);
+    await page.selectOption('#speed', '1');
+    if (at1 < 2) throw new Error(`LED 0 toggled ${at1} times in 2.5 s at 1x`);
+    if (at4 < at1 * 2) throw new Error(`at 4x LED 0 toggled ${at4} times against ${at1} at 1x`);
+    return `LED 0 toggled ${at1} times in 2.5 s at 1x and ${at4} at 4x`;
+  },
+
+  async button() {
+    /* The ci_gpio press has been and gone; press again, and look at LED 0
+     * while the button is held. */
+    await page.hover('#board button[data-pin="4"]');
+    await page.mouse.down();
+    await until('LED 0 did not light while Button 0 was held',
+                () => (window.zephyrLeds() & 1) === 1);
+    await page.mouse.up();
+    await until('LED 0 stayed lit after Button 0 was let go',
+                () => (window.zephyrLeds() & 1) === 0);
+    return 'LED 0 lit while Button 0 was held, and went out on release';
+  },
+
+  async touch() {
+    const before = (await page.evaluate(() => window.zephyrOutput())).split('PRESS').length;
+    const [x0, y0] = await onCanvas(40, 40);
+    const [x1, y1] = await onCanvas(200, 150);
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x1, y1, { steps: 8 });
+    await page.mouse.up();
+    await until('the drag did not end in a release at (200, 150)',
+                () => window.zephyrOutput().includes('RELEASE X, Y: (200, 150)'));
+    const presses = (await page.evaluate(() => window.zephyrOutput())).split('PRESS').length - before;
+    if (presses < 4) throw new Error(`a drag gave ${presses} touch reports, expected it to follow the pointer`);
+    return `a drag gave ${presses} touch reports and released where it ended`;
+  },
+
+  async lvgl() {
+    /* The heap report comes through the shell's log backend, from a thread
+     * that waits behind LVGL's first frames, so it takes a few seconds. */
+    await until('the heap report never reached the screen',
+                () => window.zephyrScreen().some((l) => l.includes('free bytes')), null, 60_000);
+    const glued = (await screen()).filter((l) => /^uart:~\$ (\[|\*\*\*)/.test(l));
+    if (glued.length) throw new Error(`log lines shown behind a prompt: ${glued[0]}`);
+    /* The widgets demo's second tab. */
+    const before = await canvasHash();
+    const [x, y] = await onCanvas(160, 22);
+    await page.mouse.click(x, y);
+    await until('clicking the Analytics tab changed nothing on the display',
+                (h) => {
+                  const c = document.getElementById('screen');
+                  const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                  let v = 0;
+                  for (let i = 0; i < px.length; i += 4) v = (v * 31 + px[i] + px[i + 1] * 7 + px[i + 2] * 13) >>> 0;
+                  return v !== h;
+                }, before);
+    return 'the Analytics tab responded to a click; log lines are not behind prompts';
+  },
+};
+
 let failures = 0;
 const fail = (name, why, extra = '') => {
   failures++;
@@ -142,8 +313,9 @@ for (const b of manifest.builds) {
   await page.selectOption('#build', b.name);
   await page.click('#run');
 
-  /* A build that waits for a button press gets one, through the same path a
-   * person's finger takes. This is the part Node cannot check at all. */
+  /* A build that waits for a button press gets one: the mouse held down on
+   * the button the page draws, and let go. This is the part Node cannot
+   * check at all. */
   if (b.ci_gpio) {
     try {
       await page.waitForFunction(
@@ -152,22 +324,28 @@ for (const b of manifest.builds) {
       for (const event of b.ci_gpio) {
         const [, pin, level] = /^\d+:(\d+)=([01])$/.exec(event) ?? [];
         if (pin === undefined) continue;
-        await page.evaluate(([p, l]) => window.zephyrPress(p, l), [Number(pin), Number(level)]);
+        if (level === '0') {
+          await page.hover(`#board button[data-pin="${pin}"]`);
+          await page.mouse.down();
+        } else {
+          await page.mouse.up();
+        }
         await page.waitForTimeout(300);
       }
     } catch { /* the wait below reports it */ }
   }
 
   /* An interactive build waits for a person, so be one: the same input CI
-   * feeds it on stdin goes in through the page's own keyboard path, with
-   * newlines sent as the carriage return the Enter key produces. */
+   * feeds it on stdin, typed on the keyboard into the terminal. */
   if (b.interactive && b.ci_stdin) {
     try {
       await page.waitForFunction(
         (w) => window.zephyrOutput().includes(w), expect[0],
         { timeout: 60_000, polling: 250 });
+      await page.click('#term');
       for (const line of b.ci_stdin.split('\n').filter(Boolean)) {
-        await page.evaluate((t) => window.zephyrType(t), `${line}\r`);
+        await page.keyboard.type(line);
+        await page.keyboard.press('Enter');
         await page.waitForTimeout(250);
       }
     } catch { /* the wait below reports it */ }
@@ -235,6 +413,20 @@ for (const b of manifest.builds) {
       const got = await page.evaluate(() => window.zephyrDisplay());
       fail(b.name, `the canvas showed ${got.colours} colours after ${got.frames} frames, ` +
                    `expected at least ${least}`);
+    }
+  }
+
+  /* Then use it the way a person would, and look at what the screen shows,
+   * not only at what was printed: the two differ exactly when the page
+   * draws the guest's output wrongly. */
+  if (ok && PERSON[b.name]) {
+    try {
+      const did = await PERSON[b.name]();
+      console.log(`  ok    ${b.name.padEnd(8)} ${did}`);
+    } catch (err) {
+      ok = false;
+      fail(b.name, err.message, (await page.evaluate(() => window.zephyrScreen()).catch(() => []))
+        .filter((l) => l.trim()).map((l) => JSON.stringify(l)).join('\n'));
     }
   }
 

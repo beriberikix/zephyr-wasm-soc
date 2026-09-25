@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <title>Zephyr on WebAssembly</title>
+<link rel="stylesheet" href="./vendor/xterm.css">
 <style>
   :root {
     --bg: #ffffff; --fg: #1a1a1a; --muted: #5c5c5c; --line: #d8d8d8;
@@ -35,13 +36,14 @@
   button { cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
+  /* xterm.js draws inside; this is the frame around it. It scrolls
+   * sideways rather than squeezing below 80 columns, which is the width the
+   * shell's line editor assumes. */
   #term {
     background: var(--term-bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px; min-height: 380px; max-height: 60vh; overflow: auto;
-    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space: pre-wrap; word-break: break-word; outline: none;
+    padding: 8px 10px; height: 400px; overflow-x: auto; overflow-y: hidden;
   }
-  #term:focus { border-color: var(--accent); }
+  #term:focus-within { border-color: var(--accent); }
   #status { margin: -4px 0 12px; color: var(--muted); font-size: 13px; min-height: 1.5em; }
   #board {
     display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
@@ -139,7 +141,7 @@
   <canvas id="screen" width="320" height="240" tabindex="0" hidden
           aria-label="the board's display"></canvas>
 
-  <div id="term" tabindex="0" role="log" aria-live="polite"></div>
+  <div id="term"></div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
        the kernel looks like between them. Nothing here reads Zephyr struct
@@ -167,6 +169,9 @@
 </main>
 
 <script type="module">
+import { Terminal } from './vendor/xterm.mjs';
+import { FitAddon } from './vendor/addon-fit.mjs';
+
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
  * good enough to read the shell, and a keyboard.
@@ -242,13 +247,71 @@ async function loadManifest() {
   }
 }
 
-/* A minimal terminal.
+/* The terminal: xterm.js, vendored in ./vendor.
  *
- * The shell emits ANSI escapes for colour and cursor movement. Interpreting
- * all of that would mean writing a terminal emulator; handling the three
- * things that change what the text says, and dropping the rest, is enough to
- * read it. */
-const term = {
+ * This used to be a few lines that kept the text and dropped every escape
+ * sequence, on the theory that that was enough to read it. It was not: the
+ * shell's line editor draws Backspace as "cursor left, reprint, clear to end
+ * of line", so a deleted character stayed on the screen; the philosophers
+ * position their table with cursor addressing, so it scrolled instead; and
+ * the shell erases its prompt around a log line, so the prompt stayed glued
+ * to the front of it. What the guest draws is what a VT100 would show, so
+ * the page has one. */
+function termTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  const theme = {
+    background: v('--term-bg'), foreground: v('--fg'),
+    cursor: v('--fg'), cursorAccent: v('--term-bg'),
+    selectionBackground: v('--line'),
+  };
+  /* xterm's default palette is for a dark background. On a light one the
+   * shell's green prompt and the logger's yellow warnings wash out, so
+   * those get darker shades. */
+  if (v('--bg') === '#ffffff') {
+    Object.assign(theme, {
+      green: '#1f7a1f', brightGreen: '#1f7a1f', yellow: '#8a6100',
+      brightYellow: '#8a6100', cyan: '#0e6f7c', brightCyan: '#0e6f7c',
+      white: '#5c5c5c', brightWhite: '#1a1a1a',
+    });
+  }
+  return theme;
+}
+const xterm = new Terminal({
+  cursorBlink: true,
+  /* The guest sends CRLF itself, and the shell uses a bare LF to mean
+   * "down one line, same column" when it wraps, as a VT100 does. */
+  convertEol: false,
+  scrollback: 4000,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 13,
+  disableStdin: true,
+  theme: termTheme(),
+});
+const fitAddon = new FitAddon();
+xterm.loadAddon(fitAddon);
+xterm.open(termEl);
+/* As many rows as fit, and as many columns, but never fewer than 80: the
+ * shell does not know the width and assumes 80, so a narrower screen would
+ * wrap its line editor somewhere it did not expect. */
+function fitTerm() {
+  const dims = fitAddon.proposeDimensions();
+  if (!dims || !dims.cols || !dims.rows) return;
+  const cols = Math.max(80, dims.cols);
+  if (cols !== xterm.cols || dims.rows !== xterm.rows) xterm.resize(cols, dims.rows);
+}
+fitTerm();
+new ResizeObserver(fitTerm).observe(termEl);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  xterm.options.theme = termTheme();
+});
+
+/* Everything the guest has printed, as text, for the checks. It is the
+ * stream with escape sequences dropped, carriage returns and backspaces
+ * applied, which is what an expectation in apps.json means by "printed".
+ * What the screen shows is xterm's business, and window.zephyrScreen reads
+ * that. */
+const log = {
   lines: [''],
   col: 0,
   decoder: new TextDecoder(),
@@ -278,18 +341,29 @@ const term = {
       this.col++;
       i++;
     }
-    this.render();
-  },
-
-  render() {
-    /* Keep the pane bounded; a ztest run is a few hundred lines. */
+    /* Bounded, like the screen's scrollback. */
     if (this.lines.length > 4000) this.lines.splice(0, this.lines.length - 4000);
-    termEl.textContent = this.lines.join('\n');
-    termEl.scrollTop = termEl.scrollHeight;
   },
 
-  clear() { this.lines = ['']; this.col = 0; this.pending = ''; this.render(); },
+  clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
 };
+
+/* Guest output goes to both. */
+const term = {
+  write(bytes) { xterm.write(bytes); log.write(bytes); },
+  /* Host messages, which use bare newlines. */
+  note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
+  clear() { xterm.reset(); log.clear(); },
+};
+
+/* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
+ * Backspace, which is what the shell expects by default
+ * (CONFIG_SHELL_BACKSPACE_MODE_DELETE), and escape sequences for the arrows,
+ * which is what its history and cursor movement read. */
+xterm.onData((data) => {
+  if (!running || !worker || xterm.options.disableStdin) return;
+  worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
+});
 
 /* The virtual board.
  *
@@ -335,6 +409,7 @@ function buildBoard() {
     el.className = 'btn';
     el.textContent = button.label;
     el.title = `${button.alias}: hold to press`;
+    el.dataset.pin = button.pin;
     const press = (down) => {
       el.classList.toggle('down', down);
       /* Physical level: pulled up, so pressing pulls it to 0. */
@@ -472,6 +547,7 @@ async function start() {
   setRunning(true);
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
+  xterm.options.disableStdin = !interactive;
 
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
@@ -479,7 +555,7 @@ async function start() {
     if (data.type === 'state') showKernel(data.state);
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
-    else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
+    else if (data.type === 'err') term.note(data.text);
     else if (data.type === 'flash') saveFlash(build.name, data.image);
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
@@ -488,7 +564,7 @@ async function start() {
     }
   };
   worker.onerror = (e) => {
-    term.write(new TextEncoder().encode(`\n*** worker error: ${e.message} ***\n`));
+    term.note(`\n*** worker error: ${e.message} ***\n`);
     setRunning(false);
   };
 
@@ -519,7 +595,7 @@ async function start() {
     flashImage,
   });
   /* Focus goes where the build takes its input from. */
-  if (interactive) (build.display ? screenEl : termEl).focus();
+  if (interactive) build.display ? screenEl.focus() : xterm.focus();
 }
 
 buildBoard();
@@ -542,28 +618,26 @@ speedEl.onchange = () => {
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 };
 
-/* Keystrokes go to the guest's UART as bytes. */
-termEl.addEventListener('keydown', (e) => {
-  if (!running || !worker) return;
-  let bytes = null;
-  if (e.key === 'Enter') bytes = [13];
-  else if (e.key === 'Backspace') bytes = [8];
-  else if (e.key === 'Tab') bytes = [9];
-  else if (e.key === 'Escape') bytes = [27];
-  else if (e.ctrlKey && e.key.length === 1) bytes = [e.key.toLowerCase().charCodeAt(0) - 96];
-  else if (e.key.length === 1) bytes = Array.from(new TextEncoder().encode(e.key));
-  if (!bytes) return;
-  e.preventDefault();
-  worker.postMessage({ type: 'input', bytes });
-});
-
 /* A hook for driving this page from a script or a test. */
 window.zephyrType = (text) => {
   if (!running || !worker) return false;
   worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(text)) });
   return true;
 };
-window.zephyrOutput = () => term.lines.join('\n');
+window.zephyrOutput = () => log.lines.join('\n');
+/* What the terminal shows right now: its visible rows, and the cursor. */
+window.zephyrScreen = () => {
+  const buf = xterm.buffer.active;
+  const rows = [];
+  for (let y = 0; y < xterm.rows; y++) {
+    rows.push(buf.getLine(buf.viewportY + y)?.translateToString(true) ?? '');
+  }
+  return rows;
+};
+window.zephyrCursor = () => {
+  const buf = xterm.buffer.active;
+  return { x: buf.cursorX, y: buf.cursorY, blink: xterm.options.cursorBlink };
+};
 /* Touch and keys into the input subsystem, through wasm,host-input.
  *
  * A press on the canvas is a touch, reported the way native_sim's SDL touch
