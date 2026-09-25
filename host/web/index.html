@@ -66,6 +66,8 @@
   #board[hidden] { display: none; }
   /* LEDs and buttons wrap as groups, so a narrow screen never splits a pair. */
   #board .group { display: flex; gap: 14px; align-items: center; }
+  /* The rule above would otherwise override the hidden attribute. */
+  #board .group[hidden] { display: none; }
   /* The board's display: 320x240 guest pixels, drawn twice the size and
    * kept square-edged, since blurring the pixels would misrepresent them. */
   #screen {
@@ -96,6 +98,8 @@
   #kernel { margin: 12px 0 0; display: none; }
   #kernel.on { display: block; }
   #kstat { color: var(--muted); font-size: 12px; }
+  /* Wide enough for "Resume", so Back and Step stay where they were. */
+  #pause { min-width: 6.5em; }
   table.threads { border-collapse: collapse; font-size: 12px; width: 100%; }
   table.threads th, table.threads td {
     text-align: left; padding: 3px 8px 3px 0;
@@ -182,10 +186,11 @@
     Pick a build and press Run. Where a build reads the keyboard, click the
     output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
     A build with a display takes clicks, drags and keys on the display itself.
-    Pause the kernel and you can step forward one context switch at a time,
-    and back again. Builds that run on their own in real time have a speed
-    control, which changes how fast they go and not what they do. Choosing
-    another build stops the one running.
+    Pause the kernel and you can step it forward one stop at a time -- a
+    context switch, or waking from idle -- and back again. Builds that run
+    on their own in real time have a speed control, which changes how fast
+    they go and not what they do; builds that wait for you keep to your
+    time. Choosing another build stops the one running.
   </p>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
@@ -194,6 +199,7 @@
 <script type="module">
 import { Terminal } from './vendor/xterm.mjs';
 import { FitAddon } from './vendor/addon-fit.mjs';
+import { IRQ } from './irq_lines.mjs';
 
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
@@ -441,11 +447,11 @@ const BOARD = {
 };
 
 const ledEls = new Map();
+const ledGroup = document.createElement('div');
+const buttonGroup = document.createElement('div');
 
 function buildBoard() {
   boardEl.innerHTML = '';
-  const ledGroup = document.createElement('div');
-  const buttonGroup = document.createElement('div');
   ledGroup.className = buttonGroup.className = 'group';
   boardEl.append(ledGroup, buttonGroup);
   for (const led of BOARD.leds) {
@@ -468,16 +474,51 @@ function buildBoard() {
     el.textContent = button.label;
     el.title = `${button.alias}: hold to press`;
     el.dataset.pin = button.pin;
-    const press = (down) => {
+    /* A finger holds a button for tens of milliseconds at the least, and
+     * gpio-keys debounces for 30 ms, so a press shorter than that is one
+     * no board would see. A click can be far shorter -- a script's, or a
+     * quick tap -- so the release is held back until the press has lasted
+     * MIN_PRESS_MS: every press the page is given is one the guest gets. */
+    const MIN_PRESS_MS = 80;
+    let downAt = 0;
+    let isDown = false;
+    let releaseTimer = null;
+    const send = (down) => {
       el.classList.toggle('down', down);
       /* Physical level: pulled up, so pressing pulls it to 0. */
       worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level: down ? 0 : 1 });
     };
-    el.addEventListener('mousedown', () => press(true));
-    el.addEventListener('mouseup', () => press(false));
-    el.addEventListener('mouseleave', () => press(false));
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); press(true); }, { passive: false });
-    el.addEventListener('touchend', (e) => { e.preventDefault(); press(false); }, { passive: false });
+    const press = (down) => {
+      if (down) {
+        if (isDown) return;
+        clearTimeout(releaseTimer);
+        isDown = true;
+        downAt = performance.now();
+        send(true);
+      } else {
+        if (!isDown) return;
+        isDown = false;
+        const left = MIN_PRESS_MS - (performance.now() - downAt);
+        if (left > 0) releaseTimer = setTimeout(() => send(false), left);
+        else send(false);
+      }
+    };
+    /* Pointer events cover a mouse, a finger and a pen alike. Capturing the
+     * pointer keeps the press held if it strays off the button. */
+    el.addEventListener('pointerdown', (e) => {
+      el.setPointerCapture(e.pointerId);
+      press(true);
+    });
+    el.addEventListener('pointerup', () => press(false));
+    el.addEventListener('pointercancel', () => press(false));
+    /* And the keyboard: Space or Enter held down on a focused button. */
+    el.addEventListener('keydown', (e) => {
+      if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); press(true); }
+    });
+    el.addEventListener('keyup', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); press(false); }
+    });
+    el.addEventListener('blur', () => press(false));
     part.append(el);
     buttonGroup.append(part);
   }
@@ -504,7 +545,7 @@ function showKernel(state) {
   if (running) {
     if (state.paused !== paused) {
       statusEl.textContent = state.paused
-        ? 'Paused. Step runs to the next context switch; Back undoes one.'
+        ? 'Paused. Step runs the kernel to its next stop -- a context switch, or waking from idle; Back undoes one.'
         : `Running. ${currentBuild.hint}`;
     }
     paused = state.paused;
@@ -523,7 +564,13 @@ function showKernel(state) {
   /* The next deadline and the pending interrupts describe a kernel that is
    * still going; once the run has ended they mean nothing. */
   if (running && state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
-  if (running && state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
+  if (running && state.pending) {
+    /* Interrupt lines raised and not yet taken, by name: "timer" is the
+     * kernel's next tick, waiting for it to next look. */
+    const names = Object.entries(IRQ).filter(([, line]) => state.pending & (1 << line))
+      .map(([name]) => name.toLowerCase());
+    bits.push(`interrupt pending: ${names.join(', ') || `0x${state.pending.toString(16)}`}`);
+  }
   kstatEl.textContent = (running ? '' : 'At the end of the run: ') + bits.join(' · ');
 
   if (!state.threads) {
@@ -566,6 +613,8 @@ function setRunning(state) {
  * thread table, LEDs off, a black display. */
 function resetBoard() {
   term.reset();
+  /* No cursor until a build that reads the keyboard is running. */
+  xterm.write('\x1b[?25l');
   showLeds(0);
   screenCtx.fillStyle = '#000';
   screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
@@ -599,7 +648,9 @@ function showSelected() {
   const build = builds.find((b) => b.name === buildEl.value);
   if (!build) return;
   const uses = build.uses ?? [];
-  boardEl.hidden = !uses.includes('gpio');
+  ledGroup.hidden = !uses.includes('leds');
+  buttonGroup.hidden = !uses.includes('buttons');
+  boardEl.hidden = ledGroup.hidden && buttonGroup.hidden;
   eraseFlashEl.hidden = !uses.includes('flash');
   screenEl.hidden = !build.display;
   /* Pace is worth changing for a build that runs by itself; one that waits
@@ -676,8 +727,10 @@ async function start() {
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       setRunning(false);
-      /* The board is off: LEDs dark, the display dimmed. */
+      /* The board is off: LEDs dark, the display dimmed, and nothing reads
+       * the keyboard any more, so no cursor. */
       showLeds(0);
+      xterm.write('\x1b[?25l');
       screenEl.classList.add('off');
       if (lastState) showKernel(lastState);
       const minutes = Math.round((build.max_time_ms ?? 60_000) / 60_000);

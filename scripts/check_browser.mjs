@@ -623,6 +623,45 @@ const pageChecks = [
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
     return 'no cursor for the philosophers, a blinking one for the shell';
   }],
+  ['tap', async () => {
+    /* A click with no hold at all, as a script or a quick tap gives, and a
+     * press from the keyboard: each has to reach the guest as a press long
+     * enough to get through gpio-keys' debounce. */
+    await page.selectOption('#build', 'button');
+    await page.click('#run');
+    await until('the button sample never started', () => window.zephyrOutput().includes('Press the button'), null, 30_000);
+    const presses = () => page.evaluate(() => window.zephyrOutput().split(' pressed ').length - 1);
+    const before = await presses();
+    await page.click('#board button[data-pin="4"]');
+    await until('an instant click on Button 0 was not seen as a press',
+                (n) => window.zephyrOutput().split(' pressed ').length - 1 > n, before, 10_000);
+    const afterClick = await presses();
+    await page.focus('#board button[data-pin="4"]');
+    await page.keyboard.press('Space');
+    await until('Space on Button 0 was not seen as a press',
+                (n) => window.zephyrOutput().split(' pressed ').length - 1 > n, afterClick, 10_000);
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    return 'an instant click and a Space press on Button 0 each reach the guest';
+  }],
+  ['parts', async () => {
+    /* Only the parts a build uses are shown -- visible, not merely marked
+     * hidden, which a display rule once overrode. */
+    const shown = () => page.evaluate(() => [...document.querySelectorAll('#board .group')]
+      .map((g) => !!(g.offsetWidth || g.offsetHeight)));
+    await page.selectOption('#build', 'blinky');
+    const blinky = await shown();
+    await page.selectOption('#build', 'button');
+    const button = await shown();
+    await page.selectOption('#build', 'hello');
+    const hello = await page.evaluate(() => !!document.getElementById('board').offsetHeight);
+    if (blinky.join() !== 'true,false') throw new Error(`blinky shows LEDs,buttons = ${blinky}`);
+    if (button.join() !== 'true,true') throw new Error(`button shows LEDs,buttons = ${button}`);
+    if (hello) throw new Error('hello shows the board');
+    const cursor = await page.evaluate(() => window.zephyrCursor().hidden);
+    if (!cursor) throw new Error('a cursor is shown with nothing running');
+    return 'blinky shows its LEDs only, button both, hello neither; no cursor while idle';
+  }],
   ['pace', async () => {
     /* A paced build keeps to the wall clock, whether its steps are heavy
      * (touch redraws every frame) or it is waiting on a person with no
