@@ -29,7 +29,10 @@
       "application_development/code_relocation_nocopy",
       "drivers/display",
       "drivers/smbus"
-    ]
+    ],
+    "filtered_entries": 87,
+    "runnable_entries": 142,
+    "runnable_apps": 89
   },
   "samples": [
     {
@@ -47,9 +50,9 @@
     {
       "path": "zephyr/samples/arch/mpu/mpu_test",
       "entry": "sample.mpu.mpu_test",
-      "status": "build-fails",
-      "cause": "kconfig-symbol",
-      "detail": "use of undeclared identifier 'CONFIG_FLASH_BASE_ADDRESS'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_CPU_HAS_MPU and not CONFIG_ARM64 and not CONFIG_SOC_SERIES_S32ZE"
     },
     {
       "path": "zephyr/samples/basic/button",
@@ -70,23 +73,23 @@
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.separate_chaining.djb2",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up: the guest ran without suspending ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "TOOLCHAIN_HAS_NEWLIB == 1"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.open_addressing.djb2",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up: the guest ran without suspending ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "TOOLCHAIN_HAS_NEWLIB == 1"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
       "entry": "sample.libraries.hash_map.newlib.cxx_unordered_map.djb2",
-      "status": "build-fails",
-      "cause": "compile",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "TOOLCHAIN_HAS_NEWLIB == 1"
     },
     {
       "path": "zephyr/samples/basic/hash_map",
@@ -155,10 +158,10 @@
     {
       "path": "zephyr/samples/basic/threads",
       "entry": "sample.basic.threads",
+      "note": "D8b, confirmed: blink0, blink1 and uart_out are declared void f(void) and handed to K_THREAD_DEFINE. Giving them k_thread_entry_t's signature makes the sample run.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, confirmed: blink0, blink1 and uart_out are declared void f(void) and handed to K_THREAD_DEFINE. Giving them k_thread_entry_t's signature makes the sample run."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/bluetooth/central",
@@ -177,9 +180,9 @@
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
       "entry": "sample.cpp.synchronization.picolibc",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/kernel/libkernel.a(init.c.obj): undefined symbol: __zephyr_init_array_start"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_PICOLIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/cpp/hello_world",
@@ -201,15 +204,16 @@
     {
       "path": "zephyr/samples/drivers/audio/codec",
       "entry": "sample.drivers.audio.codec",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_nodelabel_enabled(\"audcodec\")"
     },
     {
       "path": "zephyr/samples/drivers/audio/dmic",
       "entry": "sample.drivers.audio.dmic",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_dmic0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_nodelabel_enabled(\"dmic_dev\")"
     },
     {
       "path": "zephyr/samples/drivers/auxdisplay_digits",
@@ -235,58 +239,58 @@
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.bee",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"realtek,bee-aes\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.microchip",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"microchip,aes-g1\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.stm32",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"st,stm32-aes\") or dt_compat_enabled(\"st,stm32-cryp\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.mcux_dcp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"nxp,mcux-dcp\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.si32",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"silabs,si32-aes\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.cc23x0_dma",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"ti,cc23x0-aes\") and dt_compat_enabled(\"ti,cc23x0-dma\")"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
       "entry": "sample.drivers.crypto.esp32",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"You need to enable one crypto device\""
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"espressif,esp32-aes\")"
     },
     {
       "path": "zephyr/samples/drivers/dali",
       "entry": "sample.drivers.dali",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_dali0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_nodelabel_enabled(\"dali0\")"
     },
     {
       "path": "zephyr/samples/drivers/display",
@@ -305,16 +309,16 @@
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.builtin",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_display_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,display\")"
     },
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.shield",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_display_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,display\")"
     },
     {
       "path": "zephyr/samples/drivers/eeprom",
@@ -333,43 +337,44 @@
     {
       "path": "zephyr/samples/drivers/firmware/scmi",
       "entry": "sample.drivers.firmware.scmi",
-      "status": "builds",
-      "cause": "build_only upstream"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARM_SCMI"
     },
     {
       "path": "zephyr/samples/drivers/flash_shell",
       "entry": "sample.drivers.flash.shell",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 20000 ms of guest time ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FLASH_HAS_DRIVER_ENABLED and dt_chosen_enabled('zephyr,flash-controller') and not CONFIG_SOC_SERIES_BSIM_NRFXX"
     },
     {
       "path": "zephyr/samples/drivers/gnss",
       "entry": "sample.drivers.gnss",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_gnss_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"gnss\")"
     },
     {
       "path": "zephyr/samples/drivers/i2s/echo",
       "entry": "sample.drivers.i2s.echo",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "function-like macro 'DT_ON_BUS' is not defined"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_nodelabel_enabled(\"i2s_rxtx\") or (dt_nodelabel_enabled(\"i2s_rx\") and dt_nodelabel_enabled(\"i2s_tx\"))"
     },
     {
       "path": "zephyr/samples/drivers/i2s/output",
       "entry": "sample.drivers.i2s.output",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_i2s_tx_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"i2s-tx\")"
     },
     {
       "path": "zephyr/samples/drivers/interrupt_controller/intc_riscv_aia",
       "entry": "sample.drivers.uart_echo_aia",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier 'DT_N_S_soc_S_uart_REG_IDX_0_VAL_ADDRESSU'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_RISCV_APLIC_MSI and CONFIG_RISCV_IMSIC\n"
     },
     {
       "path": "zephyr/samples/drivers/ipm/ipm_ivshmem",
@@ -381,58 +386,58 @@
     {
       "path": "zephyr/samples/drivers/led/led_strip",
       "entry": "sample.drivers.led_strip",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "Unable to determine length of LED strip"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"led-strip\")"
     },
     {
       "path": "zephyr/samples/drivers/mbox",
       "entry": "sample.drivers.mbox",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake -DWEST_PYTHON=/home/user/zephyr-venv/bin/python3.12 -DWEST_TOPDIR=/home/user -DWEST_VERSION=1.5.0 -B/h"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"vnd,mbox-consumer\")"
     },
     {
       "path": "zephyr/samples/drivers/mbox_data",
       "entry": "sample.drivers.mbox.mbox_data.real_hw",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake -DWEST_PYTHON=/home/user/zephyr-venv/bin/python3.12 -DWEST_TOPDIR=/home/user -DWEST_VERSION=1.5.0 -B/h"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"vnd,mbox-consumer\")"
     },
     {
       "path": "zephyr/samples/drivers/memc",
       "entry": "sample.drivers.memc",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "At least one driver should be selected!"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"sram-ext\")"
     },
     {
       "path": "zephyr/samples/drivers/memc",
       "entry": "sample.drivers.memc.mspi",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "At least one driver should be selected!"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"psram0\")"
     },
     {
       "path": "zephyr/samples/drivers/memc",
       "entry": "sample.drivers.memc.nrf_mspi",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "At least one driver should be selected!"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"psram0\")"
     },
     {
       "path": "zephyr/samples/drivers/peci",
       "entry": "sample.drivers.peci",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'soc.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"peci-0\")"
     },
     {
       "path": "zephyr/samples/drivers/ps2",
       "entry": "sample.drivers.espi.ps2",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'soc.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"microchip,xec-ps2\")"
     },
     {
       "path": "zephyr/samples/drivers/smbus",
@@ -444,8 +449,9 @@
     {
       "path": "zephyr/samples/drivers/uart/async_api",
       "entry": "sample.drivers.uart.async_api.console",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_SERIAL and CONFIG_UART_ASYNC_API and dt_chosen_enabled(\"zephyr,shell-uart\") and not CONFIG_UART_MCUX_LPUART"
     },
     {
       "path": "zephyr/samples/drivers/uart/native_tty",
@@ -529,9 +535,9 @@
     {
       "path": "zephyr/samples/modules/lvgl/accelerometer_chart",
       "entry": "sample.modules.lvgl.accelerometer_chart",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'lvgl.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,display\") and dt_alias_exists(\"accel0\")"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
@@ -592,9 +598,9 @@
     {
       "path": "zephyr/samples/modules/lvgl/screen_transparency",
       "entry": "sample.modules.lvgl.screen_transparency",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'lvgl.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,display\")"
     },
     {
       "path": "zephyr/samples/modules/nanopb",
@@ -606,9 +612,9 @@
     {
       "path": "zephyr/samples/modules/tflite-micro/hello_world",
       "entry": "sample.tensorflow.helloworld",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'tensorflow/lite/micro/micro_mutable_op_resolver.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/net/dhcpv4_client",
@@ -627,9 +633,9 @@
     {
       "path": "zephyr/samples/net/zperf",
       "entry": "sample.net.zperf.async_tx.stm32",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/subsys/net/ip/libsubsys__net__ip.a(net_if.c.obj): undefined symbol: _net_if_list_start"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"st,stm32-ethernet\") and CONFIG_ETH_STM32_HAL_API_V2"
     },
     {
       "path": "zephyr/samples/philosophers",
@@ -679,9 +685,9 @@
     {
       "path": "zephyr/samples/psa/its",
       "entry": "sample.psa.its.tfm",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'psa/internal_trusted_storage.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_BUILD_WITH_TFM"
     },
     {
       "path": "zephyr/samples/psa/its",
@@ -700,9 +706,9 @@
     {
       "path": "zephyr/samples/psa/persistent_key",
       "entry": "sample.psa.persistent_key.tfm",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'psa/crypto.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_BUILD_WITH_TFM"
     },
     {
       "path": "zephyr/samples/psa/persistent_key",
@@ -721,65 +727,65 @@
     {
       "path": "zephyr/samples/sensor/6dof_fifo_stream",
       "entry": "sample.sensor.6dof_fifo_stream",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_stream0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"stream0\")"
     },
     {
       "path": "zephyr/samples/sensor/6dof_motion_drdy",
       "entry": "sample.sensor.6dof_motion_drdy",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_6dof_motion_drdy0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"6dof_motion_drdy0\")"
     },
     {
       "path": "zephyr/samples/sensor/accel_polling",
       "entry": "sample.sensor.accel_polling",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 30000 ms of guest time ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"accel0\")"
     },
     {
       "path": "zephyr/samples/sensor/accel_stream",
       "entry": "sample.sensor.accel_stream",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 30000 ms of guest time ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"accel0\")"
     },
     {
       "path": "zephyr/samples/sensor/accel_trig",
       "entry": "sample.sensor.accel_trig",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_accel0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"accel0\")"
     },
     {
       "path": "zephyr/samples/sensor/accel_trig",
       "entry": "sample.sensor.accel_trig.generic-tap",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_accel0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"nxp,fxos8700\") or dt_compat_enabled(\"invensense,icm42605\") or dt_compat_enabled(\"st,iis2dlpc\") or dt_compat_enabled(\"st,lis2dw12\")"
     },
     {
       "path": "zephyr/samples/sensor/clock",
       "entry": "sample.sensor.clock.system",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake -DWEST_PYTHON=/home/user/zephyr-venv/bin/python3.12 -DWEST_TOPDIR=/home/user -DWEST_VERSION=1.5.0 -B/h"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_SENSOR_CLOCK_SYSTEM"
     },
     {
       "path": "zephyr/samples/sensor/die_temp_polling",
       "entry": "sample.sensor.die_temperature_polling",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 30000 ms of guest time ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"die-temp0\")"
     },
     {
       "path": "zephyr/samples/sensor/distance_polling",
       "entry": "sample.sensor.distance_polling",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 30000 ms of guest time ***"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"distance0\")"
     },
     {
       "path": "zephyr/samples/sensor/flow_meter",
@@ -791,72 +797,72 @@
     {
       "path": "zephyr/samples/sensor/lsm6dso",
       "entry": "sample.sensor.lsm6dso",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "array size is negative"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"st,lsm6dso\")"
     },
     {
       "path": "zephyr/samples/sensor/magn_trig",
       "entry": "sample.sensor.magn_trigger",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_magn0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"magn0\")"
     },
     {
       "path": "zephyr/samples/sensor/pressure_interrupt",
       "entry": "sample.sensor.pressure_interrupt",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_pressure_sensor_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"pressure-sensor\")"
     },
     {
       "path": "zephyr/samples/sensor/pressure_polling",
       "entry": "sample.sensor.pressure_sensor",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_pressure_sensor_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"pressure-sensor\")"
     },
     {
       "path": "zephyr/samples/sensor/qdec",
       "entry": "sample.sensor.qdec_sensor",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_qdec0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"qdec0\")"
     },
     {
       "path": "zephyr/samples/sensor/stream_drdy",
       "entry": "sample.sensor.stream_drdy",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_stream0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"stream0\")"
     },
     {
       "path": "zephyr/samples/sensor/tdk_apex",
       "entry": "sample.sensor.icm42670.apex",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_tdk_apex_sensor0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"tdk_apex_sensor0\")"
     },
     {
       "path": "zephyr/samples/sensor/thermometer",
       "entry": "sample.sensor.thermometer",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_ALIAS_ambient_temp0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_alias_exists(\"ambient-temp0\")"
     },
     {
       "path": "zephyr/samples/subsys/bindesc/hello_bindesc",
       "entry": "sample.bindesc",
-      "status": "build-fails",
-      "cause": "kconfig-symbol",
-      "detail": "use of undeclared identifier 'CONFIG_BINDESC_DEFINE_MAX_DATA_SIZE'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_SUPPORTS_ROM_START or CONFIG_ARCH_POSIX"
     },
     {
       "path": "zephyr/samples/subsys/bindesc/read_bindesc",
       "entry": "sample.bindesc.read_bindesc",
-      "status": "build-fails",
-      "cause": "kconfig-symbol",
-      "detail": "use of undeclared identifier 'CONFIG_BINDESC_DEFINE_MAX_DATA_SIZE'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,flash-controller\") and CONFIG_FLASH_HAS_DRIVER_ENABLED and CONFIG_ARCH_SUPPORTS_ROM_START"
     },
     {
       "path": "zephyr/samples/subsys/cpu_freq/on_demand",
@@ -896,9 +902,9 @@
     {
       "path": "zephyr/samples/subsys/display/color_palette",
       "entry": "sample.display.color_palette",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_display_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"zephyr,panel-color-palette\") and dt_chosen_enabled(\"zephyr,display\")"
     },
     {
       "path": "zephyr/samples/subsys/display/lvgl",
@@ -945,9 +951,9 @@
     {
       "path": "zephyr/samples/subsys/fs/fs_sample",
       "entry": "sample.filesystem.fat_fs.has_sdmmc_disk",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'ff.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"zephyr,sdmmc-disk\")"
     },
     {
       "path": "zephyr/samples/subsys/fs/littlefs",
@@ -959,9 +965,9 @@
     {
       "path": "zephyr/samples/subsys/fs/virtiofs",
       "entry": "sample.filesystem.virtiofs",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_virtio_pci_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_DT_HAS_VIRTIO_PCI_ENABLED"
     },
     {
       "path": "zephyr/samples/subsys/input/draw_touch_events",
@@ -985,16 +991,16 @@
     {
       "path": "zephyr/samples/subsys/ipc/ipc_service/static_vrings",
       "entry": "sample.ipc.static_vrings",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_ipc0_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"zephyr,ipc-openamp-static-vrings\") and dt_nodelabel_enabled(\"ipc0\") and dt_nodelabel_enabled(\"ipc1\")"
     },
     {
       "path": "zephyr/samples/subsys/ipc/openamp",
       "entry": "sample.ipc.openamp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'openamp/open_amp.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,ipc\") and dt_chosen_enabled(\"zephyr,ipc_shm\") and not CONFIG_SOC_ESP32_APPCPU_TARGET"
     },
     {
       "path": "zephyr/samples/subsys/kvss/zms",
@@ -1020,9 +1026,9 @@
     {
       "path": "zephyr/samples/subsys/llext/edk/app",
       "entry": "sample.llext.edk.app",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "variable has incomplete type 'struct k_mem_domain'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_HAS_USERSPACE"
     },
     {
       "path": "zephyr/samples/subsys/llext/modules",
@@ -1048,23 +1054,23 @@
     {
       "path": "zephyr/samples/subsys/logging/dictionary",
       "entry": "sample.logging.basic.dictionary.fpu",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake --build /home/user/build-sample-sample.logging.basic.dictionary.fpu"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_CPU_HAS_FPU"
     },
     {
       "path": "zephyr/samples/subsys/logging/dictionary",
       "entry": "sample.logging.basic.dictionary.fpu.long_double",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake --build /home/user/build-sample-sample.logging.basic.dictionary.fpu.long_double"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_CPU_HAS_FPU"
     },
     {
       "path": "zephyr/samples/subsys/logging/dictionary",
       "entry": "sample.logging.basic.dictionary.uart_int_frontend",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/libzephyr.a(log_core.c.obj): undefined symbol: log_frontend_init"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_SERIAL_SUPPORT_INTERRUPT and CONFIG_UART_CONSOLE"
     },
     {
       "path": "zephyr/samples/subsys/logging/logger",
@@ -1074,58 +1080,58 @@
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred_cpp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate_cpp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred_cpp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate_cpp",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
     },
     {
       "path": "zephyr/samples/subsys/mgmt/mcumgr/smp_svr",
@@ -1204,9 +1210,9 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/eventfd",
       "entry": "sample.posix.eventfd",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_FULL_LIBC_SUPPORTED and not CONFIG_NATIVE_LIBC"
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/philosophers",
@@ -1242,20 +1248,23 @@
     {
       "path": "zephyr/samples/subsys/settings",
       "entry": "sample.settings.nvs",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_label_with_parent_compat_enabled(\"storage_partition\", \"fixed-partitions\") or dt_label_compat_enabled(\"storage_partition\", \"zephyr,mapped-partition\") and not "
     },
     {
       "path": "zephyr/samples/subsys/settings",
       "entry": "sample.settings.tfm-ps",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_TFM_PARTITION_PROTECTED_STORAGE"
     },
     {
       "path": "zephyr/samples/subsys/settings",
       "entry": "sample.settings.tfm-its",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_TFM_PARTITION_INTERNAL_TRUSTED_STORAGE"
     },
     {
       "path": "zephyr/samples/subsys/shell/shell_module",
@@ -1270,9 +1279,9 @@
     {
       "path": "zephyr/samples/subsys/smf/smf_calculator",
       "entry": "sample.smf.smf_calculator",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'lvgl.h' file not found"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,display\")"
     },
     {
       "path": "zephyr/samples/subsys/testsuite/benchmark",
@@ -1300,16 +1309,16 @@
     {
       "path": "zephyr/samples/subsys/tracing/basic",
       "entry": "sample.tracing.transport.uart",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_tracing_uart_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,tracing-uart\")"
     },
     {
       "path": "zephyr/samples/subsys/tracing/basic",
       "entry": "sample.tracing.transport.uart.ctf",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_tracing_uart_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_chosen_enabled(\"zephyr,tracing-uart\")"
     },
     {
       "path": "zephyr/samples/subsys/tracing/basic",
@@ -1321,9 +1330,7 @@
     {
       "path": "zephyr/samples/subsys/tracing/basic",
       "entry": "sample.tracing.gpio",
-      "status": "does-not-finish",
-      "cause": "gave-up",
-      "detail": "*** gave up after 30000 ms of guest time ***"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/tracing/pipeline",
@@ -1368,26 +1375,26 @@
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async_msg_sub",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_sync",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/confirmed_channel",
@@ -1440,18 +1447,18 @@
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small_use_default",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
@@ -1464,18 +1471,18 @@
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small_use_default",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/zbus/priority_boost",
@@ -1513,9 +1520,9 @@
     {
       "path": "zephyr/samples/subsys/zbus/uart_bridge",
       "entry": "sample.zbus.uart_bridge_build",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_uart1_ORD'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_nodelabel_enabled(\"uart1\")"
     },
     {
       "path": "zephyr/samples/subsys/zbus/work_queue",
@@ -1533,35 +1540,37 @@
     {
       "path": "zephyr/samples/synchronization",
       "entry": "sample.kernel.synchronization.cpu_mask",
-      "status": "passes"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_SMP and CONFIG_MP_MAX_NUM_CPUS > 1"
     },
     {
       "path": "zephyr/samples/userspace/hello_world_user",
       "entry": "sample.helloworld",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "This sample requires CONFIG_USERSPACE."
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_HAS_USERSPACE"
     },
     {
       "path": "zephyr/samples/userspace/prod_consumer",
       "entry": "sample.userspace.prod_consumer",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "incomplete definition of type 'struct k_mem_partition'"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_HAS_USERSPACE"
     },
     {
       "path": "zephyr/samples/userspace/shared_mem",
       "entry": "sample.kernel.memory_protection.shared_mem",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "use of undeclared identifier 'enc_part'; did you mean 'enc_parts'?"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_HAS_USERSPACE"
     },
     {
       "path": "zephyr/samples/userspace/syscall_perf",
       "entry": "sample.syscall_performances",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "call to undeclared function 'csr_read'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
   "score": 29

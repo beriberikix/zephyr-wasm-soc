@@ -563,3 +563,49 @@ left the lock held never runs first. The other 24 suites are exactly as
 recorded. That makes 17 suites passing outright and 450 cases, and one fewer
 mystery, though the case that left the lock held is still unidentified.
 
+
+### Tick 45 — the samples that "gave up" mostly should never have run
+
+Seven entries were recorded as running for ever without passing:
+- `hash_map` with newlib;
+- `flash_shell`;
+- four sensor polling samples;
+- `tracing.gpio`.
+
+The obvious suspects were a busy loop the safepoints miss and a clock that
+never moves. It was neither, for six of the seven.
+
+`accel_polling` builds its sensor list from the aliases `accel0` to `accel9`.
+This board has none, so the list is empty and `main` sleeps for ever, printing
+nothing. That is what it would do on any board without an accelerometer, and
+upstream knows it: the entry says `filter: dt_alias_exists("accel0")`, and
+twister never runs it on such a board. The same goes for the others:
+- `die-temp0` and `distance0`;
+- a chosen flash controller;
+- `TOOLCHAIN_HAS_NEWLIB`, which is `OFF` for this toolchain.
+
+The sweep had never looked at `filter:`. It now evaluates each filter with
+twister's own `expr_parser`, against the build's `.config`, CMake cache and
+`edt.pickle`, exactly as twister does after CMake, and records a false filter
+as `filtered`. Run over every candidate that has a filter, that removed 87 of
+the 229 entries. What twister itself would run on this board is 142 entries in
+89 applications. The score does not move, and the denominator is now honest.
+
+Two entries moved the wrong way, correctly:
+- `synchronization.cpu_mask` passed, but needs SMP with more than one CPU, so
+  upstream would never run it here. The app still counts through its main
+  entry.
+- `firmware/scmi` built, but needs `CONFIG_ARM_SCMI`.
+
+The seventh was real. `tracing.gpio` printed every line upstream wants except
+the last, `sys_trace_.*_user.*`. Every other architecture calls:
+- `sys_trace_isr_enter/exit` around interrupt handlers;
+- `sys_trace_idle/idle_exit` around the CPU's sleep.
+
+This one called neither, so tracing backends and CPU load never saw an
+interrupt or an idle period. Both now happen, in the dispatcher and around the
+host wait, and the entry passes.
+
+One slip, caught in the output: re-running an entry kept its hand-written note
+but replaced a hand-confirmed `d8b` with the automatic `indirect-call`, which
+is only a guess. It no longer does.

@@ -29,16 +29,32 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 229 | 143 |
+| Filtered out by upstream's own twister filter | 87 | |
+| **Runnable: what twister itself would run here** | **142** | **89** |
 | Pass upstream's own criterion | 44 | 29 |
-| Build, but upstream only builds them | 5 | |
-| Run and fail their criterion | 6 | |
-| Do not finish | 30 | |
-| Do not build | 144 | |
+| Build, but upstream only builds them | 4 | |
+| Run and fail their criterion | 1 | |
+| Do not finish | 22 | |
+| Do not build | 71 | |
 
-The other 1039 entries were not tried, for reasons recorded in the summary of
-`samples.json`: 655 name only hardware platforms, 112 depend on a feature this
-board does not declare, and 267 use a harness that needs a peer or a person
-(networking, Bluetooth, sensors, keyboards and so on).
+The 1039 entries outside "plausible" were not tried, for reasons recorded in
+the summary of `samples.json`:
+- 655 name only hardware platforms;
+- 112 depend on a feature this board does not declare;
+- 267 use a harness that needs a peer or a person (networking, Bluetooth,
+  sensors, keyboards and so on).
+
+Of the plausible ones, 87 carry a twister `filter:` that is false here:
+- `dt_alias_exists("accel0")`, a chosen display or flash controller;
+- `CONFIG_ARCH_HAS_USERSPACE`, `CONFIG_FULL_LIBC_SUPPORTED`;
+- `TOOLCHAIN_HAS_NEWLIB`.
+
+Twister evaluates that after CMake and never runs such an entry on the board.
+`check_samples.py` evaluates the same expression with twister's own parser,
+against the same build files, and records those entries as filtered. Until it
+did, the sweep counted them as failures, and several of them as samples that
+"gave up": a sensor sample on a board with no sensors loops for ever printing
+nothing.
 
 Three passes are weak and are marked `boot-only` in the record, because
 upstream's regex only checks that they started:
@@ -46,20 +62,20 @@ upstream's regex only checks that they started:
 `drivers/display` (their banners). The display sample passing says nothing
 about drawing anything.
 
-Why the rest do not pass, the largest groups first (the long tail is in
-`samples.json`):
+Why the runnable rest do not pass, the largest groups first (every entry's
+cause is in `samples.json`):
 
 | Cause | entries | what it is |
 |---|---:|---|
-| No such device | 36 | the sample wants a devicetree node this board has no driver for (`__device_dts_ord_N`) |
 | Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
-| Missing module | 19 | LVGL (13 entries, counting its Kconfig), FatFs, TFLite, PSA |
-| Kconfig refuses | 16 | options the board cannot satisfy, mostly hardware drivers |
-| No C library headers | 16 | C++, POSIX, `syst` and the benchmarks need a libc with `string.h`; only the minimal one is here |
-| Gave up | 8 | runs and never suspends: `hash_map` with newlib, four sensor samples, `flash_shell`, `tracing.gpio` |
-| Needs a crypto driver | 7 | "You need to enable one crypto device" |
-| Link | 7 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand) |
-| Fails its regex | 6 | codec, `uart async_api`, PM latency, settings on NVS, the two TF-M storage samples |
+| Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
+| Missing module | 14 | LVGL (with its Kconfig), FatFs, TFLite, PSA |
+| No such device | 13 | a devicetree node this board has no driver for (`__device_dts_ord_N`): EEPROM, auxdisplay, SDL display, ... |
+| Other build errors | 9 | e.g. the `cpu_freq` samples need an SoC P-state API |
+| No C library headers | 7 | C++ and a few others need a libc with `string.h`; only the minimal one is here |
+| Link | 4 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand), `get_bootargs` |
+| Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
+| Fails its regex | 1 | `power.latency` |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
@@ -159,6 +175,12 @@ the kernel, so this comes first.
       of the section shim under something not written with this port in mind.
       The shim passed: `samples/subsys/logging/logger` runs unmodified and
       deterministically.
+- [x] **Tracing and CPU load see interrupts and idle.** The dispatcher now
+      calls `sys_trace_isr_enter/exit` around each handler, and both idle
+      paths call `sys_trace_idle/idle_exit` around the host wait, as every
+      other architecture does. Before this, tracing backends and CPU load
+      silently saw neither. `samples/subsys/tracing/basic`'s gpio entry
+      checks for it.
 - [ ] **Make stack overflow loud.** The Asyncify buffer is not bounds-checked
       and a learner will overflow a stack on the first afternoon. Binaryen will
       not add a check, but the host can: the buffer's cursor and limit are two

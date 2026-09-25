@@ -38,8 +38,8 @@ log, including what did not work. `BRIEF.md` is the original task.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
 * `samples/subsys/shell/shell_module` runs interactively over a polled UART.
-* 29 upstream samples pass their own twister criterion, unmodified, out of 143
-  that could plausibly run on a board with no hardware. Among them the
+* 29 upstream samples pass their own twister criterion, unmodified, out of
+  the 89 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
   which is on the page as something to type events into.
@@ -305,12 +305,14 @@ python3 zephyr-wasm/scripts/check_samples.py --recorded passes  # upstream sampl
 ```
 
 `check_samples.py` builds each upstream sample entry the way twister would and
-judges it by the entry's own `harness_config`. It compares against
-`scripts/samples.json` and exits non-zero on anything that did worse.
-`--match samples/kernel` narrows it to one area; `--discover` regenerates the
-candidate list from upstream's `tests.yaml` files. All 229 candidates take a
-few hours, so CI runs them weekly in `.github/workflows/samples.yml` rather
-than on every push.
+judges it by the entry's own `harness_config`. An entry whose twister
+`filter:` is false on this board is recorded as filtered, not failed; that is
+evaluated with twister's own parser, which needs `pip install ply`. It
+compares against `scripts/samples.json` and exits non-zero on anything that
+did worse. `--match samples/kernel` narrows it to one area; `--discover`
+regenerates the candidate list from upstream's `tests.yaml` files. All 229
+candidates take a few hours, so CI runs them weekly in
+`.github/workflows/samples.yml` rather than on every push.
 
 The browser check needs Playwright (`npm install --no-save playwright && npx
 playwright install chromium`); nothing else here does, which is why it is not

@@ -312,6 +312,19 @@ def run_cause(out: str) -> str:
     return "regex-mismatch"
 
 
+def kept_cause(sample: dict, cause: str) -> str:
+    """The recorded cause where a re-run can only guess at it.
+
+    d8b is only ever set by hand, after finding the non-conforming thread
+    entry in the source. The trap cannot tell it from a null pointer, so a
+    re-run must not demote it back to indirect-call. Any other change of
+    cause is left to show.
+    """
+    if cause == "indirect-call" and sample.get("cause") == "d8b":
+        return "d8b"
+    return cause
+
+
 def build_cause(error: str, log: str = "") -> str:
     """Why a build failed, judged by its first error line where possible.
 
@@ -374,7 +387,7 @@ def run_one(sample: dict, keep: bool) -> dict:
     elif "PROJECT EXECUTION FAILED" in out:
         result.update(status="fails", cause="ztest")
     elif verdict is False:
-        cause = run_cause(out)
+        cause = kept_cause(sample, run_cause(out))
         status = "fails" if cause == "regex-mismatch" else "does-not-finish"
         result.update(status=status, cause=cause)
         trouble = sweeplib.trouble(out)
@@ -383,7 +396,8 @@ def run_one(sample: dict, keep: bool) -> dict:
     else:
         trouble = sweeplib.trouble(out)
         if trouble and "gave up after" not in trouble:
-            result.update(status="does-not-finish", cause=run_cause(out), detail=trouble)
+            result.update(status="does-not-finish", cause=kept_cause(sample, run_cause(out)),
+                          detail=trouble)
         else:
             result.update(status="runs", cause="no upstream criterion")
     return result
