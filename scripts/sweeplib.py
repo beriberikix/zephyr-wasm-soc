@@ -55,7 +55,10 @@ def run(wasm: pathlib.Path, max_time_ms: int, args=(), timeout: int = 900,
         ran = subprocess.run(
             ["node", str(MODULE / "host" / "run.mjs"),
              "--max-time", str(max_time_ms), *extra, *args, str(wasm)],
-            cwd=TOP, capture_output=True, text=True, timeout=timeout,
+            # A guest may print any byte at all -- a sample that dumps an
+            # erased disk prints 0xff -- and a harness that dies on it
+            # reports nothing about the sample.
+            cwd=TOP, capture_output=True, text=True, errors="replace", timeout=timeout,
             input=stdin if stdin is not None else None,
             stdin=None if stdin is not None else subprocess.DEVNULL)
     except subprocess.TimeoutExpired as err:
