@@ -66,8 +66,11 @@ def main() -> int:
     builds = load(args.module)
 
     if args.command == "list":
+        # A third column carries any build arguments, space-separated. They
+        # are only ever an upstream entry's own extra_configs: the LVGL demos
+        # app picks its demo that way.
         for b in builds:
-            print(f"{b['name']}\t{b['app']}")
+            print(f"{b['name']}\t{b['app']}\t{' '.join(b.get('args', []))}")
         return 0
 
     if args.command == "score":

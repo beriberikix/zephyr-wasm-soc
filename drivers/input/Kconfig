@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config INPUT_WASM_HOST
+	bool "Pointer, touch and keyboard input from the host"
+	default y
+	depends on DT_HAS_WASM_HOST_INPUT_ENABLED
+	depends on INPUT
+	help
+	  Events the host queues -- a touch on the page's canvas, a key
+	  pressed while it has focus -- reported through input_report() from
+	  an interrupt, as a touch controller's driver would. Mirrors
+	  native_sim's input_sdl_touch.

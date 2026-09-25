@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  Pointer, touch and keyboard input from the host, into Zephyr's input
+  subsystem.
+
+  On the page, pressing and dragging on the display's canvas is a touch,
+  reported as INPUT_ABS_X, INPUT_ABS_Y and INPUT_BTN_TOUCH in display pixels,
+  which is what native_sim's input_sdl_touch reports; a key pressed while the
+  canvas has focus is an INPUT_EV_KEY with its Linux key code. The host
+  queues events and raises the interrupt; the ISR drains them.
+
+compatible: "wasm,host-input"
+
+include: base.yaml
+
+properties:
+  interrupts:
+    required: true

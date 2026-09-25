@@ -48,6 +48,14 @@
     border: 1px solid var(--line); border-radius: 8px; background: var(--term-bg);
   }
   #board[hidden] { display: none; }
+  /* The board's display: 320x240 guest pixels, drawn twice the size and
+   * kept square-edged, since blurring the pixels would misrepresent them. */
+  #screen {
+    display: block; width: 640px; max-width: 100%; height: auto;
+    margin: 0 0 12px; image-rendering: pixelated;
+    border: 1px solid var(--line); border-radius: 4px; background: #000;
+  }
+  #screen[hidden] { display: none; }
   .part { display: flex; flex-direction: column; align-items: center; gap: 5px; }
   .part small { color: var(--muted); font-size: 11px; }
   .led {
@@ -118,6 +126,10 @@
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
 
+  <!-- The board's display, for builds that draw. See wasm,host-display. -->
+  <canvas id="screen" width="320" height="240" tabindex="0" hidden
+          aria-label="the board's display"></canvas>
+
   <div id="term" tabindex="0" role="log" aria-live="polite"></div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
@@ -150,6 +162,30 @@
  */
 const termEl = document.getElementById('term');
 const boardEl = document.getElementById('board');
+const screenEl = document.getElementById('screen');
+const screenCtx = screenEl.getContext('2d');
+let screenInfo = { frames: 0, colours: 0, blank: true };
+
+/* Draw a frame from the worker: RGBA, the display's own size. A blanked
+ * display shows black, as a panel with its backlight off would. */
+function showFrame({ width, height, blank, frames, rgba }) {
+  if (screenEl.width !== width || screenEl.height !== height) {
+    screenEl.width = width;
+    screenEl.height = height;
+  }
+  const pixels = new Uint8ClampedArray(rgba);
+  if (blank) {
+    screenCtx.fillStyle = '#000';
+    screenCtx.fillRect(0, 0, width, height);
+  } else {
+    screenCtx.putImageData(new ImageData(pixels, width, height), 0, 0);
+  }
+  /* For the browser check: how much the page has actually drawn. */
+  const seen = new Set();
+  const view = new Uint32Array(pixels.buffer);
+  for (let i = 0; i < view.length && seen.size < 64; i += 7) seen.add(view[i]);
+  screenInfo = { frames, colours: blank ? 1 : seen.size, blank };
+}
 const statusEl = document.getElementById('status');
 const buildEl = document.getElementById('build');
 const runEl = document.getElementById('run');
@@ -404,6 +440,7 @@ async function start() {
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
     else if (data.type === 'flash') saveFlash(build.name, data.image);
+    else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       setRunning(false);
       statusEl.textContent = `finished with exit code ${data.code}`;
@@ -416,6 +453,10 @@ async function start() {
 
   showLeds(0);
   boardEl.hidden = false;
+  screenEl.hidden = !build.display;
+  screenCtx.fillStyle = '#000';
+  screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
+  screenInfo = { frames: 0, colours: 0, blank: true };
   kernelEl.classList.remove('on');
   threadsEl.innerHTML = '';
   paused = false;
@@ -482,7 +523,60 @@ window.zephyrType = (text) => {
   return true;
 };
 window.zephyrOutput = () => term.lines.join('\n');
+/* Touch and keys into the input subsystem, through wasm,host-input.
+ *
+ * A press on the canvas is a touch, reported the way native_sim's SDL touch
+ * reports one: X and Y in display pixels, then BTN_TOUCH with sync, repeated
+ * while the pointer moves, and BTN_TOUCH 0 on release. A key pressed while
+ * the canvas has focus is its Linux key code. */
+const EV_KEY = 0x01, EV_ABS = 0x03, BTN_TOUCH = 0x14a;
+const KEY_CODES = {
+  Escape: 1, Backspace: 14, Tab: 15, Enter: 28, Space: 57,
+  ArrowUp: 103, ArrowLeft: 105, ArrowRight: 106, ArrowDown: 108,
+  Digit1: 2, Digit2: 3, Digit3: 4, Digit4: 5, Digit5: 6,
+  Digit6: 7, Digit7: 8, Digit8: 9, Digit9: 10, Digit0: 11,
+};
+'QWERTYUIOP'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 16 + i; });
+'ASDFGHJKL'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 30 + i; });
+'ZXCVBNM'.split('').forEach((c, i) => { KEY_CODES[`Key${c}`] = 44 + i; });
+
+let touching = false;
+function sendInput(events) {
+  if (running && worker) worker.postMessage({ type: 'input-events', events });
+}
+function touchAt(e) {
+  const r = screenEl.getBoundingClientRect();
+  const x = Math.max(0, Math.min(screenEl.width - 1,
+    Math.floor((e.clientX - r.left) * screenEl.width / r.width)));
+  const y = Math.max(0, Math.min(screenEl.height - 1,
+    Math.floor((e.clientY - r.top) * screenEl.height / r.height)));
+  sendInput([[EV_ABS, 0, x, 0], [EV_ABS, 1, y, 0], [EV_KEY, BTN_TOUCH, 1, 1]]);
+}
+screenEl.addEventListener('pointerdown', (e) => {
+  touching = true;
+  screenEl.focus();
+  screenEl.setPointerCapture(e.pointerId);
+  touchAt(e);
+});
+screenEl.addEventListener('pointermove', (e) => { if (touching) touchAt(e); });
+const release = () => {
+  if (!touching) return;
+  touching = false;
+  sendInput([[EV_KEY, BTN_TOUCH, 0, 1]]);
+};
+screenEl.addEventListener('pointerup', release);
+screenEl.addEventListener('pointercancel', release);
+for (const [type, value] of [['keydown', 1], ['keyup', 0]]) {
+  screenEl.addEventListener(type, (e) => {
+    const code = KEY_CODES[e.code];
+    if (code === undefined || e.repeat) return;
+    e.preventDefault();
+    sendInput([[EV_KEY, code, value, 1]]);
+  });
+}
+
 window.zephyrRunning = () => running;
+window.zephyrDisplay = () => screenInfo;
 window.zephyrEraseFlash = (name) => eraseFlash(name);
 window.zephyrFlashSaved = () => flashSaving;
 window.zephyrBuilds = () => builds;

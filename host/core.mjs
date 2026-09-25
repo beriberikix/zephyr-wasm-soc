@@ -152,6 +152,45 @@ export class Host {
     this.storageImage = opts.flashImage ?? null;
     this.reboots = 0;
     this.maxReboots = opts.maxReboots ?? 64;
+    /* Input events waiting for the guest's ISR: [type, code, value, sync]. */
+    this.inputQueue = [];
+  }
+
+  /* Queue input events and tell the guest. Safe at any time, like
+   * setGpioInput: the interrupt is applied at the top of the driver loop. */
+  pushInput(events) {
+    if (events.length === 0) return;
+    this.inputQueue.push(...events);
+    this.injectIrq(IRQ.INPUT);
+  }
+
+  /* The display as RGBA, ready for a canvas's ImageData: a copy, taken
+   * between steps like everything else the host reads out of the guest.
+   * Returns null when the guest has no display. Clears the dirty region,
+   * so a caller that only wants to draw changes can ask whether there are
+   * any first (displayDirty()). */
+  displayDirty() {
+    return !!this.display?.dirty;
+  }
+
+  displayFrame() {
+    const d = this.display;
+    if (!d || !this.mem) return null;
+    const n = d.width * d.height;
+    const px = new Uint16Array(this.mem.buffer, d.ptr, n);
+    const rgba = new Uint8ClampedArray(n * 4);
+    for (let i = 0; i < n; i++) {
+      const v = px[i];
+      /* RGB565, native little-endian: widen each channel by repeating its
+       * top bits, so full intensity is 255 and not 248. */
+      const r = (v >> 11) & 0x1f, g = (v >> 5) & 0x3f, b = v & 0x1f;
+      rgba[i * 4] = (r << 3) | (r >> 2);
+      rgba[i * 4 + 1] = (g << 2) | (g >> 4);
+      rgba[i * 4 + 2] = (b << 3) | (b >> 2);
+      rgba[i * 4 + 3] = 255;
+    }
+    d.dirty = null;
+    return { width: d.width, height: d.height, blank: d.blank, frames: d.frames, rgba };
   }
 
   /* A copy of the attached flash as it is now, or the image it was given if
@@ -396,6 +435,38 @@ export class Host {
           throw new Reboot(`reboot (type ${type})`);
         },
 
+        /* The display. The framebuffer is guest memory; the host only keeps
+         * where it is and which part has changed since it was last drawn. */
+        display_attach(ptr, width, height, format) {
+          self.display = { ptr, width, height, format, blank: true, dirty: null, frames: 0 };
+        },
+
+        display_flush(x, y, w, h) {
+          const d = self.display;
+          if (!d) return;
+          const r = d.dirty;
+          d.dirty = r
+            ? { x0: Math.min(r.x0, x), y0: Math.min(r.y0, y),
+                x1: Math.max(r.x1, x + w), y1: Math.max(r.y1, y + h) }
+            : { x0: x, y0: y, x1: x + w, y1: y + h };
+          d.frames++;
+          self.platform.displayChanged?.();
+        },
+
+        /* Input: one queued event per call, as the ISR drains them. */
+        input_poll(ptr) {
+          const ev = self.inputQueue.shift();
+          if (!ev) return 0;
+          new Int32Array(self.mem.buffer, ptr, 4).set(ev);
+          return 1;
+        },
+
+        display_blank(on) {
+          if (!self.display) return;
+          self.display.blank = !!on;
+          self.platform.displayChanged?.();
+        },
+
         fatal(reason, arg) {
           const name = FATAL_REASONS[reason] ?? `reason ${reason}`;
           self.platform.writeErr(`\n*** fatal: ${name} (arg ${arg}) ***\n`);
@@ -560,12 +631,22 @@ export class Host {
    * same output every time: the press happens at a stated guest time rather
    * than whenever a person got round to it. */
   advanceToNextDeadline() {
-    const event = this.opts.gpio?.[0];
-    if (event && (this.alarmNs === null || event.atNs <= this.alarmNs)) {
-      this.opts.gpio.shift();
-      if (event.atNs > this.nowNs) this.nowNs = event.atNs;
+    /* The next scripted event, of either kind: a pin moving or input
+     * arriving. Scripted input counts as a deadline for the same reason a
+     * scripted button press does. */
+    const pin = this.opts.gpio?.[0];
+    const input = this.opts.inputScript?.[0];
+    const next = pin && (!input || pin.atNs <= input.atNs) ? pin : input;
+    if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
+      if (next.atNs > this.nowNs) this.nowNs = next.atNs;
       this.quiescentRounds = 0;
-      this.setGpioInput(event.port, event.pin, event.level);
+      if (next === pin) {
+        this.opts.gpio.shift();
+        this.setGpioInput(pin.port, pin.pin, pin.level);
+      } else {
+        this.opts.inputScript.shift();
+        this.pushInput(input.events);
+      }
       return true;
     }
     if (this.alarmNs === null) return false;
@@ -631,6 +712,7 @@ export class Host {
     this.ex = instance.exports;
     this.mem = this.ex.memory;
     this.storage = null;
+    this.display = null;
 
     for (const name of ['z_wasm_boot', 'z_wasm_switch_block_addr',
                         'z_wasm_irq_pending_addr', 'z_wasm_thread_entry',

@@ -101,6 +101,23 @@ WASM_HOST_IMPORT(storage_attach) void wasm_host_storage_attach(void *buf, int32_
  */
 WASM_HOST_IMPORT(reboot) void wasm_host_reboot(int32_t type);
 
+/* Display. The framebuffer is guest memory: attach names it once, flush
+ * reports a rectangle just written, and the host reads the pixels whenever
+ * the guest is not running. format is the Zephyr display_pixel_format.
+ */
+WASM_HOST_IMPORT(display_attach) void wasm_host_display_attach(void *fb, int32_t width,
+								int32_t height, int32_t format);
+WASM_HOST_IMPORT(display_flush) void wasm_host_display_flush(int32_t x, int32_t y,
+							      int32_t width, int32_t height);
+WASM_HOST_IMPORT(display_blank) void wasm_host_display_blank(int32_t on);
+
+/* Input. The host queues pointer and key events and raises WASM_IRQ_INPUT;
+ * the driver's ISR drains the queue. Each call writes one event -- type,
+ * code, value and sync, as input_report() takes them -- into ev[4] and
+ * returns 1, or returns 0 when the queue is empty.
+ */
+WASM_HOST_IMPORT(input_poll) int32_t wasm_host_input_poll(int32_t *ev);
+
 /*
  * What the host is told about a thread.
  *

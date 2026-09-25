@@ -2,7 +2,7 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 39 upstream
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 41 upstream
 samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
 is what counts it.
 
@@ -687,3 +687,37 @@ build-only upstream.
 The sweep harness also stopped decoding guest output strictly. The ext2
 sample prints its UUID as raw bytes, and a checker that dies on 0xff says
 nothing about the sample.
+
+### Tick 48 — a screen, a finger, and LVGL
+
+Phase 4 in four ticks, on its own branch at the user's request so that
+Phase 3 could merge first.
+
+The display is the flash again. `wasm,host-display` keeps a framebuffer
+array in linear memory, names it to the host once, and reports each
+rectangle it writes. The host reads the pixels between steps: into a canvas
+on the page, or into a PPM with `--screenshot`, which lets CI check what a
+build drew as well as what it printed. It is RGB565, not native_sim's
+ARGB8888: LVGL defaults to 16-bit colour, and native_sim only avoids the
+mismatch because its samples ship a board .conf this board would not get.
+`samples/drivers/display` drew upstream's picture on the first run,
+identically on both engines.
+
+Input is the GPIO bridge again. The host queues events and raises a line,
+and the ISR drains them into `input_report()`, with the same events
+native_sim's SDL touch produces. `input_dump` printed a scripted touch
+exactly. `draw_touch_events` then drew garbage: it sizes its buffer from
+the display's devicetree `pixel-format`, assumes ARGB8888 when there is
+none, and ours had none. The node now states it and the driver asserts it.
+
+In the browser check a click landed at y=77 instead of 180. The canvas
+extended below the viewport, so the click fell outside it; the page itself
+was right. The check scrolls the canvas into view before measuring.
+
+LVGL needed nothing but the import. All seven `modules/lvgl/demos` entries
+pass their upstream criterion. The widgets demo draws on the page, and a
+real tap on its Analytics tab switches to the chart, which is the input path
+end to end. Its frame is byte-identical on V8 and wasmtime.
+
+Score 41: 38 swept, plus blinky, button and the touch sample, which upstream
+only builds and the demo checks by hand, as it does the other two.

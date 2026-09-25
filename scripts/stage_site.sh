@@ -30,7 +30,7 @@ cp "$module/host/web/index.html" "$module/host/web/worker.js" \
 cd "$topdir"
 
 # name and application path for each build, in the order the page lists them.
-while IFS=$'\t' read -r name app; do
+while IFS=$'\t' read -r name app args; do
   build="build-site-$name"
   # Always build, rather than skipping when the module is already there.
   # west and ninja do nothing when nothing changed, so the cost is seconds;
@@ -40,7 +40,8 @@ while IFS=$'\t' read -r name app; do
   #
   # Quiet on success, but show everything on failure: a build log that is
   # thrown away is no use when the failure is on someone else's machine.
-  if ! "$module/scripts/build.sh" "$build" "$app" > "$build.log" 2>&1; then
+  # shellcheck disable=SC2086 # args is a list of -D options, split on purpose
+  if ! "$module/scripts/build.sh" "$build" "$app" $args > "$build.log" 2>&1; then
     echo "--- build of $name failed ---"
     cat "$build.log"
     exit 1

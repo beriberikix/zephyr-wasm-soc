@@ -166,6 +166,32 @@ for (const b of manifest.builds) {
     } catch { /* the wait below reports it */ }
   }
 
+  /* A build that waits for a touch gets one: a real click on the canvas,
+   * at the display pixel the manifest names, through the page's own
+   * pointer handling. */
+  if (b.ci_touch) {
+    try {
+      await page.waitForFunction(
+        (w) => window.zephyrOutput().includes(w), expect[0],
+        { timeout: 60_000, polling: 250 });
+      /* Measured after scrolling it into view: a click outside the
+       * viewport lands somewhere else entirely. */
+      await page.locator('#screen').scrollIntoViewIfNeeded();
+      const box = await page.locator('#screen').boundingBox();
+      const size = await page.evaluate(() => {
+        const c = document.getElementById('screen');
+        return [c.width, c.height];
+      });
+      for (const touch of b.ci_touch) {
+        const [, x, y] = /^\d+:(\d+),(\d+)$/.exec(touch) ?? [];
+        if (x === undefined) continue;
+        await page.mouse.click(box.x + (Number(x) + 0.5) * box.width / size[0],
+                               box.y + (Number(y) + 0.5) * box.height / size[1]);
+        await page.waitForTimeout(300);
+      }
+    } catch { /* the wait below reports it */ }
+  }
+
   let ok = true;
   for (const want of expect) {
     try {
@@ -187,6 +213,21 @@ for (const b of manifest.builds) {
     } catch {
       ok = false;
       fail(b.name, 'the page never lit an LED');
+    }
+  }
+
+  /* For a build that draws, check the page did: the terminal can be right
+   * while the canvas stays black. */
+  if (ok && b.display) {
+    const least = b.display.colors_at_least ?? 2;
+    try {
+      await page.waitForFunction((n) => window.zephyrDisplay().colours >= n, least,
+                                 { timeout: 30_000, polling: 200 });
+    } catch {
+      ok = false;
+      const got = await page.evaluate(() => window.zephyrDisplay());
+      fail(b.name, `the canvas showed ${got.colours} colours after ${got.frames} frames, ` +
+                   `expected at least ${least}`);
     }
   }
 

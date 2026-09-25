@@ -28,7 +28,15 @@
     "persist_expect / persist_absent: for a build that keeps",
     "  simulated flash. The browser check runs it, reloads the page and runs",
     "  it again: the second run must print persist_expect and must not print",
-    "  persist_absent, which is what it prints when the flash is empty."
+    "  persist_absent, which is what it prints when the flash is empty.",
+    "display: the build draws on the board's display, so the page shows its",
+    "  canvas and check_site.mjs screenshots the last frame, which must show",
+    "  at least display.colors_at_least distinct colours.",
+    "ci_touch: scripted touches, <ms>:<x>,<y> in display pixels: run.mjs",
+    "  --touch for the Node check, a real click on the canvas for the",
+    "  browser check.",
+    "args: build arguments, only ever the upstream entry's own extra_configs",
+    "  (the LVGL demos app chooses its demo that way)."
   ],
   "builds": [
     {
@@ -186,6 +194,67 @@
         "MetaIRQ Test Complete"
       ],
       "deterministic": true
+    },
+    {
+      "name": "display",
+      "app": "zephyr/samples/drivers/display",
+      "kind": "sample",
+      "title": "display (drawn on a canvas)",
+      "upstream": true,
+      "endless": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 5000,
+      "expect": [
+        "Display sample for display",
+        "Display starts"
+      ],
+      "display": {
+        "colors_at_least": 5
+      }
+    },
+    {
+      "name": "touch",
+      "app": "zephyr/samples/subsys/input/draw_touch_events",
+      "kind": "sample",
+      "title": "touch (press on the display)",
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 3000,
+      "ci_touch": [
+        "500:250,180"
+      ],
+      "expect": [
+        "Touch sample for touchscreen",
+        "TOUCH PRESS X, Y: (250, 180)"
+      ],
+      "display": {
+        "colors_at_least": 2
+      }
+    },
+    {
+      "name": "lvgl",
+      "app": "zephyr/samples/modules/lvgl/demos",
+      "kind": "sample",
+      "title": "LVGL widgets (touch the display)",
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "args": [
+        "-DCONFIG_LV_Z_DEMO_WIDGETS=y"
+      ],
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 5000,
+      "expect": [
+        "free bytes",
+        "allocated bytes"
+      ],
+      "display": {
+        "colors_at_least": 20
+      }
     },
     {
       "name": "nvs",

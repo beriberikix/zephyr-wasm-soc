@@ -15,7 +15,7 @@ import { Host } from './core.mjs';
 
 function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
-                 interactive: false, traceGpio: false, gpio: [],
+                 interactive: false, traceGpio: false, gpio: [], inputScript: [],
                  clock: 'virtual', timeScale: 1,
                  seed: undefined, trueRandom: false, threads: false, wasm: null };
   for (let i = 0; i < argv.length; i++) {
@@ -31,6 +31,9 @@ function parseArgs(argv) {
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
     else if (a === '--interactive') opts.interactive = true;
     else if (a === '--flash') opts.flashFile = argv[++i];
+    else if (a === '--screenshot') opts.screenshot = argv[++i];
+    else if (a === '--touch') opts.inputScript.push(...parseTouch(argv[++i]));
+    else if (a === '--key') opts.inputScript.push(...parseKey(argv[++i]));
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -38,6 +41,7 @@ function parseArgs(argv) {
     else { console.error(`unknown option ${a}`); usage(); process.exit(2); }
   }
   if (!opts.wasm) { usage(); process.exit(2); }
+  opts.inputScript.sort((a, b) => (a.atNs < b.atNs ? -1 : a.atNs > b.atNs ? 1 : 0));
   return opts;
 }
 
@@ -51,6 +55,40 @@ function parseGpioEvent(spec) {
     process.exit(2);
   }
   return { atNs: BigInt(m[1]) * 1_000_000n, port: 0, pin: Number(m[2]), level: Number(m[3]) };
+}
+
+/* Input event codes, from zephyr/dt-bindings/input/input-event-codes.h. */
+const EV_KEY = 0x01, EV_ABS = 0x03, ABS_X = 0x00, ABS_Y = 0x01, BTN_TOUCH = 0x14a;
+
+/* --touch <ms>:<x>,<y>: a press where native_sim's SDL touch would report
+ * one, and the release 50 ms later. */
+function parseTouch(spec) {
+  const m = /^(\d+):(\d+),(\d+)$/.exec(spec ?? '');
+  if (!m) {
+    console.error(`--touch wants <ms>:<x>,<y>, not ${JSON.stringify(spec)}`);
+    process.exit(2);
+  }
+  const at = BigInt(m[1]) * 1_000_000n;
+  const x = Number(m[2]), y = Number(m[3]);
+  return [
+    { atNs: at, events: [[EV_ABS, ABS_X, x, 0], [EV_ABS, ABS_Y, y, 0], [EV_KEY, BTN_TOUCH, 1, 1]] },
+    { atNs: at + 50_000_000n, events: [[EV_KEY, BTN_TOUCH, 0, 1]] },
+  ];
+}
+
+/* --key <ms>:<code>: a key pressed and released. */
+function parseKey(spec) {
+  const m = /^(\d+):(\d+)$/.exec(spec ?? '');
+  if (!m) {
+    console.error(`--key wants <ms>:<code>, not ${JSON.stringify(spec)}`);
+    process.exit(2);
+  }
+  const at = BigInt(m[1]) * 1_000_000n;
+  const code = Number(m[2]);
+  return [
+    { atNs: at, events: [[EV_KEY, code, 1, 1]] },
+    { atNs: at + 50_000_000n, events: [[EV_KEY, code, 0, 1]] },
+  ];
 }
 
 function usage() {
@@ -79,7 +117,14 @@ function usage() {
                      pressed at 0 and released at 1.
   --flash <file>     keep the simulated flash in this file: loaded before
                      boot if it exists, written back on reboot and at the
-                     end. Without it the flash starts erased every run`);
+                     end. Without it the flash starts erased every run
+  --screenshot <file>
+                     write the display's last frame as a binary PPM
+  --touch <ms>:<x>,<y>
+                     touch the display at a given guest time and release it
+                     50 ms later, repeatable. Coordinates are display pixels
+  --key <ms>:<code>  press and release a key at a given guest time,
+                     repeatable. code is a Zephyr INPUT_KEY_* value`);
 }
 
 const nodePlatform = {
@@ -182,3 +227,21 @@ if (opts.flashFile) {
 const host = new Host(nodePlatform, opts);
 process.exitCode = await host.run();
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
+
+/* The display's last frame, as a PPM: the simplest image format there is,
+ * and one every viewer and converter reads. */
+if (opts.screenshot) {
+  const frame = host.displayFrame();
+  if (!frame) {
+    process.stderr.write('--screenshot: this build has no display\n');
+    process.exitCode ||= 1;
+  } else {
+    const { width, height, rgba } = frame;
+    const rgb = Buffer.alloc(width * height * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4) {
+      rgb[j++] = rgba[i]; rgb[j++] = rgba[i + 1]; rgb[j++] = rgba[i + 2];
+    }
+    fs.writeFileSync(opts.screenshot,
+                     Buffer.concat([Buffer.from(`P6\n${width} ${height}\n255\n`), rgb]));
+  }
+}

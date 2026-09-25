@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config DISPLAY_WASM_HOST
+	bool "Display drawn by the host"
+	default y
+	depends on DT_HAS_WASM_HOST_DISPLAY_ENABLED
+	depends on DISPLAY
+	help
+	  A display whose framebuffer lives in linear memory and which the host
+	  draws: onto a <canvas> in the browser, or into a screenshot under
+	  Node. Mirrors native_sim's display_sdl, one layer lower.

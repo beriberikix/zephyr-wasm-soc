@@ -22,6 +22,9 @@
 /** GPIO. The host raises this when an input pin changes. */
 #define WASM_IRQ_GPIO 1
 
+/** Input. The host raises this when it has queued pointer or key events. */
+#define WASM_IRQ_INPUT 2
+
 /*
  * 2 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
  * the software ISR table is CONFIG_WASM_IRQ_LINES deep, so the ceiling is 32.

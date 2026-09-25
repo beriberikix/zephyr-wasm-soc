@@ -9,6 +9,7 @@
 /dts-v1/;
 
 #include <mem.h>
+#include <zephyr/dt-bindings/display/panel.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/arch/wasm/wasm_irq_lines.h>
@@ -28,6 +29,8 @@
 		zephyr,flash = &flash0;
 		zephyr,flash-controller = &flashcontroller0;
 		zephyr,code-partition = &slot0_partition;
+		zephyr,display = &display0;
+		zephyr,touch = &host_input;
 	};
 
 	aliases {
@@ -208,6 +211,36 @@
 					};
 				};
 			};
+		};
+
+		/*
+		 * A display the host draws: a <canvas> on the page. 320x240 as on
+		 * native_sim, but RGB565, which is LVGL's default colour depth,
+		 * so its samples run unmodified; and at 150 KB of linear memory it
+		 * keeps step-back snapshots affordable.
+		 */
+		display0: display {
+			compatible = "wasm,host-display";
+			status = "okay";
+			pixel-format = <PANEL_PIXEL_FORMAT_RGB_565>;
+			width = <320>;
+			height = <240>;
+		};
+
+		/*
+		 * Touch and keys from the page: pressing on the display's canvas
+		 * and typing while it has focus. See wasm,host-input.
+		 */
+		host_input: input {
+			compatible = "wasm,host-input";
+			status = "okay";
+			interrupts = <WASM_IRQ_INPUT>;
+		};
+
+		/* LVGL reads its pointer from the same touches. */
+		lvgl_pointer: lvgl-pointer {
+			compatible = "zephyr,lvgl-pointer-input";
+			input = <&host_input>;
 		};
 
 		/* Upstream's RAM-backed EEPROM simulator, as on native_sim. */

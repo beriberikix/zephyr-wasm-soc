@@ -94,6 +94,18 @@ function sameBytes(a, b) {
   return true;
 }
 
+/* The display: a frame goes to the page when something was drawn, at most
+ * once per timer tick, as RGBA the canvas can take as it is. Transferred,
+ * not copied: the core already made a private copy of guest memory. */
+function sendFrame() {
+  if (!host?.displayDirty()) return;
+  const frame = host.displayFrame();
+  if (!frame) return;
+  self.postMessage({ type: 'frame', width: frame.width, height: frame.height,
+                     blank: frame.blank, frames: frame.frames, rgba: frame.rgba.buffer },
+                   [frame.rgba.buffer]);
+}
+
 function sendFlash(image) {
   if (!image || sameBytes(image, lastFlash)) return;
   lastFlash = image;
@@ -122,6 +134,13 @@ self.onmessage = async (event) => {
      * delivered while the driver loop is yielded, which is when the guest is
      * idle and fully unwound. */
     host?.setGpioInput(msg.port ?? 0, msg.pin, msg.level);
+    return;
+  }
+
+  if (msg.type === 'input-events') {
+    /* Touch and keys from the page. Queued and applied at the top of the
+     * driver loop, like a button press. */
+    host?.pushInput(msg.events);
     return;
   }
 
@@ -167,11 +186,13 @@ self.onmessage = async (event) => {
     let ticks = 0;
     const tick = setInterval(() => {
       if (stopRequested) host.done = true;
+      sendFrame();
       if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
     }, 50);
     const code = await host.run();
     clearInterval(tick);
     if (host.storage) sendFlash(host.flashImage());
+    sendFrame();
     host = null;
     self.postMessage({ type: 'done', code });
   } catch (err) {

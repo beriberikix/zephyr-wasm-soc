@@ -10,4 +10,5 @@
 export const IRQ = {
   TIMER: 0,
   GPIO: 1,
+  INPUT: 2,
 };
