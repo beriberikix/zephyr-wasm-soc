@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <title>Zephyr on WebAssembly</title>
+<link rel="stylesheet" href="./vendor/xterm.css">
 <style>
   :root {
     --bg: #ffffff; --fg: #1a1a1a; --muted: #5c5c5c; --line: #d8d8d8;
@@ -24,6 +25,7 @@
   h1 { font-size: 20px; margin: 0 0 4px; }
   p.sub { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
   p.repo { margin: 0 0 20px; font-size: 14px; }
+  #help { margin: 20px 0 0; font-size: 13px; }
   a { color: var(--accent); }
   a:hover { text-decoration: none; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
@@ -34,20 +36,23 @@
   button { cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
+  /* xterm.js draws inside; this is the frame around it. It scrolls
+   * sideways rather than squeezing below 80 columns, which is the width the
+   * shell's line editor assumes. */
   #term {
     background: var(--term-bg); border: 1px solid var(--line); border-radius: 8px;
-    padding: 12px; min-height: 380px; max-height: 60vh; overflow: auto;
-    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space: pre-wrap; word-break: break-word; outline: none;
+    padding: 8px 10px; height: 400px; overflow-x: auto; overflow-y: hidden;
   }
-  #term:focus { border-color: var(--accent); }
-  #status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  #term:focus-within { border-color: var(--accent); }
+  #status { margin: -4px 0 12px; color: var(--muted); font-size: 13px; min-height: 1.5em; }
   #board {
     display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
     margin: 0 0 12px; padding: 10px 12px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--term-bg);
   }
   #board[hidden] { display: none; }
+  /* LEDs and buttons wrap as groups, so a narrow screen never splits a pair. */
+  #board .group { display: flex; gap: 14px; align-items: center; }
   /* The board's display: 320x240 guest pixels, drawn twice the size and
    * kept square-edged, since blurring the pixels would misrepresent them. */
   #screen {
@@ -64,15 +69,17 @@
     transition: background-color 80ms linear, box-shadow 80ms linear;
   }
   .led.on { background: #d33; box-shadow: 0 0 10px 2px rgba(221,51,51,.55); }
+  /* Sized by its label, so the label always fits. */
   .btn {
-    width: 34px; height: 26px; border-radius: 5px; cursor: pointer;
+    height: 26px; padding: 0 10px; border-radius: 5px; cursor: pointer;
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-    font: 11px ui-monospace, monospace; user-select: none;
+    font: 12px system-ui, -apple-system, sans-serif; user-select: none;
+    white-space: nowrap;
   }
   .btn:active, .btn.down { background: var(--accent); border-color: var(--accent); color: #fff; }
   #kernel { margin: 12px 0 0; display: none; }
   #kernel.on { display: block; }
-  #kstat { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  #kstat { color: var(--muted); font-size: 12px; }
   table.threads { border-collapse: collapse; font-size: 12px; width: 100%; }
   table.threads th, table.threads td {
     text-align: left; padding: 3px 8px 3px 0;
@@ -110,9 +117,10 @@
     <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
-    <button id="eraseFlash" title="Forget this build's saved flash, as if the board were new">Erase flash</button>
-    <label id="speedWrap" hidden>
-      speed
+    <button id="eraseFlash" hidden title="Forget this build's saved flash, as if the board were new">Erase flash</button>
+    <label id="speedWrap" hidden
+           title="How fast virtual time passes, against the wall clock. Changes the pace, not what happens.">
+      Speed
       <select id="speed">
         <option value="0.25">&frac14;&times;</option>
         <option value="0.5">&frac12;&times;</option>
@@ -123,6 +131,9 @@
     </label>
   </div>
 
+  <!-- What the selected build does or wants, and then how it ended. -->
+  <div id="status">loading the list of builds…</div>
+
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
 
@@ -130,14 +141,14 @@
   <canvas id="screen" width="320" height="240" tabindex="0" hidden
           aria-label="the board's display"></canvas>
 
-  <div id="term" tabindex="0" role="log" aria-live="polite"></div>
+  <div id="term"></div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
        the kernel looks like between them. Nothing here reads Zephyr struct
        offsets: the guest answers, through z_wasm_inspect_threads. -->
   <div id="kernel">
     <div class="bar">
-      <button id="pause">Pause</button>
+      <button id="pause" disabled>Pause</button>
       <button id="back" disabled>&larr; Back</button>
       <button id="step" disabled>Step</button>
       <span id="kstat"></span>
@@ -147,15 +158,20 @@
       <tbody id="threads"></tbody>
     </table>
   </div>
-  <div id="status">Pick a build and press Run. For the shell, click the output
-    area first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Pause the
-    kernel and you can step forward one context switch at a time, and back
-    again. Blinky and
-    the philosophers run at their own pace, and the speed control changes how
-    fast that is without changing what they do.</div>
+  <p class="sub" id="help">
+    Pick a build and press Run. Where a build reads the keyboard, click the
+    output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
+    A build with a display takes clicks, drags and keys on the display itself.
+    Pause the kernel and you can step forward one context switch at a time,
+    and back again. Builds that run in real time have a speed control, which
+    changes how fast they go and not what they do.
+  </p>
 </main>
 
 <script type="module">
+import { Terminal } from './vendor/xterm.mjs';
+import { FitAddon } from './vendor/addon-fit.mjs';
+
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
  * good enough to read the shell, and a keyboard.
@@ -225,18 +241,77 @@ async function loadManifest() {
     }
     buildEl.disabled = false;
     runEl.disabled = false;
+    showSelected();
   } catch (err) {
     statusEl.textContent = `could not read manifest.json: ${err.message}`;
   }
 }
 
-/* A minimal terminal.
+/* The terminal: xterm.js, vendored in ./vendor.
  *
- * The shell emits ANSI escapes for colour and cursor movement. Interpreting
- * all of that would mean writing a terminal emulator; handling the three
- * things that change what the text says, and dropping the rest, is enough to
- * read it. */
-const term = {
+ * This used to be a few lines that kept the text and dropped every escape
+ * sequence, on the theory that that was enough to read it. It was not: the
+ * shell's line editor draws Backspace as "cursor left, reprint, clear to end
+ * of line", so a deleted character stayed on the screen; the philosophers
+ * position their table with cursor addressing, so it scrolled instead; and
+ * the shell erases its prompt around a log line, so the prompt stayed glued
+ * to the front of it. What the guest draws is what a VT100 would show, so
+ * the page has one. */
+function termTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  const theme = {
+    background: v('--term-bg'), foreground: v('--fg'),
+    cursor: v('--fg'), cursorAccent: v('--term-bg'),
+    selectionBackground: v('--line'),
+  };
+  /* xterm's default palette is for a dark background. On a light one the
+   * shell's green prompt and the logger's yellow warnings wash out, so
+   * those get darker shades. */
+  if (v('--bg') === '#ffffff') {
+    Object.assign(theme, {
+      green: '#1f7a1f', brightGreen: '#1f7a1f', yellow: '#8a6100',
+      brightYellow: '#8a6100', cyan: '#0e6f7c', brightCyan: '#0e6f7c',
+      white: '#5c5c5c', brightWhite: '#1a1a1a',
+    });
+  }
+  return theme;
+}
+const xterm = new Terminal({
+  cursorBlink: true,
+  /* The guest sends CRLF itself, and the shell uses a bare LF to mean
+   * "down one line, same column" when it wraps, as a VT100 does. */
+  convertEol: false,
+  scrollback: 4000,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 13,
+  disableStdin: true,
+  theme: termTheme(),
+});
+const fitAddon = new FitAddon();
+xterm.loadAddon(fitAddon);
+xterm.open(termEl);
+/* As many rows as fit, and as many columns, but never fewer than 80: the
+ * shell does not know the width and assumes 80, so a narrower screen would
+ * wrap its line editor somewhere it did not expect. */
+function fitTerm() {
+  const dims = fitAddon.proposeDimensions();
+  if (!dims || !dims.cols || !dims.rows) return;
+  const cols = Math.max(80, dims.cols);
+  if (cols !== xterm.cols || dims.rows !== xterm.rows) xterm.resize(cols, dims.rows);
+}
+fitTerm();
+new ResizeObserver(fitTerm).observe(termEl);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  xterm.options.theme = termTheme();
+});
+
+/* Everything the guest has printed, as text, for the checks. It is the
+ * stream with escape sequences dropped, carriage returns and backspaces
+ * applied, which is what an expectation in apps.json means by "printed".
+ * What the screen shows is xterm's business, and window.zephyrScreen reads
+ * that. */
+const log = {
   lines: [''],
   col: 0,
   decoder: new TextDecoder(),
@@ -266,18 +341,29 @@ const term = {
       this.col++;
       i++;
     }
-    this.render();
-  },
-
-  render() {
-    /* Keep the pane bounded; a ztest run is a few hundred lines. */
+    /* Bounded, like the screen's scrollback. */
     if (this.lines.length > 4000) this.lines.splice(0, this.lines.length - 4000);
-    termEl.textContent = this.lines.join('\n');
-    termEl.scrollTop = termEl.scrollHeight;
   },
 
-  clear() { this.lines = ['']; this.col = 0; this.pending = ''; this.render(); },
+  clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
 };
+
+/* Guest output goes to both. */
+const term = {
+  write(bytes) { xterm.write(bytes); log.write(bytes); },
+  /* Host messages, which use bare newlines. */
+  note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
+  clear() { xterm.reset(); log.clear(); },
+};
+
+/* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
+ * Backspace, which is what the shell expects by default
+ * (CONFIG_SHELL_BACKSPACE_MODE_DELETE), and escape sequences for the arrows,
+ * which is what its history and cursor movement read. */
+xterm.onData((data) => {
+  if (!running || !worker || xterm.options.disableStdin) return;
+  worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
+});
 
 /* The virtual board.
  *
@@ -285,27 +371,35 @@ const term = {
  * have to agree: there is nothing to derive this from at run time, because
  * the guest does not describe its own devicetree to the page.
  *
- * Buttons are wired active low with a pull-up, so not-pressed is 1.
+ * Buttons are wired active low with a pull-up, so not-pressed is 1. Each
+ * part is named by its devicetree label, the name a sample prints; the alias
+ * a sample looks it up by is in the tooltip.
  */
 const BOARD = {
-  leds: [{ pin: 0, label: 'led0' }, { pin: 1, label: 'led1' },
-         { pin: 2, label: 'led2' }, { pin: 3, label: 'led3' }],
-  buttons: [{ pin: 4, label: 'sw0' }, { pin: 5, label: 'sw1' }],
+  leds: [{ pin: 0, label: 'LED 0', alias: 'led0' }, { pin: 1, label: 'LED 1', alias: 'led1' },
+         { pin: 2, label: 'LED 2', alias: 'led2' }, { pin: 3, label: 'LED 3', alias: 'led3' }],
+  buttons: [{ pin: 4, label: 'Button 0', alias: 'sw0' },
+            { pin: 5, label: 'Button 1', alias: 'sw1' }],
 };
 
 const ledEls = new Map();
 
 function buildBoard() {
   boardEl.innerHTML = '';
+  const ledGroup = document.createElement('div');
+  const buttonGroup = document.createElement('div');
+  ledGroup.className = buttonGroup.className = 'group';
+  boardEl.append(ledGroup, buttonGroup);
   for (const led of BOARD.leds) {
     const part = document.createElement('div');
     part.className = 'part';
     const dot = document.createElement('div');
     dot.className = 'led';
+    dot.title = led.alias;
     const name = document.createElement('small');
     name.textContent = led.label;
     part.append(dot, name);
-    boardEl.append(part);
+    ledGroup.append(part);
     ledEls.set(led.pin, dot);
   }
   for (const button of BOARD.buttons) {
@@ -313,8 +407,9 @@ function buildBoard() {
     part.className = 'part';
     const el = document.createElement('button');
     el.className = 'btn';
-    el.textContent = 'push';
-    el.title = `${button.label}: hold to press`;
+    el.textContent = button.label;
+    el.title = `${button.alias}: hold to press`;
+    el.dataset.pin = button.pin;
     const press = (down) => {
       el.classList.toggle('down', down);
       /* Physical level: pulled up, so pressing pulls it to 0. */
@@ -325,10 +420,8 @@ function buildBoard() {
     el.addEventListener('mouseleave', () => press(false));
     el.addEventListener('touchstart', (e) => { e.preventDefault(); press(true); }, { passive: false });
     el.addEventListener('touchend', (e) => { e.preventDefault(); press(false); }, { passive: false });
-    const name = document.createElement('small');
-    name.textContent = button.label;
-    part.append(el, name);
-    boardEl.append(part);
+    part.append(el);
+    buttonGroup.append(part);
   }
 }
 
@@ -358,7 +451,8 @@ function showKernel(state) {
     ? `${state.canStepBack} step${state.canStepBack === 1 ? '' : 's'} to go back through`
     : 'take a step first';
 
-  const bits = [`${state.nowMs} ms`, `${state.switches} switches`];
+  const bits = [`${state.nowMs} ms`,
+                `${state.switches} switch${state.switches === 1 ? '' : 'es'}`];
   if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
   if (state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
   kstatEl.textContent = bits.join(' · ');
@@ -390,6 +484,28 @@ function setRunning(state) {
   stopEl.disabled = !state;
   buildEl.disabled = state;
   eraseFlashEl.disabled = state;
+  /* The kernel panel stays up after a run, to be read, but there is
+   * nothing left to pause or step. */
+  pauseEl.disabled = !state;
+  if (!state) stepEl.disabled = backEl.disabled = true;
+}
+
+/* The speed each paced build was last run at: a sample slowed down to be
+ * followed stays slowed down when it is run again. */
+const speeds = new Map();
+
+/* Show what the selected build needs, before it runs as well as while: the
+ * controls appearing only after Run moved everything under the pointer. */
+function showSelected() {
+  const build = builds.find((b) => b.name === buildEl.value);
+  if (!build) return;
+  const uses = build.uses ?? [];
+  boardEl.hidden = !uses.includes('gpio');
+  eraseFlashEl.hidden = !uses.includes('flash');
+  screenEl.hidden = !build.display;
+  speedWrapEl.hidden = build.clock !== 'paced';
+  speedEl.value = speeds.get(build.name) ?? '1';
+  statusEl.textContent = build.hint;
 }
 
 /* The simulated flash, kept per build in IndexedDB so that what a sample
@@ -431,6 +547,7 @@ async function start() {
   setRunning(true);
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
+  xterm.options.disableStdin = !interactive;
 
   worker?.terminate();
   worker = new Worker('./worker.js', { type: 'module' });
@@ -438,22 +555,21 @@ async function start() {
     if (data.type === 'state') showKernel(data.state);
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
-    else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
+    else if (data.type === 'err') term.note(data.text);
     else if (data.type === 'flash') saveFlash(build.name, data.image);
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       setRunning(false);
-      statusEl.textContent = `finished with exit code ${data.code}`;
+      statusEl.textContent = `Finished with exit code ${data.code}.`;
     }
   };
   worker.onerror = (e) => {
-    term.write(new TextEncoder().encode(`\n*** worker error: ${e.message} ***\n`));
+    term.note(`\n*** worker error: ${e.message} ***\n`);
     setRunning(false);
   };
 
   showLeds(0);
-  boardEl.hidden = false;
-  screenEl.hidden = !build.display;
+  showSelected();
   screenCtx.fillStyle = '#000';
   screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
   screenInfo = { frames: 0, colours: 0, blank: true };
@@ -464,13 +580,10 @@ async function start() {
   backEl.disabled = true;
 
   setRunning(true);
-  statusEl.textContent = interactive
-    ? 'running: click the output area and type'
-    : 'running';
+  statusEl.textContent = `Running. ${build.hint}`;
   /* Only a paced build has a speed worth changing: under virtual time the
    * run is over before the control could be reached. */
   const paced = build.clock === 'paced';
-  speedWrapEl.hidden = !paced;
 
   worker.postMessage({
     type: 'run',
@@ -481,40 +594,29 @@ async function start() {
     timeScale: paced ? Number(speedEl.value) : 1,
     flashImage,
   });
-  if (interactive) termEl.focus();
+  /* Focus goes where the build takes its input from. */
+  if (interactive) build.display ? screenEl.focus() : xterm.focus();
 }
 
 buildBoard();
 loadManifest();
+buildEl.onchange = showSelected;
 
 runEl.onclick = start;
 stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
 clearEl.onclick = () => term.clear();
 eraseFlashEl.onclick = async () => {
   await eraseFlash(buildEl.value);
-  statusEl.textContent = `flash erased for ${buildEl.value}`;
+  statusEl.textContent = 'Flash erased: the next run starts on a new board.';
 };
 pauseEl.onclick = () =>
   worker?.postMessage({ type: paused ? 'resume' : 'pause' });
 stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
 backEl.onclick = () => worker?.postMessage({ type: 'back' });
-speedEl.onchange = () =>
+speedEl.onchange = () => {
+  speeds.set(buildEl.value, speedEl.value);
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
-
-/* Keystrokes go to the guest's UART as bytes. */
-termEl.addEventListener('keydown', (e) => {
-  if (!running || !worker) return;
-  let bytes = null;
-  if (e.key === 'Enter') bytes = [13];
-  else if (e.key === 'Backspace') bytes = [8];
-  else if (e.key === 'Tab') bytes = [9];
-  else if (e.key === 'Escape') bytes = [27];
-  else if (e.ctrlKey && e.key.length === 1) bytes = [e.key.toLowerCase().charCodeAt(0) - 96];
-  else if (e.key.length === 1) bytes = Array.from(new TextEncoder().encode(e.key));
-  if (!bytes) return;
-  e.preventDefault();
-  worker.postMessage({ type: 'input', bytes });
-});
+};
 
 /* A hook for driving this page from a script or a test. */
 window.zephyrType = (text) => {
@@ -522,7 +624,20 @@ window.zephyrType = (text) => {
   worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(text)) });
   return true;
 };
-window.zephyrOutput = () => term.lines.join('\n');
+window.zephyrOutput = () => log.lines.join('\n');
+/* What the terminal shows right now: its visible rows, and the cursor. */
+window.zephyrScreen = () => {
+  const buf = xterm.buffer.active;
+  const rows = [];
+  for (let y = 0; y < xterm.rows; y++) {
+    rows.push(buf.getLine(buf.viewportY + y)?.translateToString(true) ?? '');
+  }
+  return rows;
+};
+window.zephyrCursor = () => {
+  const buf = xterm.buffer.active;
+  return { x: buf.cursorX, y: buf.cursorY, blink: xterm.options.cursorBlink };
+};
 /* Touch and keys into the input subsystem, through wasm,host-input.
  *
  * A press on the canvas is a touch, reported the way native_sim's SDL touch

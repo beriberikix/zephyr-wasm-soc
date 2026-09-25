@@ -238,24 +238,32 @@ The published copy is at
 runner. To do the same locally:
 
 ```sh
-zephyr-wasm/scripts/stage_site.sh      # builds five applications into _site/
+zephyr-wasm/scripts/stage_site.sh      # builds the demo applications into _site/
 zephyr-wasm/scripts/serve_web.sh 8777  # then open http://127.0.0.1:8777/
 ```
 
-Pick a build and press Run. For the shell, click the output area and type;
-<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and the philosophers run at
-their own pace, with a speed control that does not change what they do, and
-the kernel's thread table is shown underneath: who exists, who holds the CPU,
+Pick a build and press Run. Under the controls, each build says in one line
+what it does or what to do: hold a button, type into the output, touch the
+display. The output is a real terminal, xterm.js (vendored in
+`host/web/vendor/`), so the shell's line editing, history, Tab completion and
+Ctrl+C work as they do on a board's serial console, and samples that draw
+with cursor addressing, like the philosophers, draw in place. The page shows
+only what the build has: the LEDs and buttons, the
+display, Erase flash for a build that uses flash, and a speed control for
+the builds that run in real time, which does not change what they do. The
+kernel's thread table is shown underneath: who exists, who holds the CPU,
 and what the rest are waiting for. Pause stops the guest between two context
 switches and Step lets exactly one through. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.
 
-Verified in Chrome: hello_world, synchronization, the 32-test ztest suite, the
-time slicing test, and the shell answering `kernel version` and `demo ping`.
-The ztest output is byte-identical to the Node run once carriage returns are
-accounted for, which the page's terminal consumes as a terminal should.
+`scripts/check_browser.mjs` runs every build in Chromium the way a person
+would: real key presses into the terminal, the mouse held on a button, a drag
+across the display. It checks what the screen shows as well as what was
+printed: a typo corrected with Backspace, a command recalled with the up
+arrow, the philosophers' table redrawn in place, LED 0 lit only while
+Button 0 is held.
 
 This says nothing new about engine neutrality, because Chrome is V8, the same
 engine as Node. That claim rests on the wasmtime result below. What the

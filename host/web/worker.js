@@ -145,11 +145,11 @@ self.onmessage = async (event) => {
   }
 
   if (msg.type === 'input') {
+    /* Every byte goes to the guest, Ctrl-C included: the page has a Stop
+     * button, so Ctrl-C can be what it is on a board's serial console,
+     * which the shell uses to abandon the line. Only run.mjs, in a terminal
+     * with nothing else to stop it, takes Ctrl-C for itself. */
     for (const b of msg.bytes) {
-      if (b === 3 && interrupt) {      // Ctrl-C
-        interrupt();
-        return;
-      }
       if (pushInput) pushInput(b);
     }
     return;
