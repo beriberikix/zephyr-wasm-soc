@@ -38,8 +38,13 @@ log, including what did not work. `BRIEF.md` is the original task.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
 * `samples/subsys/shell/shell_module` runs interactively over a polled UART.
-* 29 upstream samples pass their own twister criterion, unmodified, out of
-  the 89 that twister itself would run on this board. Among them the
+* Flash and EEPROM, as upstream's simulators, with NVS, ZMS and settings on
+  top. `sys_reboot()` is a warm reboot that keeps the flash, and the flash
+  survives the run too: in a file under Node, in IndexedDB in a browser.
+  `samples/subsys/kvss/nvs` on the page counts its reboots in flash and
+  still finds what it stored after the page is reloaded.
+* 35 upstream samples pass their own twister criterion, unmodified, out of
+  the 92 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
   which is on the page as something to type events into.
@@ -283,6 +288,7 @@ under wasmtime. The kernel is the same module in all three.
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
+| `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
 
 ## Continuous integration
 
@@ -357,7 +363,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 31 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 37 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

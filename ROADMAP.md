@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **31**, of which 28 check more than a start-up banner.
+today: **37**, of which 34 check more than a start-up banner.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
 `tests.yaml` under `zephyr/samples`, keeps the entries that could plausibly run
@@ -28,14 +28,14 @@ What was tried, out of 650 upstream applications and 1268 entries:
 
 | | entries | applications |
 |---|---:|---:|
-| Plausible on this board | 229 | 143 |
-| Filtered out by upstream's own twister filter | 87 | |
-| **Runnable: what twister itself would run here** | **142** | **89** |
-| Pass upstream's own criterion | 44 | 29 |
+| Plausible on this board | 230 | 144 |
+| Filtered out by upstream's own twister filter | 85 | |
+| **Runnable: what twister itself would run here** | **145** | **92** |
+| Pass upstream's own criterion | 51 | 35 |
 | Build, but upstream only builds them | 4 | |
 | Run and fail their criterion | 1 | |
 | Do not finish | 22 | |
-| Do not build | 71 | |
+| Do not build | 67 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -44,7 +44,7 @@ the summary of `samples.json`:
 - 267 use a harness that needs a peer or a person (networking, Bluetooth,
   sensors, keyboards and so on).
 
-Of the plausible ones, 87 carry a twister `filter:` that is false here:
+Of the plausible ones, 85 carry a twister `filter:` that is false here:
 - `dt_alias_exists("accel0")`, a chosen display or flash controller;
 - `CONFIG_ARCH_HAS_USERSPACE`, `CONFIG_FULL_LIBC_SUPPORTED`;
 - `TOOLCHAIN_HAS_NEWLIB`.
@@ -70,7 +70,7 @@ cause is in `samples.json`):
 | Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
 | Missing module | 14 | LVGL (with its Kconfig), FatFs, TFLite, PSA |
-| No such device | 13 | a devicetree node this board has no driver for (`__device_dts_ord_N`): EEPROM, auxdisplay, SDL display, ... |
+| No such device | 9 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, SDL display, ... |
 | Other build errors | 9 | e.g. the `cpu_freq` samples need an SoC P-state API |
 | No C library headers | 7 | C++ and a few others need a libc with `string.h`; only the minimal one is here |
 | Link | 4 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand), `get_bootargs` |
@@ -287,12 +287,32 @@ Done, apart from saying what a pending thread is pending on.
 
 ## Phase 3 — storage
 
-As the issue has it. Two things it does not mention: IndexedDB is asynchronous
-and the driver loop is not, so persistence either goes through a suspending
-import or through an image loaded before the run starts and written back after;
-and littlefs and FAT are Zephyr modules, so this is the phase where `west.yml`
-stops being a two-project manifest and module code starts going through the
-section shim.
+- [x] **Flash and EEPROM.** Upstream's flash simulator and EEPROM simulator,
+      as native_sim has them, with a 64 KB storage partition. The flash is
+      256 KB because it lives in linear memory, which every step-back
+      snapshot copies. Six more upstream samples pass:
+      - settings on NVS;
+      - ZMS (all three entries);
+      - `kvss/nvs`;
+      - `drivers/eeprom`;
+      - `flash_shell` (a scripted shell session).
+- [x] **Warm reboot.** `sys_reboot()` is a new instance of the module with
+      the flash carried over, as a reset keeps flash on hardware. `kvss/nvs`
+      reboots itself five times and counts the reboots in flash.
+- [x] **Persistence.** The flash survives the run: `--flash <file>` in both
+      hosts, and IndexedDB on the page, with an "Erase flash" button. The
+      browser check reloads the page between two runs of `kvss/nvs` and
+      requires the second to find what the first stored.
+
+      It took no suspending import. The host fills the array from a saved
+      image at attach time and reads it back whenever the guest is paused,
+      so nothing in the guest waits for storage (`DESIGN.md` D8h).
+- [ ] **File systems.** littlefs and FAT are Zephyr modules, so this is where
+      `west.yml` stops being a two-project manifest and module code starts
+      going through the section generator. The littlefs, format and
+      `fat_fs` samples are waiting on it.
+- [ ] **EEPROM persistence.** The EEPROM simulator has no accessor for its
+      array, so it is RAM for one run only.
 
 ## Phase 4 — display and input
 

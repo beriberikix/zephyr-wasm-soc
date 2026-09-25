@@ -2,7 +2,7 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 31 upstream
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 37 upstream
 samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
 is what counts it.
 
@@ -609,3 +609,48 @@ host wait, and the entry passes.
 One slip, caught in the output: re-running an entry kept its hand-written note
 but replaced a hand-confirmed `d8b` with the automatic `indirect-call`, which
 is only a guess. It no longer does.
+
+### Tick 46 — flash, and a board that remembers
+
+Upstream's flash simulator needed nothing from the port. Off the posix arch
+it keeps the device as one static array, here in linear memory, so giving
+the board a `zephyr,sim-flash` node with a storage partition was the whole
+job. The EEPROM simulator was the same. Five storage samples passed on the
+first build:
+- settings on NVS;
+- all three ZMS entries;
+- `drivers/eeprom`;
+- `flash_shell`, through its scripted shell session.
+
+The size was the only decision. native_sim has 2 MB. Every step-back snapshot
+copies linear memory, so that would have made each one sixteen times larger,
+for storage the samples use 12 KB of. 256 KB, with a 64 KB storage partition.
+
+`kvss/nvs` then failed to link on `sys_arch_reboot`, because it proves
+persistence by rebooting itself and counting. Rebooting and persistence turned
+out to be the same feature:
+- A reboot keeps the flash and loses RAM.
+- The flash is an array in linear memory.
+- So a reboot is a new instance of the module with the old array copied into
+  the new one.
+
+`flash_wasm_host.c` tells the host where the array is, straight after the
+driver erases it at boot, and the host fills it from an image if it has one.
+The `reboot` import throws out of the guest. The instance is being discarded,
+so there is no point unwinding it, and the host boots a new one.
+
+The ROADMAP had framed persistence as a choice between a suspending import
+and an image loaded before the run. It was the second, and the reason is
+simple: the host can read and write linear memory whenever the guest is
+paused, and the guest is paused most of the time. So:
+- the page loads the build's image from IndexedDB before starting the worker;
+- the worker sends a copy back when it changes;
+- the page saves it without anyone waiting.
+
+`kvss/nvs` now shows six boots and a reboot counter kept in flash. With
+`--flash`, the next run finds what this one stored. V8 and wasmtime print the
+same output and leave byte-identical images. On the page, the browser check
+runs it, reloads, runs it again, and fails if the second run finds an empty
+flash.
+
+Score 37: 35 swept samples plus blinky and button.
