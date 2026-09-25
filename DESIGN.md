@@ -26,7 +26,11 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-No Zephyr modules are imported; the port needs no HAL and uses the minimal libc.
+Two Zephyr modules are imported, `fatfs` and `littlefs`, through Zephyr's own
+manifest so they stay at Zephyr's pins. Nothing else is: the port needs no HAL
+and uses the minimal libc, and a full import is hundreds of megabytes of
+vendor code. Module code goes through the same section generator and
+link-map check as everything else (D6).
 
 ### D2. Toolchain
 Homebrew LLVM (clang + wasm-ld, matched versions) driven through a module-owned

@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **37**, of which 34 check more than a start-up banner.
+today: **39**, of which 36 check more than a start-up banner.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
 `tests.yaml` under `zephyr/samples`, keeps the entries that could plausibly run
@@ -31,11 +31,11 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | Plausible on this board | 230 | 144 |
 | Filtered out by upstream's own twister filter | 85 | |
 | **Runnable: what twister itself would run here** | **145** | **92** |
-| Pass upstream's own criterion | 51 | 35 |
-| Build, but upstream only builds them | 4 | |
+| Pass upstream's own criterion | 53 | 37 |
+| Build, but upstream only builds them | 7 | |
 | Run and fail their criterion | 1 | |
 | Do not finish | 22 | |
-| Do not build | 67 | |
+| Do not build | 62 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -69,9 +69,9 @@ cause is in `samples.json`):
 |---|---:|---|
 | Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| Missing module | 14 | LVGL (with its Kconfig), FatFs, TFLite, PSA |
+| Missing module | 11 | LVGL (with its Kconfig), TFLite, PSA |
 | No such device | 9 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, SDL display, ... |
-| Other build errors | 9 | e.g. the `cpu_freq` samples need an SoC P-state API |
+| Other build errors | 7 | e.g. the `cpu_freq` samples need an SoC P-state API |
 | No C library headers | 7 | C++ and a few others need a libc with `string.h`; only the minimal one is here |
 | Link | 4 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand), `get_bootargs` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
@@ -307,10 +307,22 @@ Done, apart from saying what a pending thread is pending on.
       It took no suspending import. The host fills the array from a saved
       image at attach time and reads it back whenever the guest is paused,
       so nothing in the guest waits for storage (`DESIGN.md` D8h).
-- [ ] **File systems.** littlefs and FAT are Zephyr modules, so this is where
-      `west.yml` stops being a two-project manifest and module code starts
-      going through the section generator. The littlefs, format and
-      `fat_fs` samples are waiting on it.
+- [x] **File systems.** `west.yml` imports `fatfs` and `littlefs` through
+      Zephyr's own manifest, at Zephyr's pins, and nothing else.
+      - `fs/fatfs_fstab` and `fs/ext2_fstab` pass their criterion, each on a
+        RAM disk its own overlay declares.
+      - The two `fs/format` entries and `fs/littlefs` build; upstream only
+        builds them.
+      - Run by hand, `fs/littlefs` mounts the board's storage partition,
+        formats it the first time and keeps a boot counter. With `--flash`
+        or in the browser, that counter survives the run.
+
+      Two port bugs turned up on the way, and both would have hit other
+      code:
+      - `arch.h` did not include `<zephyr/devicetree.h>`, which every
+        in-tree arch does and which ext2 relies on.
+      - The safepoint pass did not understand a debug build's named
+        functions, so any `CONFIG_DEBUG=y` sample failed after linking.
 - [ ] **EEPROM persistence.** The EEPROM simulator has no accessor for its
       array, so it is RAM for one run only.
 

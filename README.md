@@ -43,7 +43,9 @@ log, including what did not work. `BRIEF.md` is the original task.
   survives the run too: in a file under Node, in IndexedDB in a browser.
   `samples/subsys/kvss/nvs` on the page counts its reboots in flash and
   still finds what it stored after the page is reloaded.
-* 35 upstream samples pass their own twister criterion, unmodified, out of
+* File systems: FAT and ext2 on a RAM disk, and littlefs on the flash, so
+  it persists as the flash does.
+* 37 upstream samples pass their own twister criterion, unmodified, out of
   the 92 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
@@ -114,6 +116,9 @@ west init -l zephyr-wasm
 west update
 zephyr-wasm/scripts/apply_patches.sh
 ```
+
+`west update` also fetches the two file-system modules, FatFs and littlefs,
+and nothing else: `west.yml` imports them from Zephyr's manifest by name.
 
 The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; four of the five are the same underlying
@@ -363,7 +368,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 37 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 39 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

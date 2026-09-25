@@ -2,7 +2,7 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 37 upstream
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 39 upstream
 samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
 is what counts it.
 
@@ -654,3 +654,36 @@ runs it, reloads, runs it again, and fails if the second run finds an empty
 flash.
 
 Score 37: 35 swept samples plus blinky and button.
+
+### Tick 47 — file systems, and two bugs that were waiting for them
+
+FatFs and littlefs are Zephyr modules. `west.yml` now imports exactly those
+two from Zephyr's own manifest, so they move with the Zephyr pin, and a plain
+`west update` fetches them here and in CI. `fs/fatfs_fstab` passed on its first
+build: FAT on the RAM disk its own overlay declares.
+
+`fs/ext2_fstab` needs no module, and it had been failing with an implicit
+int at `ext2_ops.c:659`. The overlay, the binding and the generated macros
+were all correct. Preprocessing showed the cause: `DT_INST_FOREACH_STATUS_OKAY`
+itself was undefined, because `<zephyr/devicetree.h>` was never included.
+Every in-tree architecture's `arch.h` includes it and Zephyr code leans on
+that; this one did not. With the include, ext2 formats its RAM disk and
+passes. Re-sweeping every build failure found nothing else it fixed, which
+settles the guess that `DT_ON_BUS` and friends were the same problem: they
+are not.
+
+`fs/littlefs` linked and then failed in the safepoint pass: "z_wasm_safepoint
+is not exported". It was exported. The sample sets `CONFIG_DEBUG=y`, the
+build is `-O0`, and the module keeps its name section, so `wasm2wat` prints
+`(func $z_wasm_safepoint` where the pass only understood `(func 20)`. Any
+debug build of anything would have hit this. The pass now takes either
+spelling, and its output for index-form modules is byte-identical to
+before. littlefs then mounted the board's storage partition, formatted it
+and kept a boot counter, which persists in the browser the way NVS does.
+
+Score 39: fatfs and ext2 fstab samples. The format and littlefs samples are
+build-only upstream.
+
+The sweep harness also stopped decoding guest output strictly. The ext2
+sample prints its UUID as raw bytes, and a checker that dies on 0xff says
+nothing about the sample.
