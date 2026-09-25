@@ -250,7 +250,10 @@ Ctrl+C work as they do on a board's serial console, and samples that draw
 with cursor addressing, like the philosophers, draw in place. The page shows
 only what the build has: the LEDs and buttons, the
 display, Erase flash for a build that uses flash, and a speed control for
-the builds that run in real time, which does not change what they do. The
+the builds that run on their own in real time, which does not change what
+they do. A build that waits for a person runs on the real clock, so its
+timestamps are the ones you lived through. Choosing another build stops the
+one running and clears what it left. The
 kernel's thread table is shown underneath: who exists, who holds the CPU,
 and what the rest are waiting for. Pause stops the guest between two context
 switches and Step lets exactly one through. A server is needed because `file://`

@@ -252,14 +252,22 @@ const PERSON = {
     const before = (await page.evaluate(() => window.zephyrOutput())).split('PRESS').length;
     const [x0, y0] = await onCanvas(40, 40);
     const [x1, y1] = await onCanvas(200, 150);
+    /* At a person's pace: the sample redraws every 100 ms of the real
+     * clock, so a drag over in a tenth of a second is rightly two or three
+     * reports. */
     await page.mouse.move(x0, y0);
     await page.mouse.down();
-    await page.mouse.move(x1, y1, { steps: 8 });
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8);
+      await page.waitForTimeout(150);
+    }
     await page.mouse.up();
     await until('the drag did not end in a release at (200, 150)',
                 () => window.zephyrOutput().includes('RELEASE X, Y: (200, 150)'));
     const presses = (await page.evaluate(() => window.zephyrOutput())).split('PRESS').length - before;
-    if (presses < 4) throw new Error(`a drag gave ${presses} touch reports, expected it to follow the pointer`);
+    if (presses < 5) throw new Error(`a 1.2 s drag gave ${presses} touch reports, expected it to follow the pointer`);
+    const out = await page.evaluate(() => window.zephyrOutput());
+    if (out.includes('Event dropped')) throw new Error('the guest dropped input events');
     return `a drag gave ${presses} touch reports and released where it ended`;
   },
 
@@ -436,7 +444,7 @@ for (const b of manifest.builds) {
     await page.screenshot({ path: path.join(shots, `${b.name}.png`), fullPage: true });
   }
 
-  await page.click('#stop').catch(() => {});
+  await page.click('#stop', { timeout: 1000 }).catch(() => {});
   await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 })
     .catch(() => {});
 }
@@ -504,9 +512,89 @@ if (stepper) {
                     `at ${after.now} ms on ${after.cur}`);
       }
     }
-    await page.click('#stop').catch(() => {});
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
   } catch (err) {
     fail('kernel', `pause and step: ${err.message.split('\n')[0]}`);
+  }
+}
+
+/* The page's own controls, used as a person would: what Stop says and
+ * leaves behind, what a new selection clears, what Pause says, and whether
+ * the numbers left up after a run are the run's last ones. */
+const statusText = () => page.evaluate(() => document.getElementById('status').textContent);
+const pageChecks = [
+  ['stop', async () => {
+    await page.selectOption('#build', 'blinky');
+    await page.click('#run');
+    await until('LED 0 never lit', () => (window.zephyrLeds() & 1) === 1, null, 30_000);
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    const st = await statusText();
+    if (st !== 'Stopped.') throw new Error(`after Stop the status read ${JSON.stringify(st)}`);
+    if (await page.evaluate(() => window.zephyrLeds()) !== 0) throw new Error('an LED stayed lit after Stop');
+    return 'Stop ends the run within 5 s, says "Stopped." and turns the LEDs off';
+  }],
+  ['select', async () => {
+    await page.selectOption('#build', 'hello');
+    const [out, shown] = await page.evaluate(() =>
+      [window.zephyrOutput(), window.zephyrScreen().join('').trim()]);
+    if (out || shown) throw new Error('the previous build\'s output was still shown');
+    return 'choosing another build clears the previous one\'s output';
+  }],
+  ['switch', async () => {
+    await page.selectOption('#build', 'philo');
+    await page.click('#run');
+    await until('the philosophers never started', () => window.zephyrOutput().includes('Philosopher'), null, 30_000);
+    await page.selectOption('#build', 'hello');
+    await until('choosing another build did not stop the run', () => !window.zephyrRunning(), null, 5_000);
+    const out = await page.evaluate(() => window.zephyrOutput());
+    if (out) throw new Error('output from the stopped run reached the new selection');
+    return 'choosing another build mid-run stops it';
+  }],
+  ['pause', async () => {
+    await page.selectOption('#build', 'philo');
+    await page.click('#run');
+    await until('the philosophers never started', () => (window.zephyrState()?.threads ?? []).length > 0, null, 30_000);
+    await page.click('#pause');
+    await until('Pause did not say so', () => document.getElementById('status').textContent.startsWith('Paused.'));
+    await page.click('#pause');
+    await until('Resume did not say so', () => document.getElementById('status').textContent.startsWith('Running.'));
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    const [p, s] = await page.evaluate(() => [document.getElementById('pause'), document.getElementById('step')]
+      .map((e) => e.disabled));
+    if (!p || !s) throw new Error('Pause or Step stayed enabled after the run');
+    return 'the status says Paused and Running; Pause and Step are off after the run';
+  }],
+  ['final', async () => {
+    await page.selectOption('#build', 'sem');
+    await page.click('#run');
+    await until('the ztest never finished', () => !window.zephyrRunning(), null, 60_000);
+    const [sw, kstat] = await page.evaluate(() =>
+      [window.zephyrState().switches, document.getElementById('kstat').textContent]);
+    if (sw < 100) throw new Error(`the page shows ${sw} switches for a run of thousands`);
+    if (!kstat.startsWith('At the end of the run')) throw new Error(`the stats read ${JSON.stringify(kstat)}`);
+    return `after the run the stats are its last: ${kstat}`;
+  }],
+  ['clear', async () => {
+    await page.selectOption('#build', 'shell');
+    await page.click('#run');
+    await until('the shell never prompted', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
+    await page.click('#clear');
+    await until('Clear took the prompt with it',
+                () => window.zephyrScreen()[window.zephyrCursor().y] === 'uart:~$ ');
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    return 'Clear keeps the shell\'s prompt';
+  }],
+];
+for (const [name, check] of pageChecks) {
+  try {
+    console.log(`  ok    ${name.padEnd(8)} ${await check()}`);
+  } catch (err) {
+    fail(name, err.message, (await page.evaluate(() => window.zephyrScreen()).catch(() => []))
+      .filter((l) => l.trim()).map((l) => JSON.stringify(l)).join('\n'));
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
   }
 }
 
@@ -525,7 +613,7 @@ for (const b of manifest.builds.filter((x) => x.persist_expect)) {
     return page.evaluate(() => window.zephyrOutput());
   };
   try {
-    await page.click('#stop').catch(() => {});
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
     await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 });
     await page.evaluate((n) => window.zephyrEraseFlash(n), b.name);
     const first = await runToEnd();

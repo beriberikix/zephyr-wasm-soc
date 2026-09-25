@@ -61,6 +61,9 @@
     border: 1px solid var(--line); border-radius: 4px; background: #000;
   }
   #screen[hidden] { display: none; }
+  /* The last frame stays up after a run, to be looked at, but dimmed: the
+   * board is off. */
+  #screen.off { opacity: .55; }
   .part { display: flex; flex-direction: column; align-items: center; gap: 5px; }
   .part small { color: var(--muted); font-size: 11px; }
   .led {
@@ -163,8 +166,9 @@
     output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
     A build with a display takes clicks, drags and keys on the display itself.
     Pause the kernel and you can step forward one context switch at a time,
-    and back again. Builds that run in real time have a speed control, which
-    changes how fast they go and not what they do.
+    and back again. Builds that run on their own in real time have a speed
+    control, which changes how fast they go and not what they do. Choosing
+    another build stops the one running.
   </p>
 </main>
 
@@ -221,6 +225,8 @@ let worker = null;
 let running = false;
 let builds = [];
 let lastState = null;
+let currentBuild = null;
+let stopping = false;
 
 /* The menu comes from the manifest scripts/stage_site.sh writes, which is
  * generated from scripts/apps.json. The page used to carry its own copy of
@@ -282,7 +288,9 @@ const xterm = new Terminal({
   /* The guest sends CRLF itself, and the shell uses a bare LF to mean
    * "down one line, same column" when it wraps, as a VT100 does. */
   convertEol: false,
-  scrollback: 4000,
+  /* A ztest or the logging sample prints thousands of lines, and the start
+   * is usually the part worth scrolling back to. */
+  scrollback: 20000,
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 13,
   disableStdin: true,
@@ -342,7 +350,7 @@ const log = {
       i++;
     }
     /* Bounded, like the screen's scrollback. */
-    if (this.lines.length > 4000) this.lines.splice(0, this.lines.length - 4000);
+    if (this.lines.length > 20000) this.lines.splice(0, this.lines.length - 20000);
   },
 
   clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
@@ -353,7 +361,11 @@ const term = {
   write(bytes) { xterm.write(bytes); log.write(bytes); },
   /* Host messages, which use bare newlines. */
   note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
-  clear() { xterm.reset(); log.clear(); },
+  /* A new run starts on a fresh terminal. */
+  reset() { xterm.reset(); log.clear(); },
+  /* The Clear button: everything but the line the cursor is on, which in a
+   * shell is its prompt. */
+  clear() { xterm.clear(); log.clear(); },
 };
 
 /* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
@@ -441,12 +453,21 @@ let paused = false;
 function showKernel(state) {
   lastState = state;
   kernelEl.classList.add('on');
-  paused = state.paused;
-  pauseEl.textContent = paused ? 'Resume' : 'Pause';
-  stepEl.disabled = !paused;
-  /* Backwards is only offered where it is real: a step that was taken while
-   * paused, and so has a snapshot behind it. */
-  backEl.disabled = !paused || !state.canStepBack;
+  /* The controls only mean something while a run is going; a report that
+   * lands after it ended must not switch them back on. */
+  if (running) {
+    if (state.paused !== paused) {
+      statusEl.textContent = state.paused
+        ? 'Paused. Step runs to the next context switch; Back undoes one.'
+        : `Running. ${currentBuild.hint}`;
+    }
+    paused = state.paused;
+    pauseEl.textContent = paused ? 'Resume' : 'Pause';
+    stepEl.disabled = !paused;
+    /* Backwards is only offered where it is real: a step that was taken
+     * while paused, and so has a snapshot behind it. */
+    backEl.disabled = !paused || !state.canStepBack;
+  }
   backEl.title = state.canStepBack
     ? `${state.canStepBack} step${state.canStepBack === 1 ? '' : 's'} to go back through`
     : 'take a step first';
@@ -455,7 +476,7 @@ function showKernel(state) {
                 `${state.switches} switch${state.switches === 1 ? '' : 'es'}`];
   if (state.alarmMs !== null) bits.push(`next deadline ${state.alarmMs} ms`);
   if (state.pending) bits.push(`pending 0x${state.pending.toString(16)}`);
-  kstatEl.textContent = bits.join(' · ');
+  kstatEl.textContent = (running ? '' : 'At the end of the run: ') + bits.join(' · ');
 
   if (!state.threads) {
     threadsEl.innerHTML =
@@ -482,12 +503,42 @@ function setRunning(state) {
   running = state;
   runEl.disabled = state;
   stopEl.disabled = !state;
-  buildEl.disabled = state;
   eraseFlashEl.disabled = state;
   /* The kernel panel stays up after a run, to be read, but there is
    * nothing left to pause or step. */
   pauseEl.disabled = !state;
-  if (!state) stepEl.disabled = backEl.disabled = true;
+  if (!state) {
+    paused = false;
+    pauseEl.textContent = 'Pause';
+    stepEl.disabled = backEl.disabled = true;
+  }
+}
+
+/* Put the board back as it is before anything has run: no output, no
+ * thread table, LEDs off, a black display. */
+function resetBoard() {
+  term.reset();
+  showLeds(0);
+  screenCtx.fillStyle = '#000';
+  screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
+  screenEl.classList.remove('off');
+  screenInfo = { frames: 0, colours: 0, blank: true };
+  kernelEl.classList.remove('on');
+  threadsEl.innerHTML = '';
+  lastState = null;
+}
+
+/* Stop the run, if there is one. With `detach`, the page lets go of it at
+ * once, for a new selection; the worker still stops cleanly, so a build
+ * with flash gets its last image saved. */
+function stopRun({ detach = false } = {}) {
+  if (!worker || !running) return;
+  stopping = true;
+  worker.postMessage({ type: 'stop' });
+  if (detach) {
+    worker = null;
+    setRunning(false);
+  }
 }
 
 /* The speed each paced build was last run at: a sample slowed down to be
@@ -503,7 +554,9 @@ function showSelected() {
   boardEl.hidden = !uses.includes('gpio');
   eraseFlashEl.hidden = !uses.includes('flash');
   screenEl.hidden = !build.display;
-  speedWrapEl.hidden = build.clock !== 'paced';
+  /* Pace is worth changing for a build that runs by itself; one that waits
+   * for a person runs at the person's pace. */
+  speedWrapEl.hidden = build.clock !== 'paced' || !!build.interactive;
   speedEl.value = speeds.get(build.name) ?? '1';
   statusEl.textContent = build.hint;
 }
@@ -541,17 +594,27 @@ const saveFlash = (name, image) => {
 const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
 
 async function start() {
-  term.clear();
   const build = builds.find((b) => b.name === buildEl.value);
   if (!build) return;
+  currentBuild = build;
+  stopping = false;
+  resetBoard();
   setRunning(true);
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
   xterm.options.disableStdin = !interactive;
 
   worker?.terminate();
-  worker = new Worker('./worker.js', { type: 'module' });
-  worker.onmessage = ({ data }) => {
+  const w = new Worker('./worker.js', { type: 'module' });
+  worker = w;
+  w.onmessage = ({ data }) => {
+    /* A run the page has let go of, for another selection: keep its flash,
+     * and nothing else. */
+    if (worker !== w) {
+      if (data.type === 'flash') saveFlash(build.name, data.image);
+      if (data.type === 'done') w.terminate();
+      return;
+    }
     if (data.type === 'state') showKernel(data.state);
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
@@ -560,32 +623,30 @@ async function start() {
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       setRunning(false);
-      statusEl.textContent = `Finished with exit code ${data.code}.`;
+      /* The board is off: LEDs dark, the display dimmed. */
+      showLeds(0);
+      screenEl.classList.add('off');
+      if (lastState) showKernel(lastState);
+      const minutes = Math.round((build.max_time_ms ?? 60_000) / 60_000);
+      statusEl.textContent = stopping ? 'Stopped.'
+        : data.code === 2 && (build.endless || build.interactive)
+          ? `Stopped at the page's limit of ${minutes} minutes of guest time.`
+          : `Finished with exit code ${data.code}.`;
     }
   };
-  worker.onerror = (e) => {
+  w.onerror = (e) => {
     term.note(`\n*** worker error: ${e.message} ***\n`);
     setRunning(false);
   };
 
-  showLeds(0);
   showSelected();
-  screenCtx.fillStyle = '#000';
-  screenCtx.fillRect(0, 0, screenEl.width, screenEl.height);
-  screenInfo = { frames: 0, colours: 0, blank: true };
-  kernelEl.classList.remove('on');
-  threadsEl.innerHTML = '';
-  paused = false;
-  pauseEl.textContent = 'Pause';
-  backEl.disabled = true;
-
-  setRunning(true);
   statusEl.textContent = `Running. ${build.hint}`;
-  /* Only a paced build has a speed worth changing: under virtual time the
-   * run is over before the control could be reached. */
-  const paced = build.clock === 'paced';
+  /* Only a paced build that runs by itself has a speed worth changing:
+   * under virtual time the run is over before the control could be
+   * reached, and an interactive one goes at the pace of the person. */
+  const paced = build.clock === 'paced' && !interactive;
 
-  worker.postMessage({
+  w.postMessage({
     type: 'run',
     url: `./${build.path}`,
     interactive,
@@ -600,10 +661,16 @@ async function start() {
 
 buildBoard();
 loadManifest();
-buildEl.onchange = showSelected;
+/* A new selection stops what is running and clears what it left behind,
+ * so the page never shows one build's output under another's name. */
+buildEl.onchange = () => {
+  stopRun({ detach: true });
+  resetBoard();
+  showSelected();
+};
 
 runEl.onclick = start;
-stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
+stopEl.onclick = () => stopRun();
 clearEl.onclick = () => term.clear();
 eraseFlashEl.onclick = async () => {
   await eraseFlash(buildEl.value);

@@ -97,6 +97,17 @@ jobs:
           pip install --break-system-packages wasmtime
           ./zephyr-wasm/scripts/check_engines.sh _site/m/sem.wasm --max-time 60000
 
+      # Both hosts once took any deadline past 100 s of guest time for the
+      # kernel's "nothing soon" clamp, and ended long runs there as if they
+      # had finished. Blinky toggles once a second, so 150 s is 150 lines, on
+      # both engines alike.
+      - name: Check a run outlives 100 s of guest time
+        run: |
+          n=$(node zephyr-wasm/host/run.mjs --max-time 150000 _site/m/blinky.wasm | grep -c "LED state")
+          echo "blinky toggled $n times in 150 s of guest time"
+          test "$n" -ge 149
+          ./zephyr-wasm/scripts/check_engines.sh _site/m/blinky.wasm --max-time 150000
+
       # The page is the product, so it is checked in a browser rather than
       # only under Node. Chromium runs every non-interactive build and reads
       # the output back through the page's own terminal.

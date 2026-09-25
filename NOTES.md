@@ -790,3 +790,53 @@ the wrong text after a mid-line edit. The other passed LVGL's prompt test
 on an empty screen, because its log output takes three seconds to arrive
 behind the first frames. That test now requires the text on screen before
 judging it.
+
+### Tick 51 — everything stopped at 100 seconds
+
+The user had Claude in Chrome try every demo on the live site. Sixteen of
+seventeen did what was asked. The shell froze once: the clock stopped at
+100010 ms, and typing did nothing until Stop. That number was the clue.
+
+Both hosts treated a deadline at or past `CLAMP_NS`, 100 s, as the kernel's
+"nothing soon" clamp. But `set_alarm_ns` passes an absolute time, so after
+100 s of guest time every alarm looked like a clamp. Three idle wakes later
+the host judged the kernel quiescent:
+- a non-interactive run ended with exit 0, as if it had finished; blinky at
+  150 s printed 102 toggles, not 150;
+- an interactive run stopped advancing time, so the shell's 10 ms RX poll
+  never fired again and nothing typed was read.
+
+No check ran anything that long. The comparison is now against the delay
+from now, in both hosts, and CI runs blinky for 150 s on both engines and
+counts 150 lines. Before the fix it counted 102.
+
+Two things fell out of fixing it.
+- The interactive builds now run paced, so a person sees real timestamps.
+  That made the input driver's ISR, which drained every queued event in one
+  interrupt, overflow the input queue on a drag: `K_NO_WAIT` drops what does
+  not fit. It now takes one sample per interrupt, through the event with
+  sync, and the host raises the line again while it has more, as a touch
+  controller would.
+- `report()` was throttled to one every 100 ms of wall time, so a run shorter
+  than that was shown as it stood at its first switch. It reports once more
+  at the end.
+
+The rest of the report was the page:
+- Stop said "exit code 0" and left LED 0 lit. It now says "Stopped.", and
+  the board goes dark.
+- The status said "Running." while paused.
+- Resume and Step stayed live after a run, because a late state message
+  turned them back on.
+- The previous build's output stayed up after choosing another. Choosing
+  another build now stops the run and clears it.
+- Stop took seconds at quarter speed, because the pacing wait could not be
+  interrupted. Now it can.
+- Clear took the shell's prompt with it.
+- Logging overflowed a 4,000-line scrollback. It is now 20,000 lines.
+
+Explained rather than changed:
+- The logger's negative throughput is upstream's `uint32` product
+  overflowing: on a virtual clock logging takes no time.
+- "Button 11" is the key code `INPUT_KEY_0`.
+- The NVS hex line wraps mid-byte, as a 400-column line would on any serial
+  console.
