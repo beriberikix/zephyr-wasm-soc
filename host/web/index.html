@@ -102,6 +102,7 @@
     <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
+    <button id="eraseFlash" title="Forget this build's saved flash, as if the board were new">Erase flash</button>
     <label id="speedWrap" hidden>
       speed
       <select id="speed">
@@ -154,6 +155,7 @@ const buildEl = document.getElementById('build');
 const runEl = document.getElementById('run');
 const stopEl = document.getElementById('stop');
 const clearEl = document.getElementById('clear');
+const eraseFlashEl = document.getElementById('eraseFlash');
 const speedEl = document.getElementById('speed');
 const speedWrapEl = document.getElementById('speedWrap');
 const kernelEl = document.getElementById('kernel');
@@ -351,12 +353,47 @@ function setRunning(state) {
   runEl.disabled = state;
   stopEl.disabled = !state;
   buildEl.disabled = state;
+  eraseFlashEl.disabled = state;
 }
 
-function start() {
+/* The simulated flash, kept per build in IndexedDB so that what a sample
+ * stored is still there after a reload, as it would be on a board that had
+ * been switched off. The worker sends an image whenever it changes; the
+ * guest never waits for any of this. Storage can be unavailable -- a
+ * private window, blocked site data -- and then every run starts erased,
+ * which is what it did before this existed. */
+function flashStore(mode, fn) {
+  return new Promise((resolve) => {
+    let open;
+    try { open = indexedDB.open('zephyr-wasm', 1); } catch { resolve(undefined); return; }
+    open.onupgradeneeded = () => open.result.createObjectStore('flash');
+    open.onerror = () => resolve(undefined);
+    open.onsuccess = () => {
+      try {
+        const tx = open.result.transaction('flash', mode);
+        const req = fn(tx.objectStore('flash'));
+        tx.oncomplete = () => resolve(req.result);
+        tx.onerror = tx.onabort = () => resolve(undefined);
+      } catch { resolve(undefined); }
+    };
+  });
+}
+const loadFlash = (name) => flashStore('readonly', (s) => s.get(name));
+/* Saves are chained, so they land in order and the browser check can wait
+ * for the last one before reloading. */
+let flashSaving = Promise.resolve();
+const saveFlash = (name, image) => {
+  flashSaving = flashSaving.then(() => flashStore('readwrite', (s) => s.put(image, name)));
+  return flashSaving;
+};
+const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
+
+async function start() {
   term.clear();
   const build = builds.find((b) => b.name === buildEl.value);
   if (!build) return;
+  setRunning(true);
+  const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
 
   worker?.terminate();
@@ -366,6 +403,7 @@ function start() {
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.write(new TextEncoder().encode(data.text));
+    else if (data.type === 'flash') saveFlash(build.name, data.image);
     else if (data.type === 'done') {
       setRunning(false);
       statusEl.textContent = `finished with exit code ${data.code}`;
@@ -400,6 +438,7 @@ function start() {
     maxTimeMs: build.max_time_ms ?? 60_000,
     clock: build.clock ?? 'virtual',
     timeScale: paced ? Number(speedEl.value) : 1,
+    flashImage,
   });
   if (interactive) termEl.focus();
 }
@@ -410,6 +449,10 @@ loadManifest();
 runEl.onclick = start;
 stopEl.onclick = () => worker?.postMessage({ type: 'stop' });
 clearEl.onclick = () => term.clear();
+eraseFlashEl.onclick = async () => {
+  await eraseFlash(buildEl.value);
+  statusEl.textContent = `flash erased for ${buildEl.value}`;
+};
 pauseEl.onclick = () =>
   worker?.postMessage({ type: paused ? 'resume' : 'pause' });
 stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
@@ -440,6 +483,8 @@ window.zephyrType = (text) => {
 };
 window.zephyrOutput = () => term.lines.join('\n');
 window.zephyrRunning = () => running;
+window.zephyrEraseFlash = (name) => eraseFlash(name);
+window.zephyrFlashSaved = () => flashSaving;
 window.zephyrBuilds = () => builds;
 window.zephyrLeds = () => {
   let v = 0;
