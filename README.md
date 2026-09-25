@@ -238,14 +238,16 @@ The published copy is at
 runner. To do the same locally:
 
 ```sh
-zephyr-wasm/scripts/stage_site.sh      # builds five applications into _site/
+zephyr-wasm/scripts/stage_site.sh      # builds the demo applications into _site/
 zephyr-wasm/scripts/serve_web.sh 8777  # then open http://127.0.0.1:8777/
 ```
 
-Pick a build and press Run. For the shell, click the output area and type;
-<kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Blinky and the philosophers run at
-their own pace, with a speed control that does not change what they do, and
-the kernel's thread table is shown underneath: who exists, who holds the CPU,
+Pick a build and press Run. Under the controls, each build says in one line
+what it does or what to do: hold a button, type into the output, touch the
+display. The page shows only what the build has: the LEDs and buttons, the
+display, Erase flash for a build that uses flash, and a speed control for
+the builds that run in real time, which does not change what they do. The
+kernel's thread table is shown underneath: who exists, who holds the CPU,
 and what the rest are waiting for. Pause stops the guest between two context
 switches and Step lets exactly one through. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.

@@ -50,5 +50,8 @@ while IFS=$'\t' read -r name app args; do
   printf "  %-6s %s\n" "$name" "$(du -h "$site/m/$name.wasm" | cut -f1)"
 done < <(python3 "$here/apps.py" --module "$module" list)
 
+# What the page shows for each build -- the LEDs, the canvas, Erase flash --
+# comes from apps.json, so check it against what each build actually has.
+python3 "$here/apps.py" --module "$module" --topdir "$topdir" check-uses
 python3 "$here/apps.py" --module "$module" manifest > "$site/manifest.json"
 echo "staged $site"

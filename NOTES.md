@@ -721,3 +721,24 @@ end to end. Its frame is byte-identical on V8 and wasmtime.
 
 Score 41: 38 swept, plus blinky, button and the touch sample, which upstream
 only builds and the demo checks by hand, as it does the other two.
+
+### Tick 49 — one name per button
+
+Every build passed in Chromium, and the screenshots showed a page that
+disagreed with itself. The button was "Button 0" in the devicetree, `sw0`
+under it on the page, "push" on its face, which did not fit, and "press
+Button 0" in the menu. Every interactive build was told to "click the
+output area and type", including the button, the touch sample and LVGL.
+The speed control appeared only after Run, moving the toolbar under the
+pointer, and the help text named two paced builds when there were four. The
+LEDs and Erase flash were shown for builds with neither.
+
+Each build in `apps.json` now has a short `title`, a one-line `hint` the
+page shows under the controls, and a `uses` list for the parts of the board
+it has. `apps.py` refuses a build without a hint. `stage_site.sh` checks
+`uses` and `display` against each build's `.config`: flash and display must
+match both ways, gpio one way, because input drivers pull GPIO into builds
+with nothing on the LED strip. Parts are named by their devicetree labels.
+The controls follow the selection, not the Run button. `check_browser.mjs
+--screenshots` saves each build's page to look at, since nothing checks what
+a page looks like.

@@ -15,10 +15,14 @@
 // is that the harness works somewhere with no filesystem, no stdio and no
 // blocking main thread.
 //
-// Usage: node scripts/check_browser.mjs [_site] [--headed]
+// Usage: node scripts/check_browser.mjs [_site] [--headed] [--screenshots <dir>]
+//
+// With --screenshots, each build's page is saved as <dir>/<name>.png once its
+// checks pass, for looking at: nothing here can say whether a page looks
+// right.
 
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -30,9 +34,12 @@ import { stat } from 'node:fs/promises';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const headed = args.includes('--headed');
+const shotsAt = args.indexOf('--screenshots');
+const shots = shotsAt >= 0 ? path.resolve(args[shotsAt + 1]) : null;
+const positional = args.filter((a, i) => !a.startsWith('--') && i !== shotsAt + 1);
 /* Absolute: the path is compared against a request's resolved path below,
  * and a relative one would never match. */
-const site = path.resolve(args.find((a) => !a.startsWith('--')) ?? path.join(here, '..', '..', '_site'));
+const site = path.resolve(positional[0] ?? path.join(here, '..', '..', '_site'));
 
 /* Playwright is not a dependency of this repository: it is a check, not a
  * build step, and nothing else here needs node_modules. Take it from
@@ -232,6 +239,10 @@ for (const b of manifest.builds) {
   }
 
   if (ok) console.log(`  ok    ${b.name.padEnd(8)} ${b.title}`);
+  if (shots) {
+    await mkdir(shots, { recursive: true });
+    await page.screenshot({ path: path.join(shots, `${b.name}.png`), fullPage: true });
+  }
 
   await page.click('#stop').catch(() => {});
   await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 })

@@ -13,6 +13,9 @@ Subcommands:
   score       the count of unmodified upstream samples, which is the measure
               ROADMAP.md sets. Upstream test suites are evidence for the port
               and are deliberately not counted.
+  check-uses  compare each build's "uses" and "display" against the .config
+              it was built with, in <topdir>/build-site-<name>, so the page
+              shows the parts of the board a build has and no others.
 """
 import argparse
 import json
@@ -48,11 +51,53 @@ def counted(builds: list[dict]) -> set[str]:
     return ours | theirs
 
 
+USES = {"gpio", "flash"}
+
+
 def load(module: str) -> list[dict]:
     builds = json.loads(APPS.read_text())["builds"]
     for b in builds:
         b["app"] = b["app"].replace("{module}", module)
+        # The page shows both, and a build without them is the page
+        # drifting back to one style per entry.
+        for key in ("title", "hint"):
+            if not b.get(key):
+                sys.exit(f"apps.json: {b['name']} has no {key}")
+        unknown = set(b.get("uses", [])) - USES
+        if unknown:
+            sys.exit(f"apps.json: {b['name']} uses unknown {sorted(unknown)}")
     return builds
+
+
+def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
+    """What the page shows against what the build has.
+
+    Display and flash must match both ways: a canvas or an Erase button that
+    does nothing is as wrong as one that is missing. GPIO only one way,
+    because input drivers pull it in for builds with nothing to show on the
+    LED strip.
+    """
+    problems = []
+    for b in builds:
+        config = topdir / f"build-site-{b['name']}" / "zephyr" / ".config"
+        if not config.exists():
+            problems.append(f"{b['name']}: no {config}")
+            continue
+        on = set()
+        for line in config.read_text().splitlines():
+            for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display")):
+                if line == f"CONFIG_{sym}=y":
+                    on.add(use)
+        shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
+        for use in ("flash", "display"):
+            if (use in on) != (use in shown):
+                problems.append(f"{b['name']}: CONFIG_{use.upper()} is "
+                                f"{'set' if use in on else 'unset'} but the page "
+                                f"{'does not show' if use in on else 'shows'} it")
+        if "gpio" in shown and "gpio" not in on:
+            problems.append(f"{b['name']}: the page shows the LEDs and buttons "
+                            "but CONFIG_GPIO is unset")
+    return problems
 
 
 def main() -> int:
@@ -60,10 +105,18 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--module", default=str(HERE.parent),
                     help="this repository, substituted for {module} in an app path")
-    ap.add_argument("command", choices=("list", "manifest", "score"))
+    ap.add_argument("--topdir", default=str(HERE.parent.parent),
+                    help="where the build-site-<name> directories are, for check-uses")
+    ap.add_argument("command", choices=("list", "manifest", "score", "check-uses"))
     args = ap.parse_args()
 
     builds = load(args.module)
+
+    if args.command == "check-uses":
+        problems = check_uses(builds, pathlib.Path(args.topdir))
+        for p in problems:
+            print(f"apps.json: {p}", file=sys.stderr)
+        return 1 if problems else 0
 
     if args.command == "list":
         # A third column carries any build arguments, space-separated. They
