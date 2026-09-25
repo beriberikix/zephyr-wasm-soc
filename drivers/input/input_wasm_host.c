@@ -24,13 +24,19 @@ static void wasm_input_isr(const void *arg)
 	const struct device *dev = arg;
 	int32_t ev[4];
 
+	/* One sample per interrupt, up to and including its sync event, as a
+	 * touch controller interrupts once per report. The host raises the line
+	 * again while it has more, so the input thread drains the queue between
+	 * samples. Draining everything here overflowed that queue: a drag
+	 * delivered between two steps of a paced run is dozens of events, and
+	 * K_NO_WAIT, which an interrupt must use, drops what does not fit.
+	 */
 	while (wasm_host_input_poll(ev)) {
-		/* K_NO_WAIT: this is an interrupt. In the default thread mode
-		 * the event goes on the input queue, which is sized for bursts
-		 * far larger than a pointer produces between two safepoints.
-		 */
 		(void)input_report(dev, (uint8_t)ev[0], (uint16_t)ev[1], ev[2], ev[3] != 0,
 				   K_NO_WAIT);
+		if (ev[3] != 0) {
+			break;
+		}
 	}
 }
 

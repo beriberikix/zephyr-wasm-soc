@@ -118,6 +118,11 @@ The host keeps a clamped deadline as a real deadline and flags it. A run ends
 only after the kernel wakes from a clamped deadline, does nothing, and asks
 for another, twice in a row. Waking from a real deadline counts as progress.
 
+A clamp is recognised by its distance from now, not by its value. The alarm
+the guest sets is an absolute time. Compared as a value against 100 s, every
+alarm after 100 s of guest time counted as a clamp. So long runs ended there
+as if finished, and an idle shell stopped its clock (NOTES, tick 51).
+
 ### D6. Linker sections: generated order, checked at link
 
 Spike A (`spikes/a-sections/`) showed that wasm-ld:
@@ -507,8 +512,12 @@ drew, not just what it printed.
 
 **Input.** `wasm,host-input` is a device with an interrupt line:
 - The host queues events and raises `WASM_IRQ_INPUT`.
-- The ISR drains the queue with `input_poll()`, a synchronous import, and
-  passes each event to `input_report()`.
+- The ISR reads one sample with `input_poll()`, a synchronous import: events
+  up to and including one with sync, each passed to `input_report()`. The host
+  raises the line again while it has more. So a touch controller's rhythm is
+  kept, and the input thread drains its queue between samples. Draining
+  everything in one interrupt overflowed that queue when a drag arrived
+  between two steps of a paced run.
 - A touch is reported as `input_sdl_touch` reports one: X, Y, then
   `BTN_TOUCH` with sync.
 - Keys are Linux key codes.

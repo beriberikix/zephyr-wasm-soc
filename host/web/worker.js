@@ -19,6 +19,7 @@ import { Host } from './core.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let interrupt = null;
+let cancelWait = null;
 let stopRequested = false;
 let host = null;           // the running Host, so buttons can reach it
 
@@ -63,8 +64,13 @@ const browserPlatform = {
     new Promise((resolve) => setTimeout(resolve, hasInput ? 0 : 1)),
 
   /* Used only for pacing. A macrotask, so queued messages -- a button press,
-   * a change of speed -- are delivered while the host waits. */
-  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+   * a change of speed -- are delivered while the host waits. Stop cuts it
+   * short: at a quarter speed one wait can be seconds long. */
+  wait: (ms) => new Promise((resolve) => {
+    const finish = () => { clearTimeout(timer); cancelWait = null; resolve(); };
+    const timer = setTimeout(finish, ms);
+    cancelWait = finish;
+  }),
 
   /* An output pin moved. The page draws it. */
   gpioOut(port, values) {
@@ -157,7 +163,9 @@ self.onmessage = async (event) => {
 
   if (msg.type === 'stop') {
     stopRequested = true;
+    if (host) host.done = true;
     if (interrupt) interrupt();
+    cancelWait?.();
     return;
   }
 

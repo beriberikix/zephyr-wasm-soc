@@ -122,7 +122,10 @@ class Host:
             return self.now_ns
 
         def set_alarm_ns(deadline):
-            self.alarm_is_clamp = deadline >= CLAMP_NS
+            # Relative to now, as in core.mjs: the clamp is a delay, and
+            # against the absolute deadline every alarm after 100 s of guest
+            # time looked like one.
+            self.alarm_is_clamp = deadline - self.now_ns >= CLAMP_NS
             self.alarm_ns = None if deadline >= 0x7FFFFFFFFFFFFFFF else deadline
 
         def wait_for_event():

@@ -112,9 +112,10 @@ WASM_HOST_IMPORT(display_flush) void wasm_host_display_flush(int32_t x, int32_t 
 WASM_HOST_IMPORT(display_blank) void wasm_host_display_blank(int32_t on);
 
 /* Input. The host queues pointer and key events and raises WASM_IRQ_INPUT;
- * the driver's ISR drains the queue. Each call writes one event -- type,
- * code, value and sync, as input_report() takes them -- into ev[4] and
- * returns 1, or returns 0 when the queue is empty.
+ * the driver's ISR takes one sample, through the event with sync, per
+ * interrupt, and the host raises the line again while it has more. Each call
+ * writes one event -- type, code, value and sync, as input_report() takes
+ * them -- into ev[4] and returns 1, or returns 0 when the queue is empty.
  */
 WASM_HOST_IMPORT(input_poll) int32_t wasm_host_input_poll(int32_t *ev);
 

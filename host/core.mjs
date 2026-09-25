@@ -45,8 +45,9 @@ class GaveUp extends Error {}
  * to unwind cleanly. */
 class Reboot extends Error {}
 
-/* Anything at or beyond this is the kernel saying "nothing soon" rather than
- * naming a deadline it cares about. It clamps to roughly INT32_MAX ticks. */
+/* A deadline at least this far ahead of now is the kernel saying "nothing
+ * soon" rather than naming one it cares about. It clamps to roughly
+ * INT32_MAX ticks from now. */
 const CLAMP_NS = 100_000_000_000n;
 
 /* How many times in a row the kernel may wake from a clamped deadline, do
@@ -356,7 +357,11 @@ export class Host {
            * still advances to it, the kernel still gets to reprogram, and
            * quiescence is decided by watching what it does next.
            */
-          self.alarmIsClamp = deadline >= CLAMP_NS;
+          /* Relative to now. The clamp is a delay, not a date: compared
+           * with the absolute deadline, every alarm after 100 s of guest
+           * time looked like one, so long runs ended there as if finished
+           * and an idle shell stopped its clock and never read its input. */
+          self.alarmIsClamp = deadline - self.timeNs >= CLAMP_NS;
           self.alarmNs = deadline >= 0x7fffffffffffffffn ? null : deadline;
         },
 
@@ -458,6 +463,9 @@ export class Host {
           const ev = self.inputQueue.shift();
           if (!ev) return 0;
           new Int32Array(self.mem.buffer, ptr, 4).set(ev);
+          /* The driver takes one sample per interrupt, ending at its sync
+           * event; raise the line again for the next one. */
+          if (ev[3] && self.inputQueue.length > 0) self.injectIrq(IRQ.INPUT);
           return 1;
         },
 
@@ -664,12 +672,14 @@ export class Host {
    *
    * Throttled: a run switches threads thousands of times a second and a page
    * cannot draw that, nor does anyone want it to. Paused, it always reports,
-   * because then every step is one the viewer asked for.
+   * because then every step is one the viewer asked for. And once more when
+   * the run ends, or a run shorter than the throttle would be shown as it
+   * was at its first switch.
    */
-  report() {
+  report(force = false) {
     if (!this.platform.onState) return;
     const nowMs = Number(this.timeNs / 1_000_000n);
-    if (!this.paused && this.lastReportAt !== undefined &&
+    if (!force && !this.paused && this.lastReportAt !== undefined &&
         Date.now() - this.lastReportAt < 100) {
       return;
     }
@@ -847,6 +857,7 @@ export class Host {
       }
     }
     this.stopInput();
+    if (this.ex) this.report(true);
     return this.exitCode;
   }
 
