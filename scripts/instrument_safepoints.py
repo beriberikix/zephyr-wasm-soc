@@ -32,9 +32,19 @@ import re
 import sys
 from pathlib import Path
 
-FUNC_RE = re.compile(r"^\s*\(func\s+\(;(\d+);\)")
+# wasm2wat names a function by index -- (func (;20;) -- unless the module kept
+# its name section, which a debug build (CONFIG_DEBUG, -O0) does, and then it
+# is (func $z_wasm_safepoint. Either way the token after "func" identifies the
+# function, and `call` accepts it as it stands.
+FUNC_ID = r"(\$[^\s()]+|\(;\d+;\)|\d+)"
+FUNC_RE = re.compile(r"^\s*\(func\s+" + FUNC_ID)
 LOOP_RE = re.compile(r"^(\s*)loop(\s|$)")
-EXPORT_RE = re.compile(r'^\s*\(export\s+"([^"]+)"\s+\(func\s+(\d+)\)\)')
+EXPORT_RE = re.compile(r'^\s*\(export\s+"([^"]+)"\s+\(func\s+' + FUNC_ID + r"\)\)")
+
+
+def func_id(token: str) -> str:
+    """One spelling per function: "(;20;)" and "20" are the same one."""
+    return token[2:-2] if token.startswith("(;") else token
 
 # Instrumenting these would call the safepoint from inside the safepoint, or
 # from the switch it may trigger. Only exported functions can be identified by
@@ -54,33 +64,33 @@ SKIP_EXPORTS = (
 # exported. Checked at run time rather than trusted.
 
 
-def read_exports(lines: list[str]) -> dict[str, int]:
-    """Map exported name to function index.
+def read_exports(lines: list[str]) -> dict[str, str]:
+    """Map exported name to function id: an index, or a $name in a debug build.
 
     The build links through the clang driver, which drops the wasm name
     section, so functions appear only as indices. Exports are the one place a
     name survives, which is why the safepoint has to be exported to be
     callable from here.
     """
-    exports: dict[str, int] = {}
+    exports: dict[str, str] = {}
     for line in lines:
         m = EXPORT_RE.match(line)
         if m:
-            exports[m.group(1)] = int(m.group(2))
+            exports[m.group(1)] = func_id(m.group(2))
     return exports
 
 
-def instrument(lines: list[str], target_idx: int,
-               skip_idx: set[int]) -> tuple[list[str], int, int]:
+def instrument(lines: list[str], target_idx: str,
+               skip_idx: set[str]) -> tuple[list[str], int, int]:
     out: list[str] = []
-    current = -1
+    current = ""
     inserted = 0
     skipped = 0
 
     for line in lines:
         m = FUNC_RE.match(line)
         if m:
-            current = int(m.group(1))
+            current = func_id(m.group(1))
         out.append(line)
 
         lm = LOOP_RE.match(line)

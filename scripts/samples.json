@@ -867,7 +867,7 @@
       "entry": "sample.cpu_freq.stub",
       "status": "build-fails",
       "cause": "other",
-      "detail": "parameter named 'cpu_freq_pstate_set' is missing"
+      "detail": "parameter named 'cpu_freq_policy_select_pstate' is missing"
     },
     {
       "path": "zephyr/samples/subsys/cpu_freq/pressure",
@@ -914,30 +914,24 @@
     {
       "path": "zephyr/samples/subsys/fs/ext2_fstab",
       "entry": "sample.filesystem.ext2.fstab",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "type specifier missing, defaults to 'int'; ISO C99 and later do not support implicit int [-Wimplicit-int]"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/fs/fatfs_fstab",
       "entry": "sample.filesystem.fat_fs.fstab",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'ff.h' file not found"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/fs/format",
       "entry": "sample.filesystem.format.littlefs",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"No filesystem specified.\""
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/subsys/fs/format",
       "entry": "sample.filesystem.format.fat_fs",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'ff.h' file not found"
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/subsys/fs/fs_sample",
@@ -949,9 +943,8 @@
     {
       "path": "zephyr/samples/subsys/fs/littlefs",
       "entry": "sample.filesystem.littlefs",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'lfs.h' file not found"
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/subsys/fs/virtiofs",
@@ -1561,5 +1554,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 35
+  "score": 37
 }
