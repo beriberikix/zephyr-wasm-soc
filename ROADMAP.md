@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **39**, of which 36 check more than a start-up banner.
+today: **41**, of which 38 check more than a start-up banner.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
 `tests.yaml` under `zephyr/samples`, keeps the entries that could plausibly run
@@ -29,13 +29,14 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 85 | |
-| **Runnable: what twister itself would run here** | **145** | **92** |
-| Pass upstream's own criterion | 53 | 37 |
-| Build, but upstream only builds them | 7 | |
+| Filtered out by upstream's own twister filter | 84 | |
+| **Runnable: what twister itself would run here** | **146** | **92** |
+| Pass upstream's own criterion | 61 | 38 |
+| Build, but upstream only builds them | 9 | |
+| Run, with no criterion upstream | 3 | |
 | Run and fail their criterion | 1 | |
 | Do not finish | 22 | |
-| Do not build | 62 | |
+| Do not build | 50 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -69,9 +70,8 @@ cause is in `samples.json`):
 |---|---:|---|
 | Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| Missing module | 11 | LVGL (with its Kconfig), TFLite, PSA |
-| No such device | 9 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, SDL display, ... |
-| Other build errors | 7 | e.g. the `cpu_freq` samples need an SoC P-state API |
+| No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
+| Other build errors | 7 | the `cpu_freq` samples need an SoC P-state API; `llext` wants an ELF toolchain; `debug.fuzz` wants native_sim's `irq_ctrl.h` |
 | No C library headers | 7 | C++ and a few others need a libc with `string.h`; only the minimal one is here |
 | Link | 4 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand), `get_bootargs` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
@@ -328,8 +328,33 @@ Done, apart from saying what a pending thread is pending on.
 
 ## Phase 4 — display and input
 
-As the issue has it. Frame pacing depends on Phase 1's real-time work: under
-virtual time a render loop has no reason to run at any particular rate.
+- [x] **A display the page draws.**
+      - `wasm,host-display` is a 320×240 RGB565 framebuffer in linear memory.
+        RGB565 is LVGL's default colour depth, so its samples need no board
+        configuration.
+      - The guest names the framebuffer and reports each rectangle it writes.
+        The host reads the pixels between steps and draws them on a
+        `<canvas>`. Nothing waits, the same arrangement as the flash
+        (`DESIGN.md` D8i).
+      - `--screenshot` in both hosts. Frames are identical across runs and
+        across V8 and wasmtime.
+- [x] **Touch and keys.**
+      - `wasm,host-input` feeds the input subsystem from an interrupt with
+        what native_sim's SDL touch reports.
+      - On the page, pressing on the canvas is a touch and typing into it is
+        keys. `--touch` and `--key` script them under Node, repeatably.
+      - `draw_touch_events` draws its crosshair where the browser check
+        clicks.
+- [x] **LVGL.**
+      - `west.yml` imports it, and the board gives it a pointer.
+      - All seven `modules/lvgl/demos` entries pass their upstream
+        criterion, unmodified.
+      - On the page, the widgets demo can be touched: a tap on its tabs
+        switches them.
+- [ ] **Frame pacing** is Phase 1's paced clock, and is enough for the demos.
+      A render loop tied to the browser's frame rate would be smoother. It
+      would need the host to wake the guest per frame, and nothing here asks
+      for that yet.
 
 ## Phase 5 — sensors and buses
 

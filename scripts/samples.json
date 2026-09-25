@@ -25,8 +25,8 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "filtered_entries": 85,
-    "runnable_entries": 145,
+    "filtered_entries": 84,
+    "runnable_entries": 146,
     "runnable_apps": 92
   },
   "samples": [
@@ -290,30 +290,25 @@
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.sdl",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_CHOSEN_zephyr_display_ORD'"
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.dummy",
-      "status": "passes",
       "note": "Passes by upstream's rule, which only checks the start-up banner. The dummy display driver is present, but nothing checks that anything was drawn.",
-      "criterion": "boot-only"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.builtin",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_chosen_enabled(\"zephyr,display\")"
+      "status": "runs",
+      "cause": "no upstream criterion"
     },
     {
       "path": "zephyr/samples/drivers/display",
       "entry": "sample.display.shield",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_chosen_enabled(\"zephyr,display\")"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/eeprom",
@@ -533,65 +528,50 @@
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_music",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_benchmark",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_stress",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_widgets",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_keypad_encoder",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_render",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
       "entry": "sample.modules.lvgl.demo_benchmark.lvgl_auto",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/multi_display",
       "entry": "sample.modules.lvgl.multi_display",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_LOG (defined at modules/lvgl/Kconfig:31, modules/lvgl/Kconfig:31) is assigned in a"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"zephyr,displays\")"
     },
     {
       "path": "zephyr/samples/modules/lvgl/screen_transparency",
       "entry": "sample.modules.lvgl.screen_transparency",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_chosen_enabled(\"zephyr,display\")"
+      "status": "runs",
+      "cause": "no upstream criterion"
     },
     {
       "path": "zephyr/samples/modules/nanopb",
@@ -900,16 +880,15 @@
     {
       "path": "zephyr/samples/subsys/display/lvgl",
       "entry": "sample.display.lvgl.gui",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "runs",
+      "cause": "no upstream criterion"
     },
     {
       "path": "zephyr/samples/subsys/display/lvgl",
       "entry": "sample.display.lvgl.renesas_ra_glcdc",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "LV_USE_MONKEY (defined at modules/lvgl/Kconfig:18, modules/lvgl/Kconfig:18) is assigned in a"
+      "status": "filtered",
+      "cause": "upstream filter",
+      "detail": "dt_compat_enabled(\"renesas,ra-glcdc\")"
     },
     {
       "path": "zephyr/samples/subsys/fs/ext2_fstab",
@@ -956,9 +935,8 @@
     {
       "path": "zephyr/samples/subsys/input/draw_touch_events",
       "entry": "sample.input.touch.native",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "\"Unsupported board: zephyr,touch is not assigned\""
+      "status": "builds",
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/subsys/input/input_dump",
@@ -1554,5 +1532,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 37
+  "score": 38
 }

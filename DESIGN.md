@@ -475,6 +475,48 @@ discarded, so there is nothing to unwind cleanly. The host then:
 Snapshots include flash for free, since it is linear memory, so stepping
 backwards over a write undoes the write.
 
+### D8i. The display and input are bridged, not emulated
+
+native_sim's `display_sdl` and `input_sdl_touch` put real driver APIs over
+a host window. The same shape works here one layer lower, with the page as
+the window.
+
+**Display.** `wasm,host-display` is a framebuffer array in linear memory,
+320×240 like native_sim's. It is RGB565, not native_sim's ARGB8888, for two
+reasons:
+- LVGL defaults to 16-bit colour, so its samples need no board
+  configuration. native_sim gets away with ARGB8888 only because its samples
+  ship a `boards/native_sim.conf`.
+- It is 150 KB instead of 300 KB of linear memory, and every step-back
+  snapshot copies linear memory (D8g).
+
+The node states `pixel-format` in devicetree because samples size their
+buffers from it; `draw_touch_events` assumes ARGB8888 without it.
+
+The guest calls three imports, none of which suspends:
+- `display_attach`, at init;
+- `display_flush`, after each write, which only widens the host's dirty
+  rectangle;
+- `display_blank`.
+
+The host reads the pixels whenever the guest is not running, exactly as it
+reads the flash (D8h). The page receives a frame from the worker at most
+once per 50 ms tick, as RGBA, and draws it on a `<canvas>`. Under Node,
+`--screenshot` writes the last frame, which is how CI checks what a build
+drew, not just what it printed.
+
+**Input.** `wasm,host-input` is a device with an interrupt line:
+- The host queues events and raises `WASM_IRQ_INPUT`.
+- The ISR drains the queue with `input_poll()`, a synchronous import, and
+  passes each event to `input_report()`.
+- A touch is reported as `input_sdl_touch` reports one: X, Y, then
+  `BTN_TOUCH` with sync.
+- Keys are Linux key codes.
+
+LVGL's pointer, `input_dump` and `draw_touch_events` therefore all run
+against the real input subsystem. Scripted input under Node counts as a
+deadline, like a scripted GPIO event (D8c), so a touch test is repeatable.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,

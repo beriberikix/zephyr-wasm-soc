@@ -45,7 +45,10 @@ log, including what did not work. `BRIEF.md` is the original task.
   still finds what it stored after the page is reloaded.
 * File systems: FAT and ext2 on a RAM disk, and littlefs on the flash, so
   it persists as the flash does.
-* 37 upstream samples pass their own twister criterion, unmodified, out of
+* A display drawn on the page, and touch and keys into the input subsystem.
+  LVGL runs unmodified: all seven of its demo entries pass, and the widgets
+  demo on the page responds to touch.
+* 38 upstream samples pass their own twister criterion, unmodified, out of
   the 92 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
@@ -293,6 +296,9 @@ under wasmtime. The kernel is the same module in all three.
 | `--trace-switches` | log every context switch and idle to stderr |
 | `--max-time <ms>` | give up after this much guest time, default 10000 |
 | `--interactive` | forward this terminal's input to the guest UART, and keep running while the guest is idle |
+| `--screenshot <file>` | write the display's last frame as a binary PPM. `host/run_wasmtime.py` takes it too |
+| `--touch <ms>:<x>,<y>` | touch the display at a guest time and release 50 ms later, repeatable; display pixels |
+| `--key <ms>:<code>` | press and release a key (a Zephyr `INPUT_KEY_*` code) at a guest time, repeatable |
 | `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
 
 ## Continuous integration
@@ -368,7 +374,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 39 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 41 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback
