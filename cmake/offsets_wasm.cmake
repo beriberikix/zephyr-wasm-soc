@@ -93,12 +93,18 @@ function(zephyr_constants_library)
 
   # Zephyr's own generator reads a compiled object, which by then has all the
   # generated headers. This one compiles the source itself, at generated-header
-  # time, so it has to wait for the syscall headers that kernel_offsets.h pulls
-  # in through device.h. That target sits outside zephyr_generated_headers, so
-  # depending on it does not close a cycle.
-  if(TARGET ${SYSCALL_LIST_H_TARGET})
-    add_dependencies(${lib_name}_h ${SYSCALL_LIST_H_TARGET})
-  endif()
+  # time, so it has to wait for every generated header the source can reach:
+  # the same three zephyr_interface waits for. The syscall headers come in
+  # through device.h, and kobj-types-enum.h through sys/kobject.h. Waiting
+  # only for the first was a race that a loaded machine lost now and then,
+  # as "'zephyr/kobj-types-enum.h' file not found". These targets sit outside
+  # zephyr_generated_headers, so depending on them does not close a cycle.
+  foreach(target ${SYSCALL_LIST_H_TARGET} ${DRIVER_VALIDATION_H_TARGET}
+                 ${KOBJ_TYPES_H_TARGET})
+    if(TARGET ${target})
+      add_dependencies(${lib_name}_h ${target})
+    endif()
+  endforeach()
   add_dependencies(${lib_name} ${lib_name}_h)
 
   # Note: deliberately NOT depending on zephyr_generated_headers here.

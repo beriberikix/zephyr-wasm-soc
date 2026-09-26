@@ -1,8 +1,9 @@
-# Patches to the Zephyr tree
+# Patches to the Zephyr tree, and to picolibc
 
 The Zephyr tree is treated as read-only. Everything this port needs lives in
-the module, with one exception recorded here. Apply them with
-`scripts/apply_patches.sh`, which is idempotent.
+the module, with the exceptions recorded here. The numbered patches in this
+directory are to Zephyr; `picolibc/` holds one to that module, described at
+the end. Apply them all with `scripts/apply_patches.sh`, which is idempotent.
 
 ## 0001-toolchain-gen-absolute-sym-for-wasm.patch
 
@@ -113,3 +114,17 @@ presented as equivalent.
 
 This is the fourth patch caused by the same underlying thing, that Zephyr
 expects a linker that can order and group sections.
+
+## picolibc/0001-exitprocs-no-fini-array-on-wasm.patch
+
+Picolibc registers the function that runs `atexit()` handlers by putting a
+pointer to it in a section named `.fini_array_onexit`, whenever
+`__INIT_FINI_ARRAY` is set, and its CMake build always sets it. Clang's
+WebAssembly backend refuses any section whose name starts with `.fini_array`
+("fini_array sections are unsupported"), so one file in picolibc does not
+compile for wasm32 and nothing links.
+
+The patch leaves the entry out on wasm. Nothing is lost: Zephyr never runs
+the fini array on any architecture, so on every target an `atexit()` handler
+is registered and never called. This is the one change picolibc needs for
+wasm32, and it belongs upstream in picolibc.

@@ -1,0 +1,43 @@
+From 471b134e454ef8964d2a6e3f16b11b27e319d979 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sat, 26 Sep 2026 16:06:43 +0000
+Subject: [PATCH] stdlib: no .fini_array entry for exit procedures on wasm
+
+The WebAssembly backend in clang rejects any section named .fini_array*
+("fini_array sections are unsupported"), so pico-exitprocs.c does not
+compile for wasm32 while __INIT_FINI_ARRAY is set, which picolibc's CMake
+build always sets.
+
+Leave the entry out on wasm. Zephyr, which builds picolibc from source for
+wasm32, never runs the fini array on any target.
+---
+ newlib/libc/stdlib/pico-exitprocs.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/newlib/libc/stdlib/pico-exitprocs.c b/newlib/libc/stdlib/pico-exitprocs.c
+index b9532d329..cc7b3d9c1 100644
+--- a/newlib/libc/stdlib/pico-exitprocs.c
++++ b/newlib/libc/stdlib/pico-exitprocs.c
+@@ -72,7 +72,7 @@ _on_exit(enum pico_onexit_kind kind, union on_exit_func func, void *arg)
+  * will be included when any _on_exit function is used.
+  */
+ #ifdef __INIT_FINI_ARRAY
+-static void
++static __used void
+ __call_exitprocs(void)
+ #define code 0
+ #define param 0
+@@ -115,6 +115,12 @@ __call_exitprocs(int code, void *param)
+ 	}
+ }
+ 
+-#ifdef __INIT_FINI_ARRAY
++/*
++ * The wasm backend refuses any section named .fini_array*: WebAssembly has
++ * no such section and nothing to run it, so there is no way to register a
++ * destructor this way. Zephyr, the only host for this build, never runs the
++ * fini array on any target, so leaving the entry out loses nothing.
++ */
++#if defined(__INIT_FINI_ARRAY) && !defined(__wasm__)
+ static const void *__call_exitprocs_ref __section(".fini_array_onexit") __used = __call_exitprocs;
+ #endif

@@ -73,7 +73,7 @@ jobs:
           west update --narrow -o=--filter=blob:none
           pip install --break-system-packages -r zephyr/scripts/requirements-base.txt
 
-      - name: Apply the patches to Zephyr
+      - name: Apply the patches to Zephyr and picolibc
         run: ./zephyr-wasm/scripts/apply_patches.sh
 
       - name: Build the demo

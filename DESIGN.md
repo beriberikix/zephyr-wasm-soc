@@ -26,10 +26,11 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-Two Zephyr modules are imported, `fatfs` and `littlefs`, through Zephyr's own
-manifest so they stay at Zephyr's pins. Nothing else is: the port needs no HAL
-and uses the minimal libc, and a full import is hundreds of megabytes of
-vendor code. Module code goes through the same section generator and
+Four Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl` and
+`picolibc`, through Zephyr's own manifest so they stay at Zephyr's pins.
+Nothing else is: the port needs no HAL, uses the minimal libc unless a sample
+asks for more (D11), and a full import is hundreds of megabytes of vendor
+code. Module code goes through the same section generator and
 link-map check as everything else (D6).
 
 ### D2. Toolchain
@@ -561,6 +562,52 @@ loop, which never got a turn because the Asyncify driver is a synchronous
 loop. It now yields whenever the guest idles, which is when input can matter
 and never on a hot path.
 
+### D11. A full C library is picolibc, built from its module
+
+The minimal libc is still the default: it is small, it is what the kernel
+needs, and every sample that does not ask for more gets it. A sample that
+sets `REQUIRES_FULL_LIBC`, or that twister filters on
+`CONFIG_FULL_LIBC_SUPPORTED`, now gets picolibc, which Zephyr builds from
+source as a module. No toolchain supplies a libc for wasm32 here, so building
+from source is the only route, and it is the one Zephyr already provides for
+toolchains without their own.
+
+What that took, each for a reason that would bite any wasm32 port:
+- Clang defines `__BYTE_ORDER__` for wasm32 but not `__FLOAT_WORD_ORDER__`,
+  and picolibc's `<machine/ieeefp.h>` has no wasm entry, so it cannot tell
+  the float layout. The port defines the macro, twice: once through
+  `zephyr_interface` for Zephyr's compiles and the offsets generator, and
+  once as a toolchain flag for picolibc's own sources, which the module
+  builds without `zephyr_interface`'s definitions.
+- There is no compiler-rt for wasm32. Clang lowers 128-bit multiplies and
+  shifts to calls, and picolibc's `strtoull` and float `printf` make them.
+  `arch/wasm/core/builtins.c` has the three that anything has needed so
+  far, each tested against the host compiler's own 128-bit arithmetic.
+- The common `malloc`'s default arena runs from the linker symbol `_end` to
+  the end of RAM, and there is no linker script to define `_end`. The arch
+  defaults to a 16 KB arena in BSS instead, which is native_sim's answer to
+  the same absence.
+- The wasm-ld link rule appends the libraries named in `link_order_library`,
+  as lld's `toolchain_linker_finalize()` does, which is how picolibc's
+  `libc.a` ends up on the line.
+- Picolibc puts a destructor in `.fini_array`, which the wasm backend
+  refuses outright. `patches/picolibc/0001` leaves it out on wasm. Zephyr
+  never runs that array on any architecture.
+
+Two more came from the samples that picolibc let through:
+- **Constructors.** wasm-ld collects `.init_array` into
+  `__wasm_call_ctors()`, and nothing called it, so no constructor had ever
+  run on this port, in C or C++. The kernel walks
+  `__zephyr_init_array_start` to `_end` from `z_static_init_gnu()`; the arch
+  now defines that list as a single entry that calls `__wasm_call_ctors()`,
+  ended by a NULL the kernel's loop already stops at. Constructors therefore
+  run where they do on every other target.
+- **Dynamic thread stacks.** `PTHREAD_STACK_MIN` is `K_KERNEL_STACK_LEN(0)`,
+  which here is the Asyncify buffer every stack reserves, 4 KB. The kernel's
+  default dynamic stack of 1024 bytes is below it, so `pthread_create()`
+  refused every thread. The arch defaults `DYNAMIC_THREAD_STACK_SIZE` to the
+  buffer size, as x86 raises it for its own reasons.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
@@ -610,3 +657,9 @@ no out-of-tree hook, so a new architecture cannot compile `offsets.c` without
 being listed in that file. The patch adds a `CONFIG_WASM` branch that emits the
 constant as data. Worth fixing upstream by giving the macro a generic
 data-emitting default.
+
+**picolibc/0001-exitprocs-no-fini-array-on-wasm.patch** is to picolibc rather
+than Zephyr, and `scripts/apply_patches.sh` applies it to that module. Clang's
+wasm backend refuses the `.fini_array` entry picolibc uses to register its
+`atexit()` runner; Zephyr never runs that array on any target, so the patch
+leaves it out on wasm (D11).

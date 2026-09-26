@@ -2,7 +2,7 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 41 upstream
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 44 upstream
 samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
 is what counts it.
 
@@ -840,3 +840,41 @@ Explained rather than changed:
 - "Button 11" is the key code `INPUT_KEY_0`.
 - The NVS hex line wraps mid-byte, as a 400-column line would on any serial
   console.
+
+### Tick 52 — a full C library, and constructors that never ran
+
+The roadmap put the C library first among the things in this port's hands:
+20 sample entries were either filtered out for want of one or failed to
+build without `string.h`. The question was whether picolibc, which Zephyr
+builds from source as a module, builds for wasm32 at all.
+
+It does, after five small things, all in `DESIGN.md` D11: a byte-order macro
+clang does not define for wasm32; the C library on the link line; a malloc
+arena that does not need a linker symbol; three 128-bit helpers there is no
+compiler-rt to supply; and one picolibc patch for a `.fini_array` entry the
+wasm backend refuses. `setjmp`, the predicted snag, never came up.
+
+Then the samples. POSIX `env` and `uname` pass. POSIX `philosophers` built
+and printed its banner and nothing else: `pthread_create()` was refusing
+every thread, silently, because the sample only reports errors when asked.
+Rebuilt with its error checking on, it said the stack was below
+`PTHREAD_STACK_MIN`. That minimum is the 4 KB Asyncify reservation here, and
+the default dynamic stack is 1 KB. With the arch defaulting the stack to the
+reservation, it passes.
+
+`cpp_synchronization` failed to link on `__zephyr_init_array_start`, which
+turned out to mean more than one sample: wasm-ld collects constructors into
+`__wasm_call_ctors()`, and nothing had ever called it. No constructor had
+run on this port, in C or in C++. The kernel's list now has one entry that
+calls it, and the sample gets as far as D8b.
+
+The rest need something picolibc does not provide: a C++ standard library,
+modules not imported, a return address wasm cannot give, per-arch assembly.
+`logging/syst` was tried with its module imported, found to stop on
+`__builtin_return_address`, and the import taken back out.
+
+`%f` was on Phase 0's list of unknowns. It works: under the minimal libc
+with `CBPRINTF_FP_SUPPORT`, and under picolibc's own `printf`, which needed
+two of the three 128-bit helpers.
+
+Score 41 to 44.
