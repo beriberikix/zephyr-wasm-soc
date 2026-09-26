@@ -181,6 +181,15 @@ fails the build if any family is not exactly one unbroken run of start marker,
 keys in order, and stop marker. This catches an object the scan missed, which
 would otherwise leave a list silently short.
 
+Each family's markers are defined under two names. The section macros use
+`__start_z_iter_<family>` and `__stop_z_iter_<family>`, which patch 0004 points
+them at. Every ELF linker script's `ITERABLE_SECTION_ROM/RAM` also defines
+`_<family>_list_start` and `_<family>_list_end`, and code that declares the
+bounds by hand uses those. Only two families are spelled that way, `net_if`
+and `usb_cfg_data`, but the first is the network stack's list of interfaces,
+and nothing using the stack linked until the generator defined them too.
+They are markers in the same sections, so they have the same addresses.
+
 Device order is now upstream's too, since devices are an iterable family keyed
 by level and priority. The same markers could also make patch 0007's
 `Z_DEVICE_API_EXT_END` exact, by generating the end of a class together with
