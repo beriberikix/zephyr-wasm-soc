@@ -52,9 +52,9 @@ def counted(builds: list[dict]) -> set[str]:
     return ours | theirs
 
 
-USES = {"leds", "buttons", "flash", "terminal"}
+USES = {"leds", "buttons", "flash", "terminal", "accel"}
 # The Kconfig symbol each use is checked against, where it is not its own name.
-SYMBOL = {"terminal": "SHELL"}
+SYMBOL = {"terminal": "SHELL", "accel": "SENSOR_WASM_BRIDGE"}
 
 
 def load(module: str) -> list[dict]:
@@ -75,8 +75,9 @@ def load(module: str) -> list[dict]:
 def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
     """What the page shows against what the build has.
 
-    Display and flash must match both ways: a canvas or an Erase button that
-    does nothing is as wrong as one that is missing. GPIO only one way,
+    Display, flash, the terminal and the tilt control must match both ways: a
+    canvas or an Erase button that does nothing is as wrong as one that is
+    missing. GPIO only one way,
     because input drivers pull it in for builds with nothing to show on the
     LED strip. The LEDs and the buttons are shown separately: blinky has no
     use for the buttons.
@@ -90,11 +91,11 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
         on = set()
         for line in config.read_text().splitlines():
             for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display"),
-                             ("SHELL", "terminal")):
+                             ("SHELL", "terminal"), ("SENSOR_WASM_BRIDGE", "accel")):
                 if line == f"CONFIG_{sym}=y":
                     on.add(use)
         shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
-        for use in ("flash", "display", "terminal"):
+        for use in ("flash", "display", "terminal", "accel"):
             if (use in on) != (use in shown):
                 problems.append(f"{b['name']}: CONFIG_{SYMBOL.get(use, use.upper())} is "
                                 f"{'set' if use in on else 'unset'} but the page "

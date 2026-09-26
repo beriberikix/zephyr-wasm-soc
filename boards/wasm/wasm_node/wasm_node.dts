@@ -11,6 +11,7 @@
 #include <mem.h>
 #include <zephyr/dt-bindings/display/panel.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/arch/wasm/wasm_irq_lines.h>
 
@@ -41,6 +42,8 @@
 		sw0 = &sw0;
 		sw1 = &sw1;
 		eeprom-0 = &eeprom0;
+		accel0 = &accel0;
+		pressure-sensor = &pressure0;
 	};
 
 	/*
@@ -253,6 +256,43 @@
 		host_rng: rng {
 			compatible = "wasm,host-entropy";
 			status = "okay";
+		};
+
+		/*
+		 * Upstream's emulated I2C controller, as on native_sim, with two
+		 * parts on it that upstream also emulates: the sensor drivers are
+		 * the real ones, talking to a bus, and only the chips are software.
+		 * The bmi160 is the accelerometer upstream's own LVGL chart sample
+		 * puts on native_sim's bus. Neither has an interrupt line, so their
+		 * drivers run without triggers.
+		 */
+		i2c0: i2c@100 {
+			compatible = "zephyr,i2c-emul-controller";
+			status = "okay";
+			/* Nominal, as on native_sim: the binding requires one. */
+			reg = <0x100 4>;
+			clock-frequency = <I2C_BITRATE_STANDARD>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#forward-cells = <1>;
+
+			accel0: bmi160@68 {
+				compatible = "bosch,bmi160";
+				reg = <0x68>;
+			};
+
+			pressure0: bmp581@46 {
+				compatible = "bosch,bmp581";
+				reg = <0x46>;
+			};
+		};
+
+		/* Lets the host set what the emulated sensors measure. */
+		host_sensors: sensor-bridge {
+			compatible = "wasm,host-sensor-bridge";
+			status = "okay";
+			sensors = <&accel0>;
+			interrupts = <WASM_IRQ_SENSOR>;
 		};
 
 		host_gpio: gpio-bridge {

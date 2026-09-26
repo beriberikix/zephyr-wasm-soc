@@ -657,6 +657,38 @@ const pageChecks = [
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
     return 'an instant click, a double tap and a Space press on Button 0 each reach the guest';
   }],
+  ['tilt', async () => {
+    /* The accelerometer reads what the Tilt pad says, through the host's
+     * sensor bridge, the emulated chip and the real driver. At rest the
+     * board is level, so gravity is all on Z. A real drag of the dot to the
+     * right edge tips it over, and the driver has to see it: gravity moves
+     * onto X. */
+    await page.selectOption('#build', 'accel');
+    await page.click('#run');
+    const readings = () => page.evaluate(() => window.zephyrOutput().split('\n')
+      .map((l) => /\[m\/s\^2\]:\s*\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)/.exec(l))
+      .filter(Boolean).map((m) => m.slice(1, 4).map(Number)));
+    await until('no level reading: gravity never showed on Z',
+                () => /\(\s*-?0\.0\d*,\s*-?0\.0\d*,\s*9\.[78]\d*\)/.test(window.zephyrOutput()), null, 30_000);
+    const pad = await page.locator('#board .tilt').boundingBox();
+    const cy = pad.y + pad.height / 2;
+    await page.mouse.move(pad.x + pad.width / 2, cy);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(pad.x + pad.width / 2 + (pad.width / 2 - 2) * i / 8, cy);
+      await page.waitForTimeout(20);
+    }
+    await page.mouse.up();
+    await until('dragging the Tilt dot right never moved gravity onto X',
+                () => window.zephyrOutput().split('\n').some((l) => {
+                  const m = /\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)/.exec(l);
+                  return m && Number(m[1]) > 7 && Number(m[1]) > Math.abs(Number(m[3]));
+                }), null, 15_000);
+    const last = (await readings()).at(-1);
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    return `level reads (0, 0, 9.8); dragged right it reads (${last.map((v) => v.toFixed(1)).join(', ')})`;
+  }],
   ['parts', async () => {
     /* Only the parts a build uses are shown -- visible, not merely marked
      * hidden, which a display rule once overrode. */
@@ -666,14 +698,17 @@ const pageChecks = [
     const blinky = await shown();
     await page.selectOption('#build', 'button');
     const button = await shown();
+    await page.selectOption('#build', 'accel');
+    const accel = await shown();
     await page.selectOption('#build', 'hello');
     const hello = await page.evaluate(() => !!document.getElementById('board').offsetHeight);
-    if (blinky.join() !== 'true,false') throw new Error(`blinky shows LEDs,buttons = ${blinky}`);
-    if (button.join() !== 'true,true') throw new Error(`button shows LEDs,buttons = ${button}`);
+    if (blinky.join() !== 'true,false,false') throw new Error(`blinky shows LEDs,buttons,tilt = ${blinky}`);
+    if (button.join() !== 'true,true,false') throw new Error(`button shows LEDs,buttons,tilt = ${button}`);
+    if (accel.join() !== 'false,false,true') throw new Error(`accel shows LEDs,buttons,tilt = ${accel}`);
     if (hello) throw new Error('hello shows the board');
     const cursor = await page.evaluate(() => window.zephyrCursor().hidden);
     if (!cursor) throw new Error('a cursor is shown with nothing running');
-    return 'blinky shows its LEDs only, button both, hello neither; no cursor while idle';
+    return 'blinky shows its LEDs only, button both, accel the tilt pad, hello nothing; no cursor while idle';
   }],
   ['steady', async () => {
     /* Starting, pausing and stopping a run must not move the controls:

@@ -31,7 +31,7 @@ const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !==
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -42,6 +42,7 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches) {
   for (const event of gpio ?? []) argv.push('--gpio', event);
   if (screenshot) argv.push('--screenshot', screenshot);
   for (const touch of touches ?? []) argv.push('--touch', touch);
+  for (const accel of accels ?? []) argv.push('--accel', accel);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -91,7 +92,7 @@ for (const b of manifest.builds) {
    * has to show at least display.colors_at_least distinct colours, so a
    * blank or black screen fails even when the console looks right. */
   const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
-  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch);
+  const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel);
 
   const problems = [];
   /* A build that never finishes ends at --max-time, which is exit 2 and is
@@ -100,7 +101,9 @@ for (const b of manifest.builds) {
   if (!allowed.includes(code)) {
     problems.push(`exit code ${code}, expected ${allowed.join(' or ')}`);
   }
-  for (const want of b.expect ?? []) {
+  /* ci_expect is what the scripted ci_* input should produce, which only
+   * this check scripts; the browser check gives the page real input. */
+  for (const want of [...(b.expect ?? []), ...(b.ci_expect ?? [])]) {
     if (!out.includes(want)) problems.push(`missing from the output: ${JSON.stringify(want)}`);
   }
   for (const [pattern, least] of Object.entries(b.expect_at_least ?? {})) {

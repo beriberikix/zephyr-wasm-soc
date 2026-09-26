@@ -15,7 +15,8 @@
     "  while it runs, saying what it does or what to do. Both required.",
     "uses: what of the board the page should show: leds, buttons, flash",
     "  (the Erase flash button), terminal (the output reads the keyboard: a",
-    "  cursor, and keys go to the guest's UART). A display build is marked by",
+    "  cursor, and keys go to the guest's UART), accel (the Tilt pad, which",
+    "  sets what the emulated accelerometer reads). A display build is marked by",
     "  display instead. Checked against each build's .config.",
     "interactive: the application waits for a person. The page forwards",
     "  keystrokes on the output to the guest's UART.",
@@ -44,6 +45,10 @@
     "ci_touch: scripted touches, <ms>:<x>,<y> in display pixels: run.mjs",
     "  --touch for the Node check, a real click on the canvas for the",
     "  browser check.",
+    "ci_accel: scripted accelerometer readings, <ms>:<x>,<y>,<z> in m/s^2:",
+    "  run.mjs --accel for the Node check. The browser check drags the Tilt",
+    "  pad instead, which cannot land on exact values, so what the script",
+    "  should produce goes in ci_expect, which only the Node check reads.",
     "args: build arguments, only ever the upstream entry's own extra_configs",
     "  (the LVGL demos app chooses its demo that way)."
   ],
@@ -144,6 +149,26 @@
         "Button 11 pressed at",
         "Button 11 released at"
       ]
+    },
+    {
+      "name": "accel",
+      "app": "zephyr/samples/sensor/accel_polling",
+      "kind": "sample",
+      "title": "Accelerometer",
+      "hint": "Drag the dot in Tilt to tilt the board. The reading comes from the real bmi160 driver, reading an emulated chip over an emulated I2C bus.",
+      "uses": ["accel"],
+      "upstream": true,
+      "clock": "paced",
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 3000,
+      "ci_accel": ["1500:1.5,-9.81,0.25"],
+      "expect": ["bmi160@68 [m/s^2]:"],
+      "ci_expect": [
+        "bmi160@68 [m/s^2]:    (    0.000000,     0.000000,     0.000000)",
+        "bmi160@68 [m/s^2]:    (    1.499990,    -9.809792,     0.250197)"
+      ],
+      "deterministic": true
     },
     {
       "name": "entropy",

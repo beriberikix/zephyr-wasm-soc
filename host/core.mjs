@@ -114,6 +114,7 @@ export class Host {
     this.nowNs = 0n;             // virtual time; only advances when idle
     this.alarmNs = null;         // next timer deadline, or null for none
     this.startedAt = platform.nowNs();
+    this.stepStartedAt = null;   // wall clock when the current step began
     this.switches = 0;
     this.exitCode = 0;
     this.done = false;
@@ -162,6 +163,9 @@ export class Host {
     this.maxReboots = opts.maxReboots ?? 64;
     /* Input events waiting for the guest's ISR: [type, code, value, sync]. */
     this.inputQueue = [];
+    /* Sensor readings waiting for the bridge's ISR: [sensor, channel,
+     * millionths of the channel's SI unit]. */
+    this.sensorQueue = [];
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -170,6 +174,20 @@ export class Host {
     if (events.length === 0) return;
     this.inputQueue.push(...events);
     this.injectIrq(IRQ.INPUT);
+  }
+
+  /* Queue readings for the board's emulated sensors, the same way. Only the
+   * latest value of each channel matters to an emulator, so a reading
+   * replaces any still waiting for the same sensor and channel: a page that
+   * sends one per pointer move cannot build up a backlog. */
+  pushSensor(readings) {
+    if (readings.length === 0) return;
+    for (const r of readings) {
+      const i = this.sensorQueue.findIndex(q => q[0] === r[0] && q[1] === r[1]);
+      if (i >= 0) this.sensorQueue[i] = r;
+      else this.sensorQueue.push(r);
+    }
+    this.injectIrq(IRQ.SENSOR);
   }
 
   /* The display as RGBA, ready for a canvas's ImageData: a copy, taken
@@ -476,6 +494,14 @@ export class Host {
           return 1;
         },
 
+        /* Sensors: one queued reading per call; the ISR takes them all. */
+        sensor_poll(ptr) {
+          const r = self.sensorQueue.shift();
+          if (!r) return 0;
+          new Int32Array(self.mem.buffer, ptr, 3).set(r);
+          return 1;
+        },
+
         display_blank(on) {
           if (!self.display) return;
           self.display.blank = !!on;
@@ -603,8 +629,15 @@ export class Host {
       throw new GaveUp(`gave up after ${this.opts.maxTimeMs} ms of guest time`);
     }
     /* Virtual time only advances when the kernel idles or reports progress,
-     * so bound the wall clock as well, generously. */
-    if (Number(this.platform.nowNs() - this.startedAt) / 1e6 > this.opts.maxTimeMs * 3) {
+     * so bound the wall clock as well, generously -- but only the time since
+     * the guest last suspended, which is what the message says. A guest that
+     * keeps suspending is making progress however slowly, and the guest-time
+     * limit above ends it. Timing the whole run instead gave up on the LVGL
+     * accelerometer chart, which is slower than real time here (it redraws
+     * the whole screen fifty times a second, and a pixel fill pays for a
+     * safepoint per pixel), as if it had hung. */
+    const since = this.stepStartedAt ?? this.startedAt;
+    if (Number(this.platform.nowNs() - since) / 1e6 > this.opts.maxTimeMs * 3) {
       throw new GaveUp('gave up: the guest ran without suspending');
     }
     return true;
@@ -660,7 +693,8 @@ export class Host {
         this.setGpioInput(pin.port, pin.pin, pin.level);
       } else {
         this.opts.inputScript.shift();
-        this.pushInput(input.events);
+        if (input.sensors) this.pushSensor(input.sensors);
+        else this.pushInput(input.events);
       }
       return true;
     }
@@ -830,6 +864,7 @@ export class Host {
 
       try {
         this.checkDeadline();
+        this.stepStartedAt = this.platform.nowNs();
         /* Anything raised from outside since the last step. The guest is
          * fully unwound here, so writing the pending word is safe. */
         if (this.externalIrqs !== 0) {
