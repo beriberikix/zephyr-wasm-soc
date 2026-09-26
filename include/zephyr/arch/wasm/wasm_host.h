@@ -119,6 +119,15 @@ WASM_HOST_IMPORT(display_blank) void wasm_host_display_blank(int32_t on);
  */
 WASM_HOST_IMPORT(input_poll) int32_t wasm_host_input_poll(int32_t *ev);
 
+/* Sensors. The board's sensors are upstream's emulators, and the host can set
+ * what they measure: it queues values and raises WASM_IRQ_SENSOR, and the
+ * bridge's ISR hands each one to the emulator. Each call writes one value --
+ * which sensor (its index in the bridge's list), the sensor_channel, and the
+ * reading in millionths of the channel's SI unit -- into ev[3] and returns
+ * 1, or returns 0 when the queue is empty.
+ */
+WASM_HOST_IMPORT(sensor_poll) int32_t wasm_host_sensor_poll(int32_t *ev);
+
 /*
  * What the host is told about a thread.
  *

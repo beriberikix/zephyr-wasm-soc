@@ -34,6 +34,7 @@ function parseArgs(argv) {
     else if (a === '--screenshot') opts.screenshot = argv[++i];
     else if (a === '--touch') opts.inputScript.push(...parseTouch(argv[++i]));
     else if (a === '--key') opts.inputScript.push(...parseKey(argv[++i]));
+    else if (a === '--accel') opts.inputScript.push(parseAccel(argv[++i]));
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -91,6 +92,23 @@ function parseKey(spec) {
   ];
 }
 
+/* --accel <ms>:<x>,<y>,<z>: from a given guest time, the board's
+ * accelerometer (sensor 0 on the bridge) reads this, in m/s^2. */
+const SENSOR_CHAN_ACCEL_X = 0;
+function parseAccel(spec) {
+  const num = '(-?\\d+(?:\\.\\d+)?)';
+  const m = new RegExp(`^(\\d+):${num},${num},${num}$`).exec(spec ?? '');
+  if (!m) {
+    console.error(`--accel wants <ms>:<x>,<y>,<z> in m/s^2, not ${JSON.stringify(spec)}`);
+    process.exit(2);
+  }
+  const micro = v => Math.round(Number(v) * 1e6);
+  return {
+    atNs: BigInt(m[1]) * 1_000_000n,
+    sensors: [0, 1, 2].map(axis => [0, SENSOR_CHAN_ACCEL_X + axis, micro(m[2 + axis])]),
+  };
+}
+
 function usage() {
   console.error(`usage: run.mjs [options] <zephyr.wasm>
 
@@ -124,7 +142,10 @@ function usage() {
                      touch the display at a given guest time and release it
                      50 ms later, repeatable. Coordinates are display pixels
   --key <ms>:<code>  press and release a key at a given guest time,
-                     repeatable. code is a Zephyr INPUT_KEY_* value`);
+                     repeatable. code is a Zephyr INPUT_KEY_* value
+  --accel <ms>:<x>,<y>,<z>
+                     from a given guest time, the board's accelerometer
+                     reads this, in m/s^2. Repeatable`);
 }
 
 const nodePlatform = {

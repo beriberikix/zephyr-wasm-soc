@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_WASM_NODE
+
+# The board's sensors are upstream's emulators on upstream's emulated I2C
+# bus, as native_sim's are. Neither exists without the emulator framework, so
+# a build that uses sensors gets it, and one that does not pays nothing.
+config EMUL
+	default y if SENSOR
+
+endif # BOARD_WASM_NODE

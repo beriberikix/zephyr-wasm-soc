@@ -18,6 +18,7 @@
 import { Host } from './core.mjs';
 
 let pushInput = null;      // set by the core once a run starts
+let sensorReadings = null; // the page's latest tilt, for a host not yet made
 let interrupt = null;
 let cancelWait = null;
 let stopRequested = false;
@@ -149,6 +150,14 @@ self.onmessage = async (event) => {
     return;
   }
 
+  if (msg.type === 'sensor-values') {
+    /* What the board's emulated sensors measure, from the page's tilt pad.
+     * Kept, so a reading sent before the host exists still arrives. */
+    sensorReadings = msg.readings;
+    host?.pushSensor(msg.readings);
+    return;
+  }
+
   if (msg.type === 'input-events') {
     /* Touch and keys from the page. Queued and applied at the top of the
      * driver loop, like a button press. */
@@ -205,6 +214,8 @@ self.onmessage = async (event) => {
   }, 50);
   try {
     host = new Host(browserPlatform, opts);
+    /* A tilt sent while the module was still loading. */
+    if (sensorReadings) host.pushSensor(sensorReadings);
     const code = await host.run();
     clearInterval(tick);
     if (host.storage) sendFlash(host.flashImage());

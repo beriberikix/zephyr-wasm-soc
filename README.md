@@ -52,8 +52,12 @@ log, including what did not work. `BRIEF.md` is the original task.
 * Picolibc, for samples that need a full C library, and C++ static
   constructors. The POSIX `env`, `uname` and `philosophers` samples run
   unmodified on it.
-* 41 upstream samples pass their own twister criterion, unmodified, out of
-  the 95 that twister itself would run on this board. Among them the
+* Sensors: an accelerometer and a pressure sensor, upstream's emulated
+  chips on upstream's emulated I2C bus, read by the real drivers. The page
+  has a Tilt pad that sets what the accelerometer reads, and
+  `samples/sensor/accel_polling` shows gravity move as the board is tilted.
+* 43 upstream samples pass their own twister criterion, unmodified, out of
+  the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
   which is on the page as something to type events into.
@@ -392,7 +396,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 44 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 46 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

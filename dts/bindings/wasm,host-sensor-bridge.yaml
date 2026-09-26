@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  Lets the host set what the board's emulated sensors measure.
+
+  The sensors themselves are upstream's emulators on upstream's emulated bus,
+  and the sensor drivers are the real ones. This node is only the bridge: the
+  host queues a reading and raises the interrupt, and the ISR hands it to the
+  emulator through the emulated-sensor backend API, as a test would. The
+  driver then reads it over the bus as it would read a chip.
+
+compatible: "wasm,host-sensor-bridge"
+
+include: base.yaml
+
+properties:
+  sensors:
+    type: phandles
+    required: true
+    description: |
+      The emulated sensors to bridge, in the order the host indexes them.
+
+  interrupts:
+    required: true

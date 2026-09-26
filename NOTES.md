@@ -2,7 +2,7 @@
 
 ## Loop state
 Published at <https://beriberikix.github.io/zephyr-wasm-soc/>, built by CI
-from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 44 upstream
+from a bare Ubuntu runner. `ROADMAP.md` is the plan; the score is 46 upstream
 samples, from the sweep in `scripts/samples.json`, and `scripts/apps.py score`
 is what counts it.
 
@@ -910,3 +910,40 @@ Zephyr's contribution guidelines turned out to have a section on AI
 assistance. An agent must not add `Signed-off-by`, and AI help is
 disclosed with `Assisted-by: <agent>:<model version>`. The patches follow
 both, and `upstream/README.md` says what the person sending them has to add.
+
+### Tick 54 — sensors, and a board that can be tilted
+
+Phase 5 started where the sweep pointed: eight samples filtered out only
+for want of `accel0`, `pressure-sensor` or `stream0`, each a kind of part
+upstream already emulates. So the board got upstream's emulated I2C
+controller, with a bmi160 on it -- the accelerometer upstream's own LVGL
+chart sample puts on native_sim -- and a bmp581. The drivers are the real
+ones. `accel_polling` passed on the first build, reading zeros, which is
+what an emulated chip nobody has set reads.
+
+Zeros make a dull lesson, so the host now sets what the chips read.
+Upstream's tests call `emul_sensor_backend_set_channel()`; a bridge makes
+the same call from an interrupt, with readings the host queues. The page's
+Tilt pad sends gravity, and the real driver reads it back over the bus,
+quantised by the chip: 1.5 m/s² returns as 1.49999.
+
+What did not work, and why, is the useful part:
+- `accel_trig` and the two stream samples need an interrupt, and none of the
+  sensor emulators upstream ships drives one. That is emulator work,
+  and upstream's to have.
+- The LVGL accelerometer chart runs and follows the tilt, but slower than
+  real time: 3 s of guest time in about 10 s. A CPU profile, mapped back to a
+  name through LVGL's own object files since the linked module has no name
+  section, put 96% of the time in `lv_draw_sw_fill`. The chart redraws a full
+  screen fifty times a second, and a pixel loop pays for a safepoint every
+  iteration. The first case where "performance is a non-goal" costs
+  something a learner would see.
+- The host's wall-clock limit timed the whole run, so it gave up on the
+  chart as a guest "that ran without suspending", which it was not. It now
+  times what its message says: the time since the guest last suspended.
+
+The full re-run of filtered entries turned up one stale record:
+`smf_calculator` had been filtered for want of a display since before the
+board had one. It builds now, and fails on `strtod`.
+
+Score 44 to 46.

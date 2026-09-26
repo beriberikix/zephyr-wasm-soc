@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SENSOR_WASM_BRIDGE
+	bool "Let the host set what the emulated sensors measure"
+	default y
+	depends on DT_HAS_WASM_HOST_SENSOR_BRIDGE_ENABLED
+	depends on SENSOR && EMUL
+	help
+	  Readings the host queues -- a page tilting the board, a scripted
+	  run -- handed to the board's emulated sensors through the
+	  emulated-sensor backend API, from an interrupt. The sensor drivers
+	  then read them over the emulated bus as they would read a chip.

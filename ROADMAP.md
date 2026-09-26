@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **44**. 41 pass upstream's own criterion, and three more are counted
+today: **46**. 43 pass upstream's own criterion, and three more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -31,14 +31,14 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 73 | |
-| **Runnable: what twister itself would run here** | **157** | **95** |
-| Pass upstream's own criterion | 64 | 41 |
-| Build, but upstream only builds them | 9 | |
-| Run, with no criterion upstream | 3 | |
-| Run and fail their criterion | 1 | |
+| Filtered out by upstream's own twister filter | 66 | |
+| **Runnable: what twister itself would run here** | **164** | **102** |
+| Pass upstream's own criterion | 66 | 43 |
+| Build, but upstream only builds them | 11 | |
+| Run, with no criterion upstream | 4 | |
+| Run and fail their criterion | 2 | |
 | Do not finish | 24 | |
-| Do not build | 56 | |
+| Do not build | 57 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -47,14 +47,16 @@ the summary of `samples.json`:
 - 267 use a harness that needs a peer or a person (networking, Bluetooth,
   sensors, keyboards and so on).
 
-Of the plausible ones, 73 carry a twister `filter:` that is false here:
-- `dt_alias_exists("accel0")`, a chosen display or flash controller;
+Of the plausible ones, 66 carry a twister `filter:` that is false here:
+- `dt_alias_exists("stream0")`, a chosen flash controller or bus;
 - `CONFIG_ARCH_HAS_USERSPACE`;
 - `TOOLCHAIN_HAS_NEWLIB`.
 
-There were 84 until picolibc. `CONFIG_FULL_LIBC_SUPPORTED` and
-`CONFIG_PICOLIBC_SUPPORTED` are true now, so eleven entries twister used to
-skip here are now run, and judged.
+There were 84 until picolibc, and 73 until the sensors. Picolibc made
+`CONFIG_FULL_LIBC_SUPPORTED` and `CONFIG_PICOLIBC_SUPPORTED` true, and Phase 5
+added `accel0` and `pressure-sensor`, so eighteen entries twister used to skip
+here are now run, and judged. One of them, `smf_calculator`, had been recorded
+as wanting a display long after the board had one.
 
 Twister evaluates that after CMake and never runs such an entry on the board.
 `check_samples.py` evaluates the same expression with twister's own parser,
@@ -76,12 +78,12 @@ cause is in `samples.json`):
 |---|---:|---|
 | Wasm's indirect-call check | 23 | 10 applications, 7 of them zbus; D8b, below |
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| Other build errors | 19 | `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` needs an SoC P-state API; `llext` wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly |
+| Other build errors | 20 | `smf_calculator` calls `strtod`, which the minimal libc lacks; `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` needs an SoC P-state API; `llext` wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly |
 | No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 4 | `_net_if_list_start` twice (a section bound spelled by hand), `get_bootargs`, `uuid_generate_v5` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
 | Module not imported | 1 | `cmsis_dsp` |
-| Fails its regex | 1 | `power.latency` |
+| Fails its regex | 2 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5) |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
@@ -130,16 +132,17 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 44. Phases 5 to 7 have not started.
+score went from 3 to 46. Phase 5 has started; 6 and 7 have not.
 
 What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
    `upstream/zephyr/`: ten applications, `basic/threads` among them, and two
    kernel suites. Sending them is a person's job, since Zephyr needs the
    submitter's own `Signed-off-by`.
-2. **Phase 5, sensors**, before networking: eight samples are filtered out
-   only for want of a part upstream already emulates, and one of them puts a
-   live chart on the page.
+2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
+   pressure sensor are done. Triggers and FIFO streaming wait on an upstream
+   emulator that drives an interrupt pin; the chart waits on pixel loops
+   being cheaper.
 3. **The Phase 6 loopback spike**, the cheapest evidence on whether the IP
    stack survives this port.
 4. **The first lesson**, with "which thread is waiting on what" before it.
@@ -393,14 +396,45 @@ emulator for a part of each kind:
 | `pressure-sensor` | `sensor/pressure_polling`, `pressure_interrupt` | `bmp581` |
 | `stream0` | `sensor/6dof_fifo_stream`, `stream_drdy` | `icm4268x` |
 
-Whether each sample's trigger or streaming mode works against its emulator
-is the work; the parts exist. `lvgl/accelerometer_chart` is the one to aim
-at, since it puts a driver talking to a bus on the page as a moving chart.
+What happened to each:
 
-- [ ] An emulated I2C bus with an accelerometer on it, aliased `accel0`.
-- [ ] The pressure sensor and the streaming IMU, the same way.
-- [ ] Optionally, the browser's Generic Sensor API behind the emulator, so
-      tilting a phone moves the chart.
+| Sample | Result |
+|---|---|
+| `accel_polling` | passes upstream's regex, unmodified |
+| `accel_stream` | passes: without `SENSOR_ASYNC_API` it polls |
+| `accel_trig` | runs and fails: `sensor_trigger_set()` returns `-ENOSYS` |
+| `pressure_polling`, `pressure_interrupt` | build, which is all upstream asks |
+| `lvgl/accelerometer_chart` | runs, with no criterion upstream; slower than real time |
+| `6dof_fifo_stream`, `stream_drdy` | still filtered: no `stream0` |
+
+- [x] **An emulated I2C bus with an accelerometer on it**, aliased `accel0`:
+      upstream's `zephyr,i2c-emul-controller` with the bmi160 upstream's own
+      chart sample uses on native_sim. `DESIGN.md` D8j.
+- [x] **A pressure sensor**, the bmp581, aliased `pressure-sensor`.
+- [x] **The host sets what the sensors read.** `wasm,host-sensor-bridge`
+      hands the host's readings to the emulators through the
+      emulated-sensor backend API, the call upstream's tests make. The page
+      has a Tilt pad, and the Accelerometer build shows the real bmi160
+      driver reading gravity move off Z as the board is tilted. Node scripts
+      it with `--accel`, and CI checks both.
+- [ ] **Triggers and FIFO streaming.** `accel_trig`, `6dof_fifo_stream` and
+      `stream_drdy` need a data-ready or FIFO interrupt, and no upstream
+      sensor emulator drives an interrupt pin: the bmi160, bma4xx, icm4268x
+      and bmp581 emulators have none. The icm4268x emulator, the natural
+      `stream0`, has no FIFO either. This is upstream emulator work: an
+      emulator that raises its INT line through `gpio_emul` would make all
+      three run. It is the next thing to propose there.
+- [ ] **The accelerometer chart on the page.** It runs, reads the tilt and
+      draws it, but slower than real time: under Node, 3 s of guest time
+      take about 10 s, with a first frame that takes several seconds. A
+      profile puts 96% of the time in LVGL's `lv_draw_sw_fill`: the chart
+      redraws a full-screen background fifty times a second, and a pixel
+      loop pays for a safepoint on every iteration. Making leaf pixel loops
+      cheap is performance work, which the issue lists as a non-goal. This
+      is the first case where it limits what can be shown, so it is worth
+      reconsidering here.
+- [ ] Optionally, the browser's Generic Sensor API behind the bridge, so a
+      phone's own tilt drives the board's accelerometer.
 
 ## Phase 6 — networking
 
@@ -490,7 +524,7 @@ and the two largest groups are not in any phase.
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 44. Nothing yet answers the second. The page runs samples; it does not
+to 46. Nothing yet answers the second. The page runs samples; it does not
 teach with them, and nobody learning Zephyr has tried it.
 
 - [ ] **One lesson**, to find out what a lesson needs. `philosophers` is the
@@ -541,7 +575,7 @@ could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk, and so far it has held up better than feared:
-after four phases, 44 samples, three file systems and LVGL there are still
+after four phases, 46 samples, three file systems and LVGL there are still
 seven patches to Zephyr, and one to picolibc. Its real failures were archive members whose names collided
 and sections in the wrong order, both fixed and both now checked at every
 link. Two of its failure modes

@@ -105,6 +105,23 @@
     white-space: nowrap;
   }
   .btn:active, .btn.down { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* The board seen from above: drag the dot to tilt it, as a spirit level's
+   * bubble shows which way is up. */
+  .tilt {
+    position: relative; width: 64px; height: 64px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--bg);
+    cursor: grab; touch-action: none; user-select: none;
+  }
+  .tilt::before, .tilt::after {
+    content: ''; position: absolute; background: var(--line);
+  }
+  .tilt::before { left: 50%; top: 6px; bottom: 6px; width: 1px; }
+  .tilt::after { top: 50%; left: 6px; right: 6px; height: 1px; }
+  .tilt .dot {
+    position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+    border-radius: 50%; background: var(--accent); left: 50%; top: 50%;
+  }
+  .tilt small.xyz { font-variant-numeric: tabular-nums; }
   #kernel { margin: 12px 0 0; display: none; }
   #kernel.on { display: block; }
   #kstat { color: var(--muted); font-size: 12px; }
@@ -463,11 +480,13 @@ const BOARD = {
 const ledEls = new Map();
 const ledGroup = document.createElement('div');
 const buttonGroup = document.createElement('div');
+const tiltGroup = document.createElement('div');
 
 function buildBoard() {
   boardEl.innerHTML = '';
-  ledGroup.className = buttonGroup.className = 'group';
-  boardEl.append(ledGroup, buttonGroup);
+  ledGroup.className = buttonGroup.className = tiltGroup.className = 'group';
+  boardEl.append(ledGroup, buttonGroup, tiltGroup);
+  buildTilt();
   for (const led of BOARD.leds) {
     const part = document.createElement('div');
     part.className = 'part';
@@ -534,6 +553,70 @@ function buildBoard() {
     part.append(el);
     buttonGroup.append(part);
   }
+}
+
+/* The board's accelerometer: upstream's emulated bmi160 on the emulated I2C
+ * bus. Its driver is the real one; what the chip measures is set from here,
+ * through the host's sensor bridge. The pad is the board seen from above:
+ * dragging the dot away from the centre tilts the board that way, so gravity
+ * shows up on X and Y and less of it on Z, as it would on a board in the hand.
+ * Double-click levels it again. */
+const G = 9.80665;
+const SENSOR_CHAN_ACCEL_X = 0;
+let tilt = { x: 0, y: 0 };
+let tiltSent = null;
+function tiltReading() {
+  const r = Math.min(1, Math.hypot(tilt.x, tilt.y));
+  const k = r > 0 ? r / Math.hypot(tilt.x, tilt.y) : 0;
+  const x = tilt.x * k, y = tilt.y * k;
+  const z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
+  return [x * G, y * G, z * G];
+}
+function sendTilt() {
+  const values = tiltReading();
+  tiltXyzEl.textContent = values.map((v) => v.toFixed(1)).join(', ');
+  if (!running || !worker || !(currentBuild?.uses ?? []).includes('accel')) return;
+  const key = values.join();
+  if (key === tiltSent) return;
+  tiltSent = key;
+  worker.postMessage({ type: 'sensor-values', readings: values.map((v, axis) =>
+    [0, SENSOR_CHAN_ACCEL_X + axis, Math.round(v * 1e6)]) });
+}
+let tiltXyzEl;
+function buildTilt() {
+  tiltGroup.innerHTML = '';
+  const part = document.createElement('div');
+  part.className = 'part';
+  const pad = document.createElement('div');
+  pad.className = 'tilt';
+  pad.title = 'accel0: drag to tilt the board, double-click to level it';
+  const dot = document.createElement('div');
+  dot.className = 'dot';
+  pad.append(dot);
+  const name = document.createElement('small');
+  name.textContent = 'Tilt';
+  tiltXyzEl = document.createElement('small');
+  tiltXyzEl.className = 'xyz';
+  part.append(pad, name, tiltXyzEl);
+  tiltGroup.append(part);
+  const place = () => {
+    dot.style.left = `${50 + tilt.x * 50}%`;
+    dot.style.top = `${50 - tilt.y * 50}%`;
+    sendTilt();
+  };
+  const move = (e) => {
+    const r = pad.getBoundingClientRect();
+    let x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    let y = -(((e.clientY - r.top) / r.height) * 2 - 1);
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    tilt = { x, y };
+    place();
+  };
+  pad.addEventListener('pointerdown', (e) => { pad.setPointerCapture(e.pointerId); move(e); });
+  pad.addEventListener('pointermove', (e) => { if (pad.hasPointerCapture(e.pointerId)) move(e); });
+  pad.addEventListener('dblclick', () => { tilt = { x: 0, y: 0 }; place(); });
+  place();
 }
 
 function showLeds(values) {
@@ -676,7 +759,8 @@ function showSelected() {
   const uses = build.uses ?? [];
   ledGroup.hidden = !uses.includes('leds');
   buttonGroup.hidden = !uses.includes('buttons');
-  boardEl.hidden = ledGroup.hidden && buttonGroup.hidden;
+  tiltGroup.hidden = !uses.includes('accel');
+  boardEl.hidden = ledGroup.hidden && buttonGroup.hidden && tiltGroup.hidden;
   eraseFlashEl.hidden = !uses.includes('flash');
   screenEl.hidden = !build.display;
   /* Pace is worth changing for a build that runs by itself; one that waits
@@ -793,6 +877,10 @@ async function start() {
     timeScale: paced ? Number(speedEl.value) : 1,
     flashImage,
   });
+  /* The board starts as the tilt pad has it: level, unless someone tilted
+   * it. An emulated chip that nobody set would read no gravity at all. */
+  tiltSent = null;
+  sendTilt();
   /* Focus goes where the build takes its input from. */
   if (build.display && interactive) screenEl.focus();
   else if (terminal) xterm.focus();
