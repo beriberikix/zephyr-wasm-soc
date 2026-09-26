@@ -25,9 +25,9 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "filtered_entries": 84,
-    "runnable_entries": 146,
-    "runnable_apps": 92
+    "filtered_entries": 73,
+    "runnable_entries": 157,
+    "runnable_apps": 95
   },
   "samples": [
     {
@@ -168,16 +168,18 @@
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
       "entry": "sample.cpp.synchronization",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/kernel/libkernel.a(init.c.obj): undefined symbol: __zephyr_init_array_start"
+      "status": "does-not-finish",
+      "cause": "d8b",
+      "detail": "RuntimeError: null function or function signature mismatch",
+      "note": "D8b: coop_thread_entry is declared void f(void) and cast to k_thread_entry_t. Until picolibc, the link stopped earlier on __zephyr_init_array_start; the port now runs C++ constructors, and 'Create semaphore' prints before the trap."
     },
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
       "entry": "sample.cpp.synchronization.picolibc",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_PICOLIBC_SUPPORTED"
+      "status": "does-not-finish",
+      "cause": "d8b",
+      "detail": "RuntimeError: null function or function signature mismatch",
+      "note": "D8b, as sample.cpp.synchronization: the same thread entry, now built against picolibc."
     },
     {
       "path": "zephyr/samples/cpp/hello_world",
@@ -515,8 +517,9 @@
       "path": "zephyr/samples/modules/cmsis_dsp/moving_average",
       "entry": "sample.modules.cmsis_dsp.moving_average",
       "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "cause": "module-missing",
+      "detail": "'arm_math.h' file not found",
+      "note": "Needs the cmsis-dsp module, which is not imported."
     },
     {
       "path": "zephyr/samples/modules/lvgl/accelerometer_chart",
@@ -583,9 +586,10 @@
     {
       "path": "zephyr/samples/modules/tflite-micro/hello_world",
       "entry": "sample.tensorflow.helloworld",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "'tensorflow/lite/micro/micro_mutable_op_resolver.h' file not found",
+      "note": "Needs the tflite-micro module, which is not imported, and a full C++ library (REQUIRES_FULL_LIBCPP), which this toolchain does not have for wasm32."
     },
     {
       "path": "zephyr/samples/net/dhcpv4_client",
@@ -1041,58 +1045,66 @@
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred_cpp",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "static assertion expression is not an integral constant expression",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate_cpp",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred_cpp",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "static assertion expression is not an integral constant expression",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate_cpp",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address",
+      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion."
     },
     {
       "path": "zephyr/samples/subsys/mgmt/mcumgr/smp_svr",
@@ -1164,30 +1176,28 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/env",
       "entry": "sample.posix.env",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "passes",
+      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides."
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/eventfd",
       "entry": "sample.posix.eventfd",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "CONFIG_FULL_LIBC_SUPPORTED and not CONFIG_NATIVE_LIBC"
+      "status": "build-fails",
+      "cause": "link",
+      "detail": "zephyr/subsys/net/ip/libsubsys__net__ip.a(net_if.c.obj): undefined symbol: _net_if_list_start",
+      "note": "Builds against picolibc now; stops at the link on _net_if_list_start, a section bound spelled by hand in the network stack."
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/philosophers",
       "entry": "sample.posix.philosopher",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "passes",
+      "note": "Passes with picolibc. Needed a dynamic-thread stack of at least PTHREAD_STACK_MIN, which on wasm is the Asyncify buffer every stack reserves; the arch now defaults DYNAMIC_THREAD_STACK_SIZE to it."
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/uname",
       "entry": "sample.posix.uname",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "passes",
+      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides."
     },
     {
       "path": "zephyr/samples/subsys/rtio/producer_consumer",
@@ -1247,7 +1257,8 @@
       "entry": "sample.testing.ztest.benchmark",
       "status": "build-fails",
       "cause": "other",
-      "detail": "'string.h' file not found"
+      "detail": "\"Unsupported architecture for pure assembly benchmark\"",
+      "note": "Wants a per-architecture assembly benchmark, which wasm has no way to write."
     },
     {
       "path": "zephyr/samples/subsys/testsuite/integration",
@@ -1532,5 +1543,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 38
+  "score": 41
 }

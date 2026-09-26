@@ -97,6 +97,13 @@ config WASM_IRQ_LINES
 config COMMON_LIBC_MALLOC_ARENA_SIZE
 	default 16384 if !MINIMAL_LIBC
 
+# PTHREAD_STACK_MIN is K_KERNEL_STACK_LEN(0), which here is the Asyncify
+# buffer every stack reserves, so the kernel's default of 1024 for a
+# dynamically allocated stack makes pthread_create() refuse every thread.
+# x86 has the same default for a similar reason.
+config DYNAMIC_THREAD_STACK_SIZE
+	default WASM_ASYNCIFY_BUFFER_SIZE
+
 endmenu
 
 endif # WASM

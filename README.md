@@ -7,7 +7,8 @@ boot the kernel, run its test suite, or type into the Zephyr shell. Nothing to
 install.
 
 This is not native_sim built with a Wasm toolchain. The kernel runs
-freestanding in a single `wasm32` linear memory, using Zephyr's own libc and
+freestanding in a single `wasm32` linear memory, using Zephyr's own libc (or
+picolibc, built from source, for a sample that asks for a full C library) and
 scheduler. The host plays the part of a SoC: instead of memory-mapped
 registers it provides a handful of imported functions, and it owns the clock.
 
@@ -48,8 +49,11 @@ log, including what did not work. `BRIEF.md` is the original task.
 * A display drawn on the page, and touch and keys into the input subsystem.
   LVGL runs unmodified: all seven of its demo entries pass, and the widgets
   demo on the page responds to touch.
-* 38 upstream samples pass their own twister criterion, unmodified, out of
-  the 92 that twister itself would run on this board. Among them the
+* Picolibc, for samples that need a full C library, and C++ static
+  constructors. The POSIX `env`, `uname` and `philosophers` samples run
+  unmodified on it.
+* 41 upstream samples pass their own twister criterion, unmodified, out of
+  the 95 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
   which is on the page as something to type events into.
@@ -120,13 +124,15 @@ west update
 zephyr-wasm/scripts/apply_patches.sh
 ```
 
-`west update` also fetches the two file-system modules, FatFs and littlefs,
-and nothing else: `west.yml` imports them from Zephyr's manifest by name.
+`west update` also fetches the modules the samples here use, and nothing
+else: FatFs and littlefs, LVGL and picolibc. `west.yml` imports them from
+Zephyr's manifest by name.
 
 The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; most of them are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
-or assume a linker script exists.
+or assume a linker script exists. One more, under `patches/picolibc/`, is to
+picolibc.
 
 ## Building and running
 
@@ -315,7 +321,7 @@ under wasmtime. The kernel is the same module in all three.
 ## Continuous integration
 
 `.github/workflows/pages.yml` starts from a bare Ubuntu runner, installs the
-toolchain, clones Zephyr, applies the seven patches, builds everything
+toolchain, clones Zephyr, applies the patches, builds everything
 `scripts/apps.json` names, runs each one and checks it printed what that file
 says it should, checks two runs are byte-identical, runs the page itself in
 Chromium, and only then publishes. It is the reproducibility check for
@@ -368,7 +374,7 @@ spikes/               the Milestone 0 experiments, each with a run.sh
 tests/two_threads/    a minimal two-thread reproducer
 tests/timeslice/      two spinners that only run if preemption works
 tests/safepoint_cost/ fixed compute, for measuring what safepoints cost
-patches/              the seven Zephyr changes, each explained
+patches/              the seven Zephyr changes and one to picolibc, each explained
 .github/workflows/    builds from scratch and publishes the demo
 ```
 
@@ -385,7 +391,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 41 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 44 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

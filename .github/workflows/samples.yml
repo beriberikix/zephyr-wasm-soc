@@ -68,7 +68,7 @@ jobs:
           # twister's own parser, which needs ply.
           pip install --break-system-packages ply
 
-      - name: Apply the patches to Zephyr
+      - name: Apply the patches to Zephyr and picolibc
         run: ./zephyr-wasm/scripts/apply_patches.sh
 
       # One at a time: building several at once has raced on a generated

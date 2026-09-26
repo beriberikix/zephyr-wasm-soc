@@ -10,7 +10,8 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **41**, of which 38 check more than a start-up banner.
+today: **44**. 41 pass upstream's own criterion, and three more are counted
+from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
 `tests.yaml` under `zephyr/samples`, keeps the entries that could plausibly run
@@ -21,22 +22,23 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky` and `basic/button`: upstream only builds those two, because
-twister has no way to watch an LED or press a button.
+adds `basic/blinky`, `basic/button` and `input/draw_touch_events`: upstream
+gives those no criterion twister can run, because it has no way to watch an
+LED or press a button or a screen, so the demo's own checks judge them.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 84 | |
-| **Runnable: what twister itself would run here** | **146** | **92** |
-| Pass upstream's own criterion | 61 | 38 |
+| Filtered out by upstream's own twister filter | 73 | |
+| **Runnable: what twister itself would run here** | **157** | **95** |
+| Pass upstream's own criterion | 64 | 41 |
 | Build, but upstream only builds them | 9 | |
 | Run, with no criterion upstream | 3 | |
 | Run and fail their criterion | 1 | |
-| Do not finish | 22 | |
-| Do not build | 50 | |
+| Do not finish | 24 | |
+| Do not build | 56 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -45,10 +47,14 @@ the summary of `samples.json`:
 - 267 use a harness that needs a peer or a person (networking, Bluetooth,
   sensors, keyboards and so on).
 
-Of the plausible ones, 85 carry a twister `filter:` that is false here:
+Of the plausible ones, 73 carry a twister `filter:` that is false here:
 - `dt_alias_exists("accel0")`, a chosen display or flash controller;
-- `CONFIG_ARCH_HAS_USERSPACE`, `CONFIG_FULL_LIBC_SUPPORTED`;
+- `CONFIG_ARCH_HAS_USERSPACE`;
 - `TOOLCHAIN_HAS_NEWLIB`.
+
+There were 84 until picolibc. `CONFIG_FULL_LIBC_SUPPORTED` and
+`CONFIG_PICOLIBC_SUPPORTED` are true now, so eleven entries twister used to
+skip here are now run, and judged.
 
 Twister evaluates that after CMake and never runs such an entry on the board.
 `check_samples.py` evaluates the same expression with twister's own parser,
@@ -68,23 +74,25 @@ cause is in `samples.json`):
 
 | Cause | entries | what it is |
 |---|---:|---|
-| Wasm's indirect-call check | 21 | 9 applications, 7 of them zbus; D8b, below |
+| Wasm's indirect-call check | 23 | 10 applications, 7 of them zbus; D8b, below |
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
+| Other build errors | 19 | `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` needs an SoC P-state API; `llext` wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly |
 | No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
-| Other build errors | 7 | the `cpu_freq` samples need an SoC P-state API; `llext` wants an ELF toolchain; `debug.fuzz` wants native_sim's `irq_ctrl.h` |
-| No C library headers | 7 | C++ and a few others need a libc with `string.h`; only the minimal one is here |
-| Link | 4 | `__zephyr_init_array_start` (C++ constructors), `_net_if_list_start` (a section bound spelled by hand), `get_bootargs` |
+| Link | 4 | `_net_if_list_start` twice (a section bound spelled by hand), `get_bootargs`, `uuid_generate_v5` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
+| Module not imported | 1 | `cmsis_dsp` |
 | Fails its regex | 1 | `power.latency` |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
 Wasm type-checks indirect calls, and before the sweep nobody knew what that
-cost. It costs nine applications:
+cost. It costs ten applications:
 - `basic/threads`;
 - seven zbus samples (`hello_world`, `benchmark`, `confirmed_channel`,
   `dyn_channel`, `msg_subscriber`, `runtime_obs_registration`, `work_queue`);
-- `cmsis_rtos_v1/philosophers`.
+- `cmsis_rtos_v1/philosophers`;
+- `cpp/cpp_synchronization`, which got as far as this once the port ran C++
+  constructors.
 
 In all but the last, a thread entry is declared `void f(void)` (or
 `void f(void *)`) and handed to `K_THREAD_DEFINE`. In the last, the bug is not
@@ -94,7 +102,7 @@ in the sample at all but in Zephyr's `zephyr_thread_wrapper`, which calls a
 Each is a one-line fix upstream, and each is undefined behaviour on every
 target. Correcting zbus/hello_world's one signature makes it run in full here.
 That makes the upstream signature fixes the most valuable next step for the
-score: nine applications for about a dozen lines.
+score: ten applications for about a dozen lines.
 
 The zbus seven were first recorded as a section-ordering bug. V8 reports a
 null function pointer and a wrong signature with the same message, and
@@ -122,19 +130,23 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 41. Phases 5 to 7 have not started.
+score went from 3 to 44. Phases 5 to 7 have not started.
 
 What comes next, in order, and why:
-1. **A C library spike** (below, "Two levers"). Up to ten applications, all
-   of it in this port's hands.
-2. **The D8b fixes, proposed upstream.** Nine applications, `basic/threads`
+1. **The D8b fixes, proposed upstream.** Ten applications, `basic/threads`
    among them, for about a dozen lines, once Zephyr takes them.
-3. **Phase 5, sensors**, before networking: eight samples are filtered out
+2. **Phase 5, sensors**, before networking: eight samples are filtered out
    only for want of a part upstream already emulates, and one of them puts a
    live chart on the page.
-4. **The Phase 6 loopback spike**, the cheapest evidence on whether the IP
+3. **The Phase 6 loopback spike**, the cheapest evidence on whether the IP
    stack survives this port.
-5. **The first lesson**, with "which thread is waiting on what" before it.
+4. **The first lesson**, with "which thread is waiting on what" before it.
+5. **A C++ standard library**, now that picolibc builds (below, "Two
+   levers"). Last, because it waits on two applications, one of which also
+   needs a module.
+
+The C library spike that was first on this list is done: picolibc builds,
+three more samples pass, and C++ constructors run (below, "Two levers").
 
 ## Phase 0 — foundations
 
@@ -214,8 +226,9 @@ the kernel, so this comes first.
 Unknowns that Phase 0 was expected to turn up:
 - **The heap** works: `basic/sys_heap` passes, and so does
   `tests/kernel/mem_heap/k_heap_api`.
-- **`%f` in `printk`** is still untested. `CONFIG_CBPRINTF_FP_SUPPORT` is off
-  and the minimal libc is the only libc here; see "A full C library" below.
+- **`%f` works.** With `CONFIG_CBPRINTF_FP_SUPPORT`, `printf` and `printk`
+  both format floats under the minimal libc, and picolibc's own `printf`
+  does too.
 - **`CONFIG_MULTITHREADING=n`** is still untested. The `basic/minimal`
   variants that set it are x86-only upstream and refuse this board in
   Kconfig, so the sweep never reached it.
@@ -410,18 +423,48 @@ interrupt-driven UART possible, and that has to come first.
 The sweep's record of what does not pass says where the next samples are,
 and the two largest groups are not in any phase.
 
-- [ ] **A full C library.** 20 entries in 10 applications either carry a
-      twister filter on `CONFIG_FULL_LIBC_SUPPORTED`, newlib or picolibc, or
-      fail to build for want of `string.h`: both C++ samples, four POSIX
-      samples (`env`, `eventfd`, `philosophers`, `uname`),
-      `logging/syst`, `testsuite/benchmark`, `cmsis_dsp/moving_average` and
-      `tflite-micro/hello_world`. The minimal libc is the only one here.
-      Picolibc is what Zephyr builds from source as a module, so the question
-      is whether it builds for wasm32 with clang; `setjmp`/`longjmp`, which
-      picolibc implements per architecture in assembly, is the likely snag.
-      A spike first. This is the largest lever that is entirely in this
-      port's hands, and it would also answer `%f`.
-- [ ] **Propose the D8b signature fixes upstream.** 21 entries in 9
+- [x] **A full C library.** Picolibc now builds from its module for wasm32,
+      and a sample that asks for it gets it. Three samples pass that could
+      not before: POSIX `env`, `uname` and `philosophers`. Four changes in
+      the port and one patch to picolibc:
+      - wasm is little-endian, which picolibc's `<machine/ieeefp.h>` cannot
+        work out for wasm32 without being told;
+      - the wasm-ld link puts picolibc's `libc.a` last, as lld does;
+      - `malloc` gets a fixed 16 KB arena, native_sim's answer to having no
+        linker script to define `_end`;
+      - the arch provides the three 128-bit helpers clang calls and nothing
+        here supplied (`__multi3`, `__ashlti3`, `__lshrti3`), because there
+        is no compiler-rt for wasm32;
+      - `patches/picolibc/0001` leaves out a `.fini_array` entry the wasm
+        backend refuses. Zephyr never runs that array on any target.
+
+      `setjmp`/`longjmp` was the expected snag and never came up: nothing
+      tried needed it.
+
+      Two more changes came out of the same samples:
+      - C++ static constructors now run. wasm-ld collects them into
+        `__wasm_call_ctors()`, and the kernel's init list now calls it at
+        the same point in boot as on every other target. Before this, no
+        constructor ran, in C or C++.
+      - A dynamically allocated thread stack defaults to the Asyncify
+        buffer's size, 4 KB. `PTHREAD_STACK_MIN` is that size on wasm, so
+        the kernel's default of 1024 made `pthread_create()` refuse every
+        thread.
+
+      Of the ten applications picolibc was expected to help, the rest need
+      something else first:
+      - `cpp/cpp_synchronization` now reaches D8b;
+      - `cpp/hello_world` and `tflite-micro` need a full C++ standard
+        library, which this toolchain does not have for wasm32;
+      - `logging/syst` needs the mipi-sys-t module, and then
+        `__builtin_return_address`, which clang does not implement for wasm;
+      - `cmsis_dsp` needs its module;
+      - POSIX `eventfd` stops at the link on `_net_if_list_start`;
+      - the ztest benchmark wants per-architecture assembly.
+- [ ] **A C++ standard library.** `cpp/hello_world` and anything else that
+      sets `REQUIRES_FULL_LIBCPP` needs libc++ or libstdc++ built for
+      wasm32. Picolibc was the prerequisite for that, and it is done.
+- [ ] **Propose the D8b signature fixes upstream.** 23 entries in 10
       applications trap on wasm's indirect-call check, plus
       `tests/kernel/mutex/mutex_api` and `tests/kernel/pending`. Each fix is a
       thread entry given the signature it should have had, about a dozen
@@ -435,7 +478,7 @@ and the two largest groups are not in any phase.
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 41. Nothing yet answers the second. The page runs samples; it does not
+to 44. Nothing yet answers the second. The page runs samples; it does not
 teach with them, and nobody learning Zephyr has tried it.
 
 - [ ] **One lesson**, to find out what a lesson needs. `philosophers` is the
@@ -467,7 +510,7 @@ type-checks indirect calls, so upstream code that casts a thread entry to
 `k_thread_entry_t` traps where every other target shrugs. That is not
 fixable here and not worth working around: the honest answer is to fix those
 entry points upstream, where the cast is undefined behaviour anyway. The
-samples sweep measured the edge: nine upstream applications. See "Propose
+samples sweep measured the edge: ten upstream applications. See "Propose
 the D8b signature fixes upstream", above.
 
 **Iterable sections have an order, and some code depends on it.** Upstream
@@ -486,8 +529,8 @@ could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk, and so far it has held up better than feared:
-after four phases, 41 samples, three file systems and LVGL there are still
-seven patches. Its real failures were archive members whose names collided
+after four phases, 44 samples, three file systems and LVGL there are still
+seven patches to Zephyr, and one to picolibc. Its real failures were archive members whose names collided
 and sections in the wrong order, both fixed and both now checked at every
 link. Two of its failure modes
 are quiet: a list that reads empty produces no error, just a subsystem that
