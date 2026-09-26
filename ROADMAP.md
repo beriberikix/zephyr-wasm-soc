@@ -34,11 +34,11 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | Filtered out by upstream's own twister filter | 66 | |
 | **Runnable: what twister itself would run here** | **164** | **102** |
 | Pass upstream's own criterion | 66 | 43 |
-| Build, but upstream only builds them | 11 | |
+| Build, but upstream only builds them | 12 | |
 | Run, with no criterion upstream | 4 | |
-| Run and fail their criterion | 2 | |
+| Run and fail their criterion | 3 | |
 | Do not finish | 24 | |
-| Do not build | 57 | |
+| Do not build | 55 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -80,10 +80,10 @@ cause is in `samples.json`):
 | Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
 | Other build errors | 20 | `smf_calculator` calls `strtod`, which the minimal libc lacks; `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` needs an SoC P-state API; `llext` wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly |
 | No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
-| Link | 4 | `_net_if_list_start` twice (a section bound spelled by hand), `get_bootargs`, `uuid_generate_v5` |
+| Link | 2 | `get_bootargs`, `uuid_generate_v5` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
 | Module not imported | 1 | `cmsis_dsp` |
-| Fails its regex | 2 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5) |
+| Fails its regex | 3 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5); `posix/eventfd`, which prints nothing after the banner (not diagnosed) |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
@@ -143,8 +143,8 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **The Phase 6 loopback spike**, the cheapest evidence on whether the IP
-   stack survives this port.
+3. **mbedTLS**, now that the loopback spike shows the IP stack works: TLS,
+   DTLS and the IPv6 suite wait on it.
 4. **The first lesson**, with "which thread is waiting on what" before it.
 5. **A C++ standard library**, now that picolibc builds (below, "Two
    levers"). Last, because it waits on two applications, one of which also
@@ -438,14 +438,48 @@ What happened to each:
 
 ## Phase 6 — networking
 
-Add a step before the issue's first one: `CONFIG_NET_LOOPBACK` exercises the
-whole IP stack, sockets included, with no host work at all. It is the cheapest
-possible test of whether the networking subsystem survives this port, and it
-should come before any virtual L2 between instances.
+- [x] **The loopback spike: the IP stack works.** Zephyr's own network test
+      suites need no peer: they run over the loopback interface, or over
+      dummy interfaces they define themselves. `scripts/net_tests.json`
+      records all 139 suites under `tests/net`, and
+      `check_kernel.py --list scripts/net_tests.json` re-runs them.
+      **102 pass, 1,144 test cases in all**, with no network code changed.
+      That includes:
+      - UDP and TCP sockets, `poll`, `select`, `socketpair`, raw and packet
+        sockets;
+      - IPv4 and IPv6, fragmentation, routing, ARP, ICMP, MLD, IGMP;
+      - DHCPv4 and v6, DNS, mDNS, LLMNR;
+      - CoAP, MQTT, MQTT-SN, the HTTP server, LwM2M content formats,
+        Prometheus.
 
-The sweep has not touched networking: 106 entries use twister's `net`
-harness, which needs a peer, so none was tried. The loopback spike is the
-first evidence either way.
+      One port bug stood in the way. The network stack declares its
+      interface list's bounds by hand, under the names every ELF linker
+      script defines, and the section generator had defined only the port's
+      own names. Nothing that used the stack linked. `DESIGN.md` D6.
+
+      Of the other 37:
+      - 17 are refused by Kconfig, every one of them for want of mbedTLS or
+        PSA crypto: all the TLS suites, and IPv6, whose privacy extensions
+        select PSA. Two more need mbedTLS headers.
+      - 4 trap on an indirect call: `conn_mgr_conn`, the LwM2M RD client and
+        two PTP suites. D8b is the first suspect; none is diagnosed yet.
+      - 4 finish with failures: `icmp`, `virtual`, `rtp/loopback`, zperf.
+      - 3 need something else not here: two a full libc they do not ask for
+        (`ssize_t`, `strcasecmp`), and one the zcbor module.
+      - 1 tests native_sim's offloaded sockets, which exist only there.
+      - The last 6 do not finish or do not build for reasons not yet looked
+        at. Each has a note in the record.
+- [ ] **mbedTLS.** Importing it, as picolibc was imported, is the next lever:
+      TLS, DTLS and the IPv6 suite all wait on it.
+- [ ] **Several instances in one page, with a virtual L2 between them.**
+      The spike says the stack above the link layer works, so this is now
+      the host's job: an Ethernet or IEEE 802.15.4 driver whose frames go to
+      another instance's Worker instead of a wire.
+- [ ] Optionally a WebSocket or WebTransport uplink to the real network.
+
+The sweep counts samples, and networking's samples are nearly all `net`
+harness: they need a peer, so none counts yet. The virtual L2 is what gives
+them one.
 
 ## Phase 7 — Bluetooth
 

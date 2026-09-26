@@ -56,6 +56,10 @@ log, including what did not work. `BRIEF.md` is the original task.
   chips on upstream's emulated I2C bus, read by the real drivers. The page
   has a Tilt pad that sets what the accelerometer reads, and
   `samples/sensor/accel_polling` shows gravity move as the board is tilted.
+* Networking: Zephyr's IP stack over loopback, sockets included. 102 of the
+  139 network test suites pass, 1,144 cases: UDP, TCP, IPv4, IPv6, DHCP,
+  DNS, CoAP, MQTT, the HTTP server and more. `scripts/net_tests.json`
+  records every suite.
 * 43 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus

@@ -319,9 +319,9 @@
     {
       "path": "zephyr/samples/drivers/ethernet/eth_ivshmem",
       "entry": "sample.drivers.ethernet.eth_ivshmem",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/subsys/net/ip/libsubsys__net__ip.a(net_if.c.obj): undefined symbol: _net_if_list_start"
+      "status": "builds",
+      "cause": "build_only upstream",
+      "note": "Builds now that the section generator defines _net_if_list_start/_end; upstream only builds it."
     },
     {
       "path": "zephyr/samples/drivers/firmware/scmi",
@@ -1178,10 +1178,9 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/eventfd",
       "entry": "sample.posix.eventfd",
-      "status": "build-fails",
-      "cause": "link",
-      "detail": "zephyr/subsys/net/ip/libsubsys__net__ip.a(net_if.c.obj): undefined symbol: _net_if_list_start",
-      "note": "Builds against picolibc now; stops at the link on _net_if_list_start, a section bound spelled by hand in the network stack."
+      "note": "Links now that the section generator defines _net_if_list_start/_end. Then prints nothing after the boot banner, and main is gone within six context switches. Not diagnosed.",
+      "status": "fails",
+      "cause": "regex-mismatch"
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/philosophers",

@@ -16,559 +16,714 @@
   "suites": [
     {
       "path": "6lo",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "all",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "arp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "bridge",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "checksum_offload",
-      "status": "untried"
+      "status": "passes",
+      "passes": 32
     },
     {
       "path": "conn_mgr_conn",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 36,
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "conn_mgr_monitor",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "conn_mgr_nsos",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 0,
+      "note": "Kernel panic before any case. It tests the native-sim offloaded sockets (NSOS), which exist only on native_sim."
     },
     {
       "path": "context",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "dhcpv4/client",
-      "status": "untried"
+      "status": "passes",
+      "passes": 5
     },
     {
       "path": "dhcpv4/server",
-      "status": "untried"
+      "status": "passes",
+      "passes": 13
     },
     {
       "path": "dhcpv6",
-      "status": "untried"
+      "status": "passes",
+      "passes": 19
     },
     {
       "path": "ethernet_mgmt",
-      "status": "untried"
+      "status": "passes",
+      "passes": 6
     },
     {
       "path": "hostname",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "icmp",
-      "status": "untried"
+      "status": "fails",
+      "passes": 2,
+      "failures": 2,
+      "note": "Finishes with failures. Not yet diagnosed."
     },
     {
       "path": "icmpv4",
-      "status": "untried"
+      "status": "passes",
+      "passes": 3
     },
     {
       "path": "icmpv6",
-      "status": "untried"
+      "status": "passes",
+      "passes": 3
     },
     {
       "path": "ieee802154/6lo_fragment",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "ieee802154/custom_l2",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "ieee802154/l2",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "iface",
-      "status": "untried"
+      "status": "passes",
+      "passes": 24
     },
     {
       "path": "iface_with_mld",
-      "status": "untried"
+      "status": "passes",
+      "passes": 3
     },
     {
       "path": "igmp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "ip-addr",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "ipv4_fragment",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "ipv4_nat",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "ipv6",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "ipv6_fragment",
-      "status": "untried"
+      "status": "passes",
+      "passes": 12
     },
     {
       "path": "ipv6_nbr_cache_clear",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "ipv6_unsolicited_na",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "lib/coap",
-      "status": "untried"
+      "status": "passes",
+      "passes": 36
     },
     {
       "path": "lib/coap_client",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Built against the minimal libc, which lacks it (unknown type name 'ssize_t'; did you mea); the suite does not ask for a full libc."
     },
     {
       "path": "lib/coap_oscore",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "lib/coap_server/common",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/dns_addremove",
-      "status": "untried"
+      "status": "passes",
+      "passes": 6
     },
     {
       "path": "lib/dns_cache",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "lib/dns_dispatcher",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "lib/dns_packet",
-      "status": "untried"
+      "status": "passes",
+      "passes": 14
     },
     {
       "path": "lib/dns_resolve",
-      "status": "untried"
+      "status": "passes",
+      "passes": 29
     },
     {
       "path": "lib/dns_sd",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "lib/http_client",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Built against the minimal libc, which lacks it (call to undeclared function 'strcasecmp'); the suite does not ask for a full libc."
     },
     {
       "path": "lib/http_header_fields",
-      "status": "untried"
+      "status": "passes",
+      "passes": 5
     },
     {
       "path": "lib/http_server/common",
-      "status": "untried"
+      "status": "passes",
+      "passes": 11
     },
     {
       "path": "lib/http_server/core",
-      "status": "untried"
+      "status": "passes",
+      "passes": 72
     },
     {
       "path": "lib/http_server/crime",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/http_server/h3",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/http_server/hpack",
-      "status": "untried"
+      "status": "passes",
+      "passes": 11
     },
     {
       "path": "lib/http_server/tls",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/llmnr_responder",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/lwm2m/block_transfer",
-      "status": "untried"
+      "status": "passes",
+      "passes": 54
     },
     {
       "path": "lib/lwm2m/content_json",
-      "status": "untried"
+      "status": "passes",
+      "passes": 29
     },
     {
       "path": "lib/lwm2m/content_link_format",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "lib/lwm2m/content_oma_tlv",
-      "status": "untried"
+      "status": "passes",
+      "passes": 34
     },
     {
       "path": "lib/lwm2m/content_plain_text",
-      "status": "untried"
+      "status": "passes",
+      "passes": 29
     },
     {
       "path": "lib/lwm2m/content_raw_cbor",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Link: cbor_writer is from the zcbor module, which is not imported."
     },
     {
       "path": "lib/lwm2m/content_senml_cbor",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Compile error: incomplete type 'struct lwm2m_cache_read_info'. Not yet diagnosed."
     },
     {
       "path": "lib/lwm2m/interop",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/lwm2m/lwm2m_engine",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Needs mbedTLS headers ('mbedtls/ssl_ciphersuites.h'); the module is not imported."
     },
     {
       "path": "lib/lwm2m/lwm2m_rd_client",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 0,
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "lib/lwm2m/lwm2m_registry",
-      "status": "untried"
+      "status": "passes",
+      "passes": 20
     },
     {
       "path": "lib/lwm2m/observation",
-      "status": "untried"
+      "status": "passes",
+      "passes": 11
     },
     {
       "path": "lib/mcp",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 2,
+      "note": "exit 1. Not yet diagnosed."
     },
     {
       "path": "lib/mdns_responder",
-      "status": "untried"
+      "status": "passes",
+      "passes": 12
     },
     {
       "path": "lib/mqtt/v3_1_1/mqtt_client",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "lib/mqtt/v3_1_1/mqtt_packet",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/mqtt/v5_0/mqtt_packet",
-      "status": "untried"
+      "status": "passes",
+      "passes": 13
     },
     {
       "path": "lib/mqtt_sn_client",
-      "status": "untried"
+      "status": "passes",
+      "passes": 16
     },
     {
       "path": "lib/mqtt_sn_packet",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "lib/ocpp",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/prometheus/collector",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/prometheus/counter",
-      "status": "untried"
+      "status": "passes",
+      "passes": 3
     },
     {
       "path": "lib/prometheus/formatter",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/prometheus/gauge",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/prometheus/histogram",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/prometheus/summary",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/quic",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/ssh/ssh_pkt",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "lib/ssh/ssh_server",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/tls_credentials",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/wifi_credentials",
-      "status": "untried"
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "lib/wifi_credentials_backend_psa",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Needs PSA crypto headers; the mbedtls module is not imported."
     },
     {
       "path": "lib/wifi_credentials_backend_settings",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Compile error: an initializer that is not a compile-time constant. Not yet diagnosed."
     },
     {
       "path": "lib/wireguard",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "lib/zperf",
-      "status": "untried"
+      "status": "fails",
+      "passes": 3,
+      "failures": 1,
+      "note": "Finishes with failures. Not yet diagnosed."
     },
     {
       "path": "mgmt",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "mld",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "neighbor",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "net_pkt",
-      "status": "untried"
+      "status": "passes",
+      "passes": 16
     },
     {
       "path": "npf",
-      "status": "untried"
+      "status": "passes",
+      "passes": 7
     },
     {
       "path": "offloaded_netdev",
-      "status": "untried"
+      "status": "passes",
+      "passes": 10
     },
     {
       "path": "pm",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "pmtu",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Build fails late (in the link or post-link steps). Not yet diagnosed."
     },
     {
       "path": "ppp/driver",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "promiscuous",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "ptp/btca_state_machine",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 7,
+      "note": "Traps on an out-of-bounds memory access after 7 cases. Not yet diagnosed."
     },
     {
       "path": "ptp/clock",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "ptp/clock_decision",
-      "status": "untried"
+      "status": "passes",
+      "passes": 8
     },
     {
       "path": "ptp/clock_wakeup",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 3,
+      "note": "exit 1. Not yet diagnosed."
     },
     {
       "path": "ptp/foreign_master",
-      "status": "untried"
+      "status": "passes",
+      "passes": 16
     },
     {
       "path": "ptp/msg_parse",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "ptp/msg_post_recv",
-      "status": "untried"
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "ptp/port_events",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 2,
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "ptp/state_matrix",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "ptp/transport_retry",
-      "status": "untried"
+      "status": "does-not-finish",
+      "passes": 0,
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "route/ipv4",
-      "status": "untried"
+      "status": "passes",
+      "passes": 0
     },
     {
       "path": "route/ipv6",
-      "status": "untried"
+      "status": "passes",
+      "passes": 0
     },
     {
       "path": "route_mcast",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "rtp/loopback",
-      "status": "untried"
+      "status": "fails",
+      "passes": 0,
+      "failures": 2,
+      "note": "Finishes with failures. Not yet diagnosed."
     },
     {
       "path": "shell",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "socket/af_inet_raw",
-      "status": "untried"
+      "status": "passes",
+      "passes": 32
     },
     {
       "path": "socket/af_packet",
-      "status": "untried"
+      "status": "passes",
+      "passes": 39
     },
     {
       "path": "socket/can",
-      "status": "untried"
+      "status": "passes",
+      "passes": 4
     },
     {
       "path": "socket/getaddrinfo",
-      "status": "untried"
+      "status": "passes",
+      "passes": 10
     },
     {
       "path": "socket/getnameinfo",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "socket/misc",
-      "status": "untried"
+      "status": "passes",
+      "passes": 12
     },
     {
       "path": "socket/net_mgmt",
-      "status": "untried"
+      "status": "passes",
+      "passes": 13
     },
     {
       "path": "socket/offload_dispatcher",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "socket/poll",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "socket/register",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "socket/reuseaddr_reuseport",
-      "status": "untried"
+      "status": "passes",
+      "passes": 42
     },
     {
       "path": "socket/select",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     },
     {
       "path": "socket/service",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "socket/socketpair",
-      "status": "untried"
+      "status": "passes",
+      "passes": 20
     },
     {
       "path": "socket/tcp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 65
     },
     {
       "path": "socket/tls",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "socket/tls_configurations",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "socket/tls_ext",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "socket/udp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 36
     },
     {
       "path": "socket/websocket",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "tcp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 23
     },
     {
       "path": "traffic_class",
-      "status": "untried"
+      "status": "passes",
+      "passes": 11
     },
     {
       "path": "trickle",
-      "status": "untried"
+      "status": "passes",
+      "passes": 0
     },
     {
       "path": "tx_timestamp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "udp",
-      "status": "untried"
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "utils",
-      "status": "untried"
+      "status": "passes",
+      "passes": 39
     },
     {
       "path": "virtual",
-      "status": "untried"
+      "status": "fails",
+      "passes": 3,
+      "failures": 8,
+      "note": "Finishes with failures. Not yet diagnosed."
     },
     {
       "path": "vlan",
-      "status": "untried"
+      "status": "passes",
+      "passes": 6
     },
     {
       "path": "wifi/configs",
-      "status": "untried"
+      "status": "build-fails",
+      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
     },
     {
       "path": "wifi/wifi_nm",
-      "status": "untried"
+      "status": "passes",
+      "passes": 2
     }
   ]
 }
