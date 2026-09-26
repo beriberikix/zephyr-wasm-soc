@@ -187,10 +187,12 @@
     output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
     A build with a display takes clicks, drags and keys on the display itself.
     Pause the kernel and you can step it forward one stop at a time -- a
-    context switch, or waking from idle -- and back again. Builds that run
-    on their own in real time have a speed control, which changes how fast
-    they go and not what they do; builds that wait for you keep to your
-    time. Choosing another build stops the one running.
+    context switch, or waking from idle -- and back again. A build that just
+    runs to its end does so on a virtual clock, as fast as it can. One that
+    runs on its own in real time has a speed control, remembered for each
+    build, which changes how fast it goes and not what it does; one that
+    waits for you keeps to your time. Choosing another build stops the one
+    running.
   </p>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
@@ -656,6 +658,8 @@ function showSelected() {
   /* Pace is worth changing for a build that runs by itself; one that waits
    * for a person runs at the person's pace. */
   speedWrapEl.hidden = build.clock !== 'paced' || !!build.interactive;
+  speedWrapEl.title = 'How fast virtual time passes against the wall clock. It changes the pace, ' +
+    'not what happens, and is remembered for each build.';
   speedEl.value = speeds.get(build.name) ?? '1';
   statusEl.textContent = build.hint;
 }
@@ -701,12 +705,15 @@ async function start() {
   setRunning(true);
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
-  xterm.options.disableStdin = !interactive;
+  /* Waiting for a person is not the same as reading the keyboard: the
+   * touch and button samples wait for a finger, and type nothing. */
+  const terminal = (build.uses ?? []).includes('terminal');
+  xterm.options.disableStdin = !terminal;
   /* A cursor says "type here". Where nothing reads the keyboard it only
    * marks wherever the guest last wrote, which for the philosophers is the
    * middle of their table. Written to the screen, not to the log, and said
    * both ways, because xterm's reset leaves a hidden cursor hidden. */
-  xterm.write(interactive ? '\x1b[?25h' : '\x1b[?25l');
+  xterm.write(terminal ? '\x1b[?25h' : '\x1b[?25l');
 
   worker?.terminate();
   const w = new Worker('./worker.js', { type: 'module' });
@@ -762,7 +769,8 @@ async function start() {
     flashImage,
   });
   /* Focus goes where the build takes its input from. */
-  if (interactive) build.display ? screenEl.focus() : xterm.focus();
+  if (build.display && interactive) screenEl.focus();
+  else if (terminal) xterm.focus();
 }
 
 buildBoard();
@@ -781,8 +789,9 @@ stopEl.onclick = () => stopRun();
  * it from: the button took focus away from it. */
 clearEl.onclick = () => {
   term.clear();
-  if (running && currentBuild?.interactive) {
-    currentBuild.display ? screenEl.focus() : xterm.focus();
+  if (running && currentBuild?.display && currentBuild.interactive) screenEl.focus();
+  else if (running && (currentBuild?.uses ?? []).includes('terminal')) {
+    xterm.focus();
   }
 };
 eraseFlashEl.onclick = async () => {
