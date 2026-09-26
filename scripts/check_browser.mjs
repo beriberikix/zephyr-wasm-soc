@@ -675,6 +675,32 @@ const pageChecks = [
     if (!cursor) throw new Error('a cursor is shown with nothing running');
     return 'blinky shows its LEDs only, button both, hello neither; no cursor while idle';
   }],
+  ['steady', async () => {
+    /* Starting, pausing and stopping a run must not move the controls:
+     * the hint stays put and the status is one short line. Measured at a
+     * narrow width, where a longer status line once wrapped and pushed the
+     * board down under the pointer. Idle, the kernel controls are hidden. */
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.selectOption('#build', 'button');
+    const top = () => page.evaluate(() => document.getElementById('board').getBoundingClientRect().top);
+    const idle = await top();
+    await page.click('#run');
+    await until('the button sample never started', () => window.zephyrOutput().includes('Press the button'), null, 30_000);
+    const running = await top();
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    const stopped = await top();
+    const hidden = await page.evaluate(() => ['pause', 'back', 'step']
+      .every((id) => !document.getElementById(id).offsetWidth));
+    const hint = await page.evaluate(() => document.getElementById('hint').textContent);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    if (idle !== running || running !== stopped) {
+      throw new Error(`the board moved: ${idle} idle, ${running} running, ${stopped} stopped`);
+    }
+    if (!hidden) throw new Error('Pause, Back or Step still shown after the run');
+    if (!hint.includes('Button 0')) throw new Error(`the hint was lost after the run: ${JSON.stringify(hint)}`);
+    return 'at 700 px the board stays put through Run and Stop; the hint stays; idle controls hidden';
+  }],
   ['pace', async () => {
     /* A paced build keeps to the wall clock, whether its steps are heavy
      * (touch redraws every frame) or it is waiting on a person with no

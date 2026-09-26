@@ -57,7 +57,17 @@
     padding: 8px 10px; height: 400px; overflow-x: auto; overflow-y: hidden;
   }
   #term:focus-within { border-color: var(--accent); }
-  #status { margin: -4px 0 12px; color: var(--muted); font-size: 13px; min-height: 1.5em; }
+  /* The selected build's hint, which does not change while it runs, and
+   * one short line of status under it. Kept apart so that starting,
+   * pausing or stopping a run never reflows the page under the pointer. */
+  #hint { margin: -4px 0 2px; color: var(--muted); font-size: 13px; min-height: 1.5em; }
+  #hint code { font-size: 12px; }
+  #status {
+    margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* A scrollbar that comes and goes would shift the page sideways. */
+  html { scrollbar-gutter: stable; }
   #board {
     display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
     margin: 0 0 12px; padding: 10px 12px;
@@ -156,7 +166,8 @@
   </div>
 
   <!-- What the selected build does or wants, and then how it ended. -->
-  <div id="status">loading the list of builds…</div>
+  <div id="hint"></div>
+  <div id="status">Loading the list of builds…</div>
 
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
@@ -174,7 +185,8 @@
     <div class="bar">
       <button id="pause" disabled>Pause</button>
       <button id="back" disabled>&larr; Back</button>
-      <button id="step" disabled>Step</button>
+      <button id="step" disabled
+              title="Run the kernel to its next stop: a context switch, or waking from idle">Step</button>
       <span id="kstat"></span>
     </div>
     <table class="threads">
@@ -186,8 +198,8 @@
     Pick a build and press Run. Where a build reads the keyboard, click the
     output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
     A build with a display takes clicks, drags and keys on the display itself.
-    Pause the kernel and you can step it forward one stop at a time -- a
-    context switch, or waking from idle -- and back again. A build that just
+    Pause the kernel and you can step it forward one stop at a time — a
+    context switch, or waking from idle — and back again. A build that just
     runs to its end does so on a virtual clock, as fast as it can. One that
     runs on its own in real time has a speed control, remembered for each
     build, which changes how fast it goes and not what it does; one that
@@ -545,8 +557,8 @@ function showKernel(state) {
   if (running) {
     if (state.paused !== paused) {
       statusEl.textContent = state.paused
-        ? 'Paused. Step runs the kernel to its next stop -- a context switch, or waking from idle; Back undoes one.'
-        : `Running. ${currentBuild.hint}`;
+        ? 'Paused. Step runs to the next context switch or wake from idle; Back undoes one.'
+        : 'Running.';
     }
     paused = state.paused;
     pauseEl.textContent = paused ? 'Resume' : 'Pause';
@@ -594,14 +606,28 @@ function showKernel(state) {
   }
 }
 
+/* A hint is plain text, with anything to type in `backticks`, shown as
+ * code. Built from text nodes, never parsed as HTML. */
+const hintEl = document.getElementById('hint');
+function showHint(text) {
+  hintEl.replaceChildren(...String(text ?? '').split('`').map((part, i) => {
+    if (i % 2 === 0) return document.createTextNode(part);
+    const code = document.createElement('code');
+    code.textContent = part;
+    return code;
+  }));
+}
+
 function setRunning(state) {
   running = state;
   runEl.disabled = state;
   stopEl.disabled = !state;
   eraseFlashEl.disabled = state;
   /* The kernel panel stays up after a run, to be read, but there is
-   * nothing left to pause or step. */
+   * nothing left to pause or step, so the controls go: disabled, they
+   * still looked as if they might do something. */
   pauseEl.disabled = !state;
+  pauseEl.hidden = backEl.hidden = stepEl.hidden = !state;
   if (!state) {
     paused = false;
     pauseEl.textContent = 'Pause';
@@ -659,7 +685,8 @@ function showSelected() {
   speedWrapEl.title = 'How fast virtual time passes against the wall clock. It changes the pace, ' +
     'not what happens, and is remembered for each build.';
   speedEl.value = speeds.get(build.name) ?? '1';
-  statusEl.textContent = build.hint;
+  showHint(build.hint);
+  statusEl.textContent = 'Ready.';
 }
 
 /* The simulated flash, kept per build in IndexedDB so that what a sample
@@ -741,7 +768,7 @@ async function start() {
       const minutes = Math.round((build.max_time_ms ?? 60_000) / 60_000);
       statusEl.textContent = stopping ? 'Stopped.'
         : data.code === 2 && (build.endless || build.interactive)
-          ? `Stopped at the page's limit of ${minutes} minutes of guest time.`
+          ? `Stopped at the page's ${minutes}-minute limit.`
           : `Finished with exit code ${data.code}.`;
     }
   };
@@ -751,7 +778,7 @@ async function start() {
   };
 
   showSelected();
-  statusEl.textContent = `Running. ${build.hint}`;
+  statusEl.textContent = 'Running.';
   /* Only a paced build that runs by itself has a speed worth changing:
    * under virtual time the run is over before the control could be
    * reached, and an interactive one goes at the pace of the person. */
