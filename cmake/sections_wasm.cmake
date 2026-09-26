@@ -43,7 +43,10 @@ function(wasm_add_sections_step)
             # K_THREAD_DEFINE and most SYS_INIT entries in a sample live.
             --scan-dir ${CMAKE_BINARY_DIR}
             -o ${sections_c}
+    # The script too: without it, a change to the generator leaves every
+    # existing build with the old layout until something else rebuilds.
     DEPENDS ${ZEPHYR_LIBS_PROPERTY} zephyr kernel
+            ${WASM_MODULE_DIR}/scripts/gen_sections_wasm.py
     COMMENT "Scanning objects for linker-section symbols"
     VERBATIM
   )

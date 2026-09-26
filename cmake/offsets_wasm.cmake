@@ -84,7 +84,7 @@ function(zephyr_constants_library)
             --compiler ${CMAKE_C_COMPILER}
             --rsp ${rsp}
             ${include_flags}
-    DEPENDS ${ARG_SOURCE} ${rsp}
+    DEPENDS ${ARG_SOURCE} ${rsp} ${WASM_MODULE_DIR}/scripts/gen_offsets_wasm.py
     COMMAND_EXPAND_LISTS
     COMMENT "Generating ${ARG_HEADER} for wasm"
   )

@@ -947,3 +947,40 @@ The full re-run of filtered entries turned up one stale record:
 board had one. It builds now, and fails on `strtod`.
 
 Score 44 to 46.
+
+### Tick 55 — the IP stack works, once it can find its interfaces
+
+Phase 6's first question was the cheapest one: does Zephyr's IP stack work
+on this port at all? The sweep could not say. Every networking sample needs
+a peer, and the two sweep entries that pulled the stack in failed to link on
+`_net_if_list_start`.
+
+That symbol is the port's fault, and a quiet kind of fault. Every ELF
+linker script defines `_<family>_list_start` and `_end` for each iterable
+section. The section macros never use those names, and on wasm patch 0004
+points the macros at the port's own markers, so the generator only ever
+defined those. `net_if.c` declares its bounds by hand under the classic
+names; in all of Zephyr only it and USB's config data do. The generator now
+defines both names, in the same sections.
+
+Zephyr's own network test suites need no peer, so they were the way to
+answer the question, the way `tests/kernel` answered it for the kernel.
+`check_kernel.py` learned to run another tree (`--list`), and
+`scripts/net_tests.json` records all 139. The first two tried were the
+socket suites: UDP 36 of 36, TCP 65 of 65. Then the rest: 102 of 139 pass,
+1,144 cases, with no network code touched.
+
+The other 37 are mostly one thing: mbedTLS. Every one of the 17 suites
+Kconfig refuses wants it or PSA crypto, IPv6 among them, because its
+privacy extensions select PSA. So importing mbedTLS is the next lever, as
+picolibc was for the C library. Four suites trap on an indirect call, which
+looks like D8b's family again, and are recorded rather than chased.
+
+A build bug came out of checking the fix. Neither the sections generator
+nor the offsets generator was a dependency of its own build step. The site
+checks after the list-bounds change therefore ran on the old bounds and
+passed without testing anything; a grep for the new names in a site build
+found none. Both scripts are dependencies now.
+
+`posix/eventfd` now links, then prints nothing after the banner, and its
+`main` is gone within six switches. Not diagnosed.
