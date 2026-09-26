@@ -614,6 +614,13 @@ const pageChecks = [
     if (!(await page.evaluate(() => window.zephyrCursor().hidden))) {
       throw new Error('a build that reads no keyboard showed a cursor');
     }
+    /* Touch waits for a person but reads no keys: no cursor either. */
+    await page.selectOption('#build', 'touch');
+    await page.click('#run');
+    await until('the touch sample never started', () => window.zephyrState() !== null, null, 30_000);
+    if (!(await page.evaluate(() => window.zephyrCursor().hidden))) {
+      throw new Error('touch, which reads no keyboard, showed a cursor');
+    }
     await page.selectOption('#build', 'shell');
     await page.click('#run');
     await until('the shell never prompted', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
@@ -621,7 +628,7 @@ const pageChecks = [
     if (cur.hidden || !cur.blink) throw new Error('the shell had no blinking cursor');
     await page.click('#stop');
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
-    return 'no cursor for the philosophers, a blinking one for the shell';
+    return 'no cursor for the philosophers or touch, a blinking one for the shell';
   }],
   ['tap', async () => {
     /* A click with no hold at all, as a script or a quick tap gives, and a

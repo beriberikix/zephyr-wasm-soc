@@ -52,7 +52,9 @@ def counted(builds: list[dict]) -> set[str]:
     return ours | theirs
 
 
-USES = {"leds", "buttons", "flash"}
+USES = {"leds", "buttons", "flash", "terminal"}
+# The Kconfig symbol each use is checked against, where it is not its own name.
+SYMBOL = {"terminal": "SHELL"}
 
 
 def load(module: str) -> list[dict]:
@@ -87,13 +89,14 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
             continue
         on = set()
         for line in config.read_text().splitlines():
-            for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display")):
+            for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display"),
+                             ("SHELL", "terminal")):
                 if line == f"CONFIG_{sym}=y":
                     on.add(use)
         shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
-        for use in ("flash", "display"):
+        for use in ("flash", "display", "terminal"):
             if (use in on) != (use in shown):
-                problems.append(f"{b['name']}: CONFIG_{use.upper()} is "
+                problems.append(f"{b['name']}: CONFIG_{SYMBOL.get(use, use.upper())} is "
                                 f"{'set' if use in on else 'unset'} but the page "
                                 f"{'does not show' if use in on else 'shows'} it")
         for part in ("leds", "buttons"):
