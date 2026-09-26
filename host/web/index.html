@@ -482,28 +482,26 @@ function buildBoard() {
      * quick tap -- so the release is held back until the press has lasted
      * MIN_PRESS_MS: every press the page is given is one the guest gets. */
     const MIN_PRESS_MS = 80;
-    let downAt = 0;
+    /* And the same gap before the next press, so a quick second tap is
+     * seen as a second press. Every edge is scheduled, none is cancelled:
+     * cancelling a held-back release when a second press came in merged
+     * the two into one long press. */
+    const MIN_GAP_MS = 80;
     let isDown = false;
-    let releaseTimer = null;
+    let nextAt = 0;           // the earliest the next edge may go out
     const send = (down) => {
       el.classList.toggle('down', down);
       /* Physical level: pulled up, so pressing pulls it to 0. */
       worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level: down ? 0 : 1 });
     };
     const press = (down) => {
-      if (down) {
-        if (isDown) return;
-        clearTimeout(releaseTimer);
-        isDown = true;
-        downAt = performance.now();
-        send(true);
-      } else {
-        if (!isDown) return;
-        isDown = false;
-        const left = MIN_PRESS_MS - (performance.now() - downAt);
-        if (left > 0) releaseTimer = setTimeout(() => send(false), left);
-        else send(false);
-      }
+      if (down === isDown) return;
+      isDown = down;
+      const now = performance.now();
+      const at = Math.max(now, nextAt);
+      nextAt = at + (down ? MIN_PRESS_MS : MIN_GAP_MS);
+      if (at > now) setTimeout(() => send(down), at - now);
+      else send(down);
     };
     /* Pointer events cover a mouse, a finger and a pen alike. Capturing the
      * pointer keeps the press held if it strays off the button. */
