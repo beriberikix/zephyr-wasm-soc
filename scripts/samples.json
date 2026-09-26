@@ -25,17 +25,16 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "filtered_entries": 73,
-    "runnable_entries": 157,
-    "runnable_apps": 95
+    "filtered_entries": 66,
+    "runnable_entries": 164,
+    "runnable_apps": 102
   },
   "samples": [
     {
       "path": "zephyr/samples/application_development/code_relocation_nocopy",
       "entry": "sample.app_dev.code_relocation_nocopy",
-      "status": "passes",
       "note": "Passes by upstream's rule, which only checks for 'Hello World!'. The sample exists to exercise linker-script code relocation, which wasm does not have, so this shows it boots and nothing about relocation.",
-      "criterion": "boot-only"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/application_development/external_lib",
@@ -430,9 +429,8 @@
     {
       "path": "zephyr/samples/drivers/smbus",
       "entry": "sample.drivers.smbus.shell",
-      "status": "passes",
       "note": "Passes by upstream's rule, which only checks the start-up banner. There is no SMBus controller on this board, so no SMBus code ran.",
-      "criterion": "boot-only"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/uart/async_api",
@@ -524,9 +522,9 @@
     {
       "path": "zephyr/samples/modules/lvgl/accelerometer_chart",
       "entry": "sample.modules.lvgl.accelerometer_chart",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_chosen_enabled(\"zephyr,display\") and dt_alias_exists(\"accel0\")"
+      "status": "runs",
+      "cause": "no upstream criterion",
+      "note": "Runs and plots the emulated accelerometer, slower than real time: 96% of the time is lv_draw_sw_fill, which pays for a safepoint per pixel. See ROADMAP Phase 5."
     },
     {
       "path": "zephyr/samples/modules/lvgl/demos",
@@ -716,23 +714,21 @@
     {
       "path": "zephyr/samples/sensor/accel_polling",
       "entry": "sample.sensor.accel_polling",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"accel0\")"
+      "status": "passes",
+      "note": "Reads the board's emulated bmi160 (accel0) over the emulated I2C bus; the driver is upstream's. On the page as Accelerometer, with a Tilt pad."
     },
     {
       "path": "zephyr/samples/sensor/accel_stream",
       "entry": "sample.sensor.accel_stream",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"accel0\")"
+      "status": "passes",
+      "note": "Without CONFIG_SENSOR_ASYNC_API the sample polls, so it passes on the emulated bmi160."
     },
     {
       "path": "zephyr/samples/sensor/accel_trig",
       "entry": "sample.sensor.accel_trig",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"accel0\")"
+      "status": "fails",
+      "cause": "regex-mismatch",
+      "note": "sensor_trigger_set() returns -ENOSYS (-88): the bmi160 has no int-gpios here, because no upstream sensor emulator drives an interrupt pin. Needs emulator work upstream."
     },
     {
       "path": "zephyr/samples/sensor/accel_trig",
@@ -786,16 +782,16 @@
     {
       "path": "zephyr/samples/sensor/pressure_interrupt",
       "entry": "sample.sensor.pressure_interrupt",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"pressure-sensor\")"
+      "status": "builds",
+      "cause": "build_only upstream",
+      "note": "Builds against the emulated bmp581; upstream only builds it."
     },
     {
       "path": "zephyr/samples/sensor/pressure_polling",
       "entry": "sample.sensor.pressure_sensor",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"pressure-sensor\")"
+      "status": "builds",
+      "cause": "build_only upstream",
+      "note": "Builds against the emulated bmp581; upstream only builds it."
     },
     {
       "path": "zephyr/samples/sensor/qdec",
@@ -1176,8 +1172,8 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/env",
       "entry": "sample.posix.env",
-      "status": "passes",
-      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides."
+      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/eventfd",
@@ -1190,14 +1186,14 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/philosophers",
       "entry": "sample.posix.philosopher",
-      "status": "passes",
-      "note": "Passes with picolibc. Needed a dynamic-thread stack of at least PTHREAD_STACK_MIN, which on wasm is the Asyncify buffer every stack reserves; the arch now defaults DYNAMIC_THREAD_STACK_SIZE to it."
+      "note": "Passes with picolibc. Needed a dynamic-thread stack of at least PTHREAD_STACK_MIN, which on wasm is the Asyncify buffer every stack reserves; the arch now defaults DYNAMIC_THREAD_STACK_SIZE to it.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/uname",
       "entry": "sample.posix.uname",
-      "status": "passes",
-      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides."
+      "note": "Passes with picolibc, which the sample selects through CONFIG_POSIX_API. Needed __multi3, which the port now provides.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/rtio/producer_consumer",
@@ -1248,9 +1244,10 @@
     {
       "path": "zephyr/samples/subsys/smf/smf_calculator",
       "entry": "sample.smf.smf_calculator",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_chosen_enabled(\"zephyr,display\")"
+      "status": "build-fails",
+      "cause": "other",
+      "detail": "call to undeclared function 'strtod'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]",
+      "note": "Was recorded as filtered for want of a display, which the board has had since Phase 4; the record had not been re-checked. It calls strtod(), which the minimal libc lacks, and does not ask for a full one."
     },
     {
       "path": "zephyr/samples/subsys/testsuite/benchmark",
@@ -1543,5 +1540,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 41
+  "score": 43
 }
