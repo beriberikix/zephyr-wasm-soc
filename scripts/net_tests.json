@@ -1,0 +1,574 @@
+{
+  "_comment": [
+    "Zephyr's own network test suites, and how each one does on wasm_node.",
+    "scripts/check_kernel.py --list scripts/net_tests.json runs them and compares.",
+    "",
+    "Phase 6 of ROADMAP.md starts here: before building a network between two",
+    "boards, find out whether the IP stack works on one. These suites need no",
+    "peer. They run over the loopback interface or dummy interfaces the tests",
+    "define themselves, and each one's note says what is known about it.",
+    "",
+    "statuses: passes, fails (finished with failures), does-not-finish,",
+    "build-fails, untried."
+  ],
+  "root": "tests/net",
+  "max_time_ms": 600000,
+  "suites": [
+    {
+      "path": "6lo",
+      "status": "untried"
+    },
+    {
+      "path": "all",
+      "status": "untried"
+    },
+    {
+      "path": "arp",
+      "status": "untried"
+    },
+    {
+      "path": "bridge",
+      "status": "untried"
+    },
+    {
+      "path": "checksum_offload",
+      "status": "untried"
+    },
+    {
+      "path": "conn_mgr_conn",
+      "status": "untried"
+    },
+    {
+      "path": "conn_mgr_monitor",
+      "status": "untried"
+    },
+    {
+      "path": "conn_mgr_nsos",
+      "status": "untried"
+    },
+    {
+      "path": "context",
+      "status": "untried"
+    },
+    {
+      "path": "dhcpv4/client",
+      "status": "untried"
+    },
+    {
+      "path": "dhcpv4/server",
+      "status": "untried"
+    },
+    {
+      "path": "dhcpv6",
+      "status": "untried"
+    },
+    {
+      "path": "ethernet_mgmt",
+      "status": "untried"
+    },
+    {
+      "path": "hostname",
+      "status": "untried"
+    },
+    {
+      "path": "icmp",
+      "status": "untried"
+    },
+    {
+      "path": "icmpv4",
+      "status": "untried"
+    },
+    {
+      "path": "icmpv6",
+      "status": "untried"
+    },
+    {
+      "path": "ieee802154/6lo_fragment",
+      "status": "untried"
+    },
+    {
+      "path": "ieee802154/custom_l2",
+      "status": "untried"
+    },
+    {
+      "path": "ieee802154/l2",
+      "status": "untried"
+    },
+    {
+      "path": "iface",
+      "status": "untried"
+    },
+    {
+      "path": "iface_with_mld",
+      "status": "untried"
+    },
+    {
+      "path": "igmp",
+      "status": "untried"
+    },
+    {
+      "path": "ip-addr",
+      "status": "untried"
+    },
+    {
+      "path": "ipv4_fragment",
+      "status": "untried"
+    },
+    {
+      "path": "ipv4_nat",
+      "status": "untried"
+    },
+    {
+      "path": "ipv6",
+      "status": "untried"
+    },
+    {
+      "path": "ipv6_fragment",
+      "status": "untried"
+    },
+    {
+      "path": "ipv6_nbr_cache_clear",
+      "status": "untried"
+    },
+    {
+      "path": "ipv6_unsolicited_na",
+      "status": "untried"
+    },
+    {
+      "path": "lib/coap",
+      "status": "untried"
+    },
+    {
+      "path": "lib/coap_client",
+      "status": "untried"
+    },
+    {
+      "path": "lib/coap_oscore",
+      "status": "untried"
+    },
+    {
+      "path": "lib/coap_server/common",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_addremove",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_cache",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_dispatcher",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_packet",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_resolve",
+      "status": "untried"
+    },
+    {
+      "path": "lib/dns_sd",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_client",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_header_fields",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/common",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/core",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/crime",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/h3",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/hpack",
+      "status": "untried"
+    },
+    {
+      "path": "lib/http_server/tls",
+      "status": "untried"
+    },
+    {
+      "path": "lib/llmnr_responder",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/block_transfer",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_json",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_link_format",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_oma_tlv",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_plain_text",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_raw_cbor",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/content_senml_cbor",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/interop",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/lwm2m_engine",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/lwm2m_rd_client",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/lwm2m_registry",
+      "status": "untried"
+    },
+    {
+      "path": "lib/lwm2m/observation",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mcp",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mdns_responder",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mqtt/v3_1_1/mqtt_client",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mqtt/v3_1_1/mqtt_packet",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mqtt/v5_0/mqtt_packet",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mqtt_sn_client",
+      "status": "untried"
+    },
+    {
+      "path": "lib/mqtt_sn_packet",
+      "status": "untried"
+    },
+    {
+      "path": "lib/ocpp",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/collector",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/counter",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/formatter",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/gauge",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/histogram",
+      "status": "untried"
+    },
+    {
+      "path": "lib/prometheus/summary",
+      "status": "untried"
+    },
+    {
+      "path": "lib/quic",
+      "status": "untried"
+    },
+    {
+      "path": "lib/ssh/ssh_pkt",
+      "status": "untried"
+    },
+    {
+      "path": "lib/ssh/ssh_server",
+      "status": "untried"
+    },
+    {
+      "path": "lib/tls_credentials",
+      "status": "untried"
+    },
+    {
+      "path": "lib/wifi_credentials",
+      "status": "untried"
+    },
+    {
+      "path": "lib/wifi_credentials_backend_psa",
+      "status": "untried"
+    },
+    {
+      "path": "lib/wifi_credentials_backend_settings",
+      "status": "untried"
+    },
+    {
+      "path": "lib/wireguard",
+      "status": "untried"
+    },
+    {
+      "path": "lib/zperf",
+      "status": "untried"
+    },
+    {
+      "path": "mgmt",
+      "status": "untried"
+    },
+    {
+      "path": "mld",
+      "status": "untried"
+    },
+    {
+      "path": "neighbor",
+      "status": "untried"
+    },
+    {
+      "path": "net_pkt",
+      "status": "untried"
+    },
+    {
+      "path": "npf",
+      "status": "untried"
+    },
+    {
+      "path": "offloaded_netdev",
+      "status": "untried"
+    },
+    {
+      "path": "pm",
+      "status": "untried"
+    },
+    {
+      "path": "pmtu",
+      "status": "untried"
+    },
+    {
+      "path": "ppp/driver",
+      "status": "untried"
+    },
+    {
+      "path": "promiscuous",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/btca_state_machine",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/clock",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/clock_decision",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/clock_wakeup",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/foreign_master",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/msg_parse",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/msg_post_recv",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/port_events",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/state_matrix",
+      "status": "untried"
+    },
+    {
+      "path": "ptp/transport_retry",
+      "status": "untried"
+    },
+    {
+      "path": "route/ipv4",
+      "status": "untried"
+    },
+    {
+      "path": "route/ipv6",
+      "status": "untried"
+    },
+    {
+      "path": "route_mcast",
+      "status": "untried"
+    },
+    {
+      "path": "rtp/loopback",
+      "status": "untried"
+    },
+    {
+      "path": "shell",
+      "status": "untried"
+    },
+    {
+      "path": "socket/af_inet_raw",
+      "status": "untried"
+    },
+    {
+      "path": "socket/af_packet",
+      "status": "untried"
+    },
+    {
+      "path": "socket/can",
+      "status": "untried"
+    },
+    {
+      "path": "socket/getaddrinfo",
+      "status": "untried"
+    },
+    {
+      "path": "socket/getnameinfo",
+      "status": "untried"
+    },
+    {
+      "path": "socket/misc",
+      "status": "untried"
+    },
+    {
+      "path": "socket/net_mgmt",
+      "status": "untried"
+    },
+    {
+      "path": "socket/offload_dispatcher",
+      "status": "untried"
+    },
+    {
+      "path": "socket/poll",
+      "status": "untried"
+    },
+    {
+      "path": "socket/register",
+      "status": "untried"
+    },
+    {
+      "path": "socket/reuseaddr_reuseport",
+      "status": "untried"
+    },
+    {
+      "path": "socket/select",
+      "status": "untried"
+    },
+    {
+      "path": "socket/service",
+      "status": "untried"
+    },
+    {
+      "path": "socket/socketpair",
+      "status": "untried"
+    },
+    {
+      "path": "socket/tcp",
+      "status": "untried"
+    },
+    {
+      "path": "socket/tls",
+      "status": "untried"
+    },
+    {
+      "path": "socket/tls_configurations",
+      "status": "untried"
+    },
+    {
+      "path": "socket/tls_ext",
+      "status": "untried"
+    },
+    {
+      "path": "socket/udp",
+      "status": "untried"
+    },
+    {
+      "path": "socket/websocket",
+      "status": "untried"
+    },
+    {
+      "path": "tcp",
+      "status": "untried"
+    },
+    {
+      "path": "traffic_class",
+      "status": "untried"
+    },
+    {
+      "path": "trickle",
+      "status": "untried"
+    },
+    {
+      "path": "tx_timestamp",
+      "status": "untried"
+    },
+    {
+      "path": "udp",
+      "status": "untried"
+    },
+    {
+      "path": "utils",
+      "status": "untried"
+    },
+    {
+      "path": "virtual",
+      "status": "untried"
+    },
+    {
+      "path": "vlan",
+      "status": "untried"
+    },
+    {
+      "path": "wifi/configs",
+      "status": "untried"
+    },
+    {
+      "path": "wifi/wifi_nm",
+      "status": "untried"
+    }
+  ]
+}

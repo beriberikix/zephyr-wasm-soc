@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Build and run Zephyr's own kernel test suites on wasm_node.
+"""Build and run Zephyr's own test suites on wasm_node.
 
 The kernel is what everything else in this port stands on, and for a long
 time the evidence for it was one suite. This builds and runs the list in
@@ -11,7 +11,14 @@ A suite that does better than its recorded status is reported too. That is
 the interesting direction and it should be written down when it happens.
 
 Usage:
-  scripts/check_kernel.py [--only name,name] [--jobs N] [--update]
+  scripts/check_kernel.py [--list file.json] [--only name,name] [--jobs N] [--update]
+
+The kernel's suites are the default list. --list takes another, such as
+scripts/net_tests.json for the network stack's: a list names the tree its
+suites are under with "root", which defaults to tests/kernel, and may set
+"max_time_ms", the guest time a suite gets unless its entry says otherwise
+(120 s by default). A suite
+recorded as "untried" has never been run, and any result is better.
 
 --update rewrites the recorded statuses from this run, for when a fix moves
 several at once. Read the diff before committing it.
@@ -34,20 +41,21 @@ PASS_RE = re.compile(r"^ PASS", re.M)
 FAIL_RE = re.compile(r"^ FAIL", re.M)
 
 
-def run_one(entry: dict, keep: bool) -> dict:
+def run_one(entry: dict, root: str, max_time_ms: int, keep: bool) -> dict:
     """Build and run one suite; return what happened, in the recorded shape."""
     name = entry["path"]
-    build_dir = TOP / f"build-kernel-{name.replace('/', '_')}"
+    tree = pathlib.PurePath(root).name
+    build_dir = TOP / f"build-{tree}-{name.replace('/', '_')}"
     result = {"path": name}
 
-    ok, err, _ = sweeplib.build(f"zephyr/tests/kernel/{name}", build_dir)
+    ok, err, _ = sweeplib.build(f"zephyr/{root}/{name}", build_dir)
     if not ok:
         result["status"] = "build-fails"
         result["note"] = err[:160]
         return result
 
     code, out = sweeplib.run(build_dir / "zephyr" / "zephyr.wasm",
-                             entry.get("max_time_ms", 120000))
+                             entry.get("max_time_ms", max_time_ms))
     if not keep:
         shutil.rmtree(build_dir, ignore_errors=True)
 
@@ -67,6 +75,8 @@ def run_one(entry: dict, keep: bool) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", type=pathlib.Path, default=LIST,
+                    help="the suites and their recorded results (default: the kernel's)")
     ap.add_argument("--only", help="comma-separated suite paths")
     ap.add_argument("--jobs", type=int, default=1,
                     help="suites to build at once. One by default, because "
@@ -80,7 +90,10 @@ def main() -> int:
     ap.add_argument("--keep-builds", action="store_true")
     args = ap.parse_args()
 
-    doc = json.loads(LIST.read_text())
+    doc = json.loads(args.list.read_text())
+    root = doc.get("root", "tests/kernel")
+    # Guest time a suite may take unless its entry says otherwise.
+    max_time_ms = doc.get("max_time_ms", 120000)
     suites = doc["suites"]
     if args.only:
         want = set(args.only.split(","))
@@ -88,7 +101,7 @@ def main() -> int:
 
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(run_one, s, args.keep_builds): s for s in suites}
+        futures = {pool.submit(run_one, s, root, max_time_ms, args.keep_builds): s for s in suites}
         for fut in concurrent.futures.as_completed(futures):
             r = fut.result()
             results[r["path"]] = r
@@ -106,7 +119,7 @@ def main() -> int:
         if got["status"] != s["status"]:
             # Worst to best. A suite that will not link is worse than one
             # that runs and then traps: the second at least got somewhere.
-            rank = ["build-fails", "does-not-finish", "fails", "passes"]
+            rank = ["untried", "build-fails", "does-not-finish", "fails", "passes"]
             if rank.index(got["status"]) > rank.index(s["status"]):
                 better.append(s["path"])
                 line += f"   (better than recorded: {s['status']})"
@@ -123,8 +136,8 @@ def main() -> int:
                 s.pop(key, None)
                 if key in got:
                     s[key] = got[key]
-        LIST.write_text(json.dumps(doc, indent=2) + "\n")
-        print(f"updated {LIST}")
+        args.list.write_text(json.dumps(doc, indent=2) + "\n")
+        print(f"updated {args.list}")
         return 0
 
     if worse:
