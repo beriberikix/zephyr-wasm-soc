@@ -1,0 +1,316 @@
+From 0d1a2208090407b8bccf7bd924b99ad0180c65b2 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sat, 26 Sep 2026 18:46:48 +0000
+Subject: [PATCH 4/6] samples: zbus: match thread entries to k_thread_entry_t
+
+Several zbus samples pass K_THREAD_DEFINE() thread entries whose type is
+not k_thread_entry_t:
+- void f(void) in hello_world, confirmed_channel, dyn_channel,
+  runtime_obs_registration, work_queue and benchmark;
+- void f(void *), taking one argument, in msg_subscriber;
+- int f(void *, void *, void *) in the benchmark's subscriber and message
+  subscriber threads.
+
+K_THREAD_DEFINE() casts each one to k_thread_entry_t, and the kernel calls
+it as void (*)(void *, void *, void *). Calling through an incompatible
+function type is undefined behaviour, and it traps on targets that check
+indirect calls, such as WebAssembly or a CFI-enabled build.
+
+Give every entry the signature k_thread_entry_t declares. The benchmark
+threads' unreachable "return -EFAULT" goes with their int return type.
+
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+---
+ samples/subsys/zbus/benchmark/src/benchmark.c  |  6 +++++-
+ samples/subsys/zbus/benchmark/src/msg_sub.c    |  4 +---
+ samples/subsys/zbus/benchmark/src/sub.c        |  3 +--
+ .../subsys/zbus/confirmed_channel/src/main.c   | 18 +++++++++++++++---
+ samples/subsys/zbus/dyn_channel/src/consumer.c |  6 +++++-
+ samples/subsys/zbus/dyn_channel/src/producer.c |  6 +++++-
+ samples/subsys/zbus/hello_world/src/main.c     |  6 +++++-
+ samples/subsys/zbus/msg_subscriber/src/main.c  |  5 ++++-
+ .../runtime_obs_registration/src/consumer.c    |  6 +++++-
+ .../runtime_obs_registration/src/producer.c    |  6 +++++-
+ samples/subsys/zbus/work_queue/src/main.c      | 18 +++++++++++++++---
+ samples/subsys/zbus/work_queue/src/sensors.c   |  6 +++++-
+ 12 files changed, 71 insertions(+), 19 deletions(-)
+
+diff --git a/samples/subsys/zbus/benchmark/src/benchmark.c b/samples/subsys/zbus/benchmark/src/benchmark.c
+index e7df35ef3f1..12c0ed041e5 100644
+--- a/samples/subsys/zbus/benchmark/src/benchmark.c
++++ b/samples/subsys/zbus/benchmark/src/benchmark.c
+@@ -37,8 +37,12 @@ ZBUS_CHAN_DEFINE(bm_channel,    /* Name */
+ #define BYTES_TO_BE_SENT (256LLU * 1024LLU)
+ atomic_t count;
+ 
+-static void producer_thread(void)
++static void producer_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	LOG_INF("Benchmark 1 to %d using %s to transmit with message size: %u bytes",
+ 		CONFIG_BM_ONE_TO,
+ 		IS_ENABLED(CONFIG_BM_LISTENERS)
+diff --git a/samples/subsys/zbus/benchmark/src/msg_sub.c b/samples/subsys/zbus/benchmark/src/msg_sub.c
+index d4edc5db774..cfe27e20739 100644
+--- a/samples/subsys/zbus/benchmark/src/msg_sub.c
++++ b/samples/subsys/zbus/benchmark/src/msg_sub.c
+@@ -29,7 +29,7 @@ FOR_EACH(CREATE_OBSERVER, (;), CONSUMERS_NAME_LIST);
+ FOR_EACH(CREATE_OBSERVATIONS, (;), CONSUMERS_NAME_LIST);
+ /* clang-format on */
+ 
+-static int msg_sub_thread(void *msub_ref, void *ptr2, void *ptr3)
++static void msg_sub_thread(void *msub_ref, void *ptr2, void *ptr3)
+ {
+ 	ARG_UNUSED(ptr2);
+ 	ARG_UNUSED(ptr3);
+@@ -45,8 +45,6 @@ static int msg_sub_thread(void *msub_ref, void *ptr2, void *ptr3)
+ 			k_oops();
+ 		}
+ 	}
+-
+-	return -EFAULT;
+ }
+ 
+ #define CREATE_THREADS(name)                                                                       \
+diff --git a/samples/subsys/zbus/benchmark/src/sub.c b/samples/subsys/zbus/benchmark/src/sub.c
+index f6a00531260..f30cea0ccfd 100644
+--- a/samples/subsys/zbus/benchmark/src/sub.c
++++ b/samples/subsys/zbus/benchmark/src/sub.c
+@@ -29,7 +29,7 @@ FOR_EACH(CREATE_OBSERVER, (;), CONSUMERS_NAME_LIST);
+ FOR_EACH(CREATE_OBSERVATIONS, (;), CONSUMERS_NAME_LIST);
+ /* clang-format on */
+ 
+-static int sub_thread(void *sub_ref, void *ptr2, void *ptr3)
++static void sub_thread(void *sub_ref, void *ptr2, void *ptr3)
+ {
+ 	ARG_UNUSED(ptr2);
+ 	ARG_UNUSED(ptr3);
+@@ -60,7 +60,6 @@ static int sub_thread(void *sub_ref, void *ptr2, void *ptr3)
+ 			k_oops();
+ 		}
+ 	}
+-	return -EFAULT;
+ }
+ 
+ #define CREATE_THREADS(name)                                                                       \
+diff --git a/samples/subsys/zbus/confirmed_channel/src/main.c b/samples/subsys/zbus/confirmed_channel/src/main.c
+index bc3a02fc5d6..582a4fbdf4b 100644
+--- a/samples/subsys/zbus/confirmed_channel/src/main.c
++++ b/samples/subsys/zbus/confirmed_channel/src/main.c
+@@ -34,8 +34,12 @@ ZBUS_LISTENER_DEFINE(foo_lis, listener_callback_example);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub1, 4);
+ 
+-static void bar_sub1_task(void)
++static void bar_sub1_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&bar_sub1, &chan, K_FOREVER)) {
+@@ -59,8 +63,12 @@ static void bar_sub1_task(void)
+ }
+ K_THREAD_DEFINE(bar_sub1_task_id, CONFIG_MAIN_STACK_SIZE, bar_sub1_task, NULL, NULL, NULL, 3, 0, 0);
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub2, 4);
+-static void bar_sub2_task(void)
++static void bar_sub2_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&bar_sub2, &chan, K_FOREVER)) {
+@@ -85,8 +93,12 @@ static void bar_sub2_task(void)
+ K_THREAD_DEFINE(bar_sub2_task_id, CONFIG_MAIN_STACK_SIZE, bar_sub2_task, NULL, NULL, NULL, 3, 0, 0);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub3, 4);
+-static void bar_sub3_task(void)
++static void bar_sub3_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&bar_sub3, &chan, K_FOREVER)) {
+diff --git a/samples/subsys/zbus/dyn_channel/src/consumer.c b/samples/subsys/zbus/dyn_channel/src/consumer.c
+index fb237d399b4..6a35093f1a4 100644
+--- a/samples/subsys/zbus/dyn_channel/src/consumer.c
++++ b/samples/subsys/zbus/dyn_channel/src/consumer.c
+@@ -12,8 +12,12 @@ ZBUS_CHAN_DECLARE(pkt_chan, data_ready_chan, ack);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(consumer_sub, 4);
+ 
+-static void consumer_thread(void)
++static void consumer_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	struct external_data_msg *dyn_alloc_msg;
+ 	const struct zbus_channel *chan;
+ 
+diff --git a/samples/subsys/zbus/dyn_channel/src/producer.c b/samples/subsys/zbus/dyn_channel/src/producer.c
+index 9ac70e11e3d..434e774ca77 100644
+--- a/samples/subsys/zbus/dyn_channel/src/producer.c
++++ b/samples/subsys/zbus/dyn_channel/src/producer.c
+@@ -12,8 +12,12 @@ ZBUS_CHAN_DECLARE(pkt_chan);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(producer_sub, 4);
+ 
+-static void producer_thread(void)
++static void producer_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 	void *msg;
+ 
+diff --git a/samples/subsys/zbus/hello_world/src/main.c b/samples/subsys/zbus/hello_world/src/main.c
+index 2294859a473..1c1859eaae4 100644
+--- a/samples/subsys/zbus/hello_world/src/main.c
++++ b/samples/subsys/zbus/hello_world/src/main.c
+@@ -83,8 +83,12 @@ ZBUS_ASYNC_LISTENER_DEFINE(baz_async_lis, async_listener_callback_example);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub, 4);
+ 
+-static void subscriber_task(void)
++static void subscriber_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&bar_sub, &chan, K_FOREVER)) {
+diff --git a/samples/subsys/zbus/msg_subscriber/src/main.c b/samples/subsys/zbus/msg_subscriber/src/main.c
+index e58266b16f1..428eb245f57 100644
+--- a/samples/subsys/zbus/msg_subscriber/src/main.c
++++ b/samples/subsys/zbus/msg_subscriber/src/main.c
+@@ -81,8 +81,11 @@ ZBUS_MSG_SUBSCRIBER_DEFINE(bar_msg_sub16);
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub1, 4);
+ ZBUS_SUBSCRIBER_DEFINE(bar_sub2, 4);
+ 
+-static void msg_subscriber_task(void *sub)
++static void msg_subscriber_task(void *sub, void *p2, void *p3)
+ {
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	struct acc_msg acc;
+diff --git a/samples/subsys/zbus/runtime_obs_registration/src/consumer.c b/samples/subsys/zbus/runtime_obs_registration/src/consumer.c
+index 09bdca6ce20..643440859b8 100644
+--- a/samples/subsys/zbus/runtime_obs_registration/src/consumer.c
++++ b/samples/subsys/zbus/runtime_obs_registration/src/consumer.c
+@@ -10,8 +10,12 @@ LOG_MODULE_DECLARE(zbus, CONFIG_ZBUS_LOG_LEVEL);
+ 
+ ZBUS_SUBSCRIBER_DEFINE(consumer_sub, 4);
+ 
+-static void consumer_subscriber_thread(void)
++static void consumer_subscriber_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&consumer_sub, &chan, K_FOREVER)) {
+diff --git a/samples/subsys/zbus/runtime_obs_registration/src/producer.c b/samples/subsys/zbus/runtime_obs_registration/src/producer.c
+index 81afcac0405..aa0845f2ae2 100644
+--- a/samples/subsys/zbus/runtime_obs_registration/src/producer.c
++++ b/samples/subsys/zbus/runtime_obs_registration/src/producer.c
+@@ -13,8 +13,12 @@ ZBUS_CHAN_DEFINE(raw_data_chan, struct sensor_msg, NULL, NULL, ZBUS_OBSERVERS_EM
+ 
+ ZBUS_CHAN_DEFINE(state_chan, bool, NULL, NULL, ZBUS_OBSERVERS(state_change_sub), false);
+ 
+-static void producer_thread(void)
++static void producer_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	struct sensor_msg acc = {0};
+ 	uint32_t count = 0;
+ 
+diff --git a/samples/subsys/zbus/work_queue/src/main.c b/samples/subsys/zbus/work_queue/src/main.c
+index 33619a99c56..7f5cb8a586e 100644
+--- a/samples/subsys/zbus/work_queue/src/main.c
++++ b/samples/subsys/zbus/work_queue/src/main.c
+@@ -128,8 +128,12 @@ int main(void)
+ 
+ ZBUS_SUBSCRIBER_DEFINE(thread_handler1_sub, 4);
+ 
+-static void thread_handler1_task(void)
++static void thread_handler1_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&thread_handler1_sub, &chan, K_FOREVER)) {
+@@ -147,8 +151,12 @@ K_THREAD_DEFINE(thread_handler1_id, 1024, thread_handler1_task, NULL, NULL, NULL
+ 
+ ZBUS_SUBSCRIBER_DEFINE(thread_handler2_sub, 4);
+ 
+-static void thread_handler2_task(void)
++static void thread_handler2_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&thread_handler2_sub, &chan, K_FOREVER)) {
+@@ -166,8 +174,12 @@ K_THREAD_DEFINE(thread_handler2_id, 1024, thread_handler2_task, NULL, NULL, NULL
+ 
+ ZBUS_SUBSCRIBER_DEFINE(thread_handler3_sub, 4);
+ 
+-static void thread_handler3_task(void)
++static void thread_handler3_task(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	while (!zbus_sub_wait(&thread_handler3_sub, &chan, K_FOREVER)) {
+diff --git a/samples/subsys/zbus/work_queue/src/sensors.c b/samples/subsys/zbus/work_queue/src/sensors.c
+index 3f61e0e374f..b12e67288ce 100644
+--- a/samples/subsys/zbus/work_queue/src/sensors.c
++++ b/samples/subsys/zbus/work_queue/src/sensors.c
+@@ -10,8 +10,12 @@ LOG_MODULE_DECLARE(zbus, CONFIG_ZBUS_LOG_LEVEL);
+ 
+ ZBUS_CHAN_DECLARE(sensor_data_chan);
+ 
+-void peripheral_thread(void)
++void peripheral_thread(void *p1, void *p2, void *p3)
+ {
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	struct sensor_msg sm = {0};
+ 
+ 	while (1) {

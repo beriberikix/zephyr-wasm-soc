@@ -1,0 +1,98 @@
+From 561fbd25ca3677de7d716aa3f8e31b0f5b1de364 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sat, 26 Sep 2026 18:46:48 +0000
+Subject: [PATCH 5/6] tests: kernel: mutex: match thread entries to
+ k_thread_entry_t
+
+The complex priority inversion test declares its participant threads as
+void f(struct k_sem *, struct k_sem *) and casts them to
+k_thread_entry_t, which the kernel calls with three void * arguments.
+Calling a function through an incompatible function type is undefined
+behaviour, and it traps on targets that check indirect calls.
+
+Take the three void * arguments and convert the two semaphores inside,
+and drop the cast that hid the mismatch.
+
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+---
+ .../mutex/mutex_api/src/complex_inversion.c   | 26 +++++++++++++++----
+ 1 file changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/tests/kernel/mutex/mutex_api/src/complex_inversion.c b/tests/kernel/mutex/mutex_api/src/complex_inversion.c
+index ae12f6c87b5..5f5de332636 100644
+--- a/tests/kernel/mutex/mutex_api/src/complex_inversion.c
++++ b/tests/kernel/mutex/mutex_api/src/complex_inversion.c
+@@ -49,7 +49,7 @@ static K_MUTEX_DEFINE(mutex_1);
+ #define CREATE_PARTICIPANT_THREAD(id, pri)                                                         \
+ 	thread_##id##_tid = k_thread_create(&thread_##id##_thread_data, thread_##id##_stack_area,  \
+ 					    K_THREAD_STACK_SIZEOF(thread_##id##_stack_area),       \
+-					    (k_thread_entry_t)thread_##id, &thread_##id##_wait,    \
++					    thread_##id, &thread_##id##_wait,                      \
+ 					    &thread_##id##_done, NULL, pri,                        \
+ 					    PARTICIPANT_THREAD_OPTIONS, K_FOREVER);                \
+ 	k_thread_name_set(thread_##id##_tid, "thread_" STRINGIFY(id));
+@@ -74,10 +74,14 @@ static K_MUTEX_DEFINE(mutex_1);
+  *
+  */
+ 
+-static void thread_05(struct k_sem *wait, struct k_sem *done)
++static void thread_05(void *p1, void *p2, void *p3)
+ {
++	struct k_sem *wait = p1;
++	struct k_sem *done = p2;
+ 	int rv;
+ 
++	ARG_UNUSED(p3);
++
+ 	/*
+ 	 * Wait for mutex_0, boosting the priority of thread_07 so it will lock mutex_1 first.
+ 	 */
+@@ -102,10 +106,14 @@ static void thread_05(struct k_sem *wait, struct k_sem *done)
+  *
+  */
+ 
+-static void thread_06(struct k_sem *wait, struct k_sem *done)
++static void thread_06(void *p1, void *p2, void *p3)
+ {
++	struct k_sem *wait = p1;
++	struct k_sem *done = p2;
+ 	int rv;
+ 
++	ARG_UNUSED(p3);
++
+ 	/*
+ 	 * Wait for mutex_1. Initially it will be the highest priority waiter, but
+ 	 * thread_07 will be boosted above thread_06 so thread_07 will lock it first.
+@@ -131,10 +139,14 @@ static void thread_06(struct k_sem *wait, struct k_sem *done)
+  *
+  */
+ 
+-static void thread_07(struct k_sem *wait, struct k_sem *done)
++static void thread_07(void *p1, void *p2, void *p3)
+ {
++	struct k_sem *wait = p1;
++	struct k_sem *done = p2;
+ 	int rv;
+ 
++	ARG_UNUSED(p3);
++
+ 	/*
+ 	 * Lock mutex_0 and wait for mutex_1. After thread_06 is also waiting for
+ 	 * mutex_1, thread_05 will wait for mutex_0, boosting the priority for
+@@ -172,10 +184,14 @@ static void thread_07(struct k_sem *wait, struct k_sem *done)
+  *
+  */
+ 
+-static void thread_08(struct k_sem *wait, struct k_sem *done)
++static void thread_08(void *p1, void *p2, void *p3)
+ {
++	struct k_sem *wait = p1;
++	struct k_sem *done = p2;
+ 	int rv;
+ 
++	ARG_UNUSED(p3);
++
+ 	/*
+ 	 * Lock mutex_1 and hold until priority has been boosted on thread_07
+ 	 * to ensure that thread_07 is the first to lock mutex_1 when thread_08
