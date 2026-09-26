@@ -393,14 +393,45 @@ emulator for a part of each kind:
 | `pressure-sensor` | `sensor/pressure_polling`, `pressure_interrupt` | `bmp581` |
 | `stream0` | `sensor/6dof_fifo_stream`, `stream_drdy` | `icm4268x` |
 
-Whether each sample's trigger or streaming mode works against its emulator
-is the work; the parts exist. `lvgl/accelerometer_chart` is the one to aim
-at, since it puts a driver talking to a bus on the page as a moving chart.
+What happened to each:
 
-- [ ] An emulated I2C bus with an accelerometer on it, aliased `accel0`.
-- [ ] The pressure sensor and the streaming IMU, the same way.
-- [ ] Optionally, the browser's Generic Sensor API behind the emulator, so
-      tilting a phone moves the chart.
+| Sample | Result |
+|---|---|
+| `accel_polling` | passes upstream's regex, unmodified |
+| `accel_stream` | passes: without `SENSOR_ASYNC_API` it polls |
+| `accel_trig` | runs and fails: `sensor_trigger_set()` returns `-ENOSYS` |
+| `pressure_polling`, `pressure_interrupt` | build, which is all upstream asks |
+| `lvgl/accelerometer_chart` | runs, with no criterion upstream; slower than real time |
+| `6dof_fifo_stream`, `stream_drdy` | still filtered: no `stream0` |
+
+- [x] **An emulated I2C bus with an accelerometer on it**, aliased `accel0`:
+      upstream's `zephyr,i2c-emul-controller` with the bmi160 upstream's own
+      chart sample uses on native_sim. `DESIGN.md` D8j.
+- [x] **A pressure sensor**, the bmp581, aliased `pressure-sensor`.
+- [x] **The host sets what the sensors read.** `wasm,host-sensor-bridge`
+      hands the host's readings to the emulators through the
+      emulated-sensor backend API, the call upstream's tests make. The page
+      has a Tilt pad, and the Accelerometer build shows the real bmi160
+      driver reading gravity move off Z as the board is tilted. Node scripts
+      it with `--accel`, and CI checks both.
+- [ ] **Triggers and FIFO streaming.** `accel_trig`, `6dof_fifo_stream` and
+      `stream_drdy` need a data-ready or FIFO interrupt, and no upstream
+      sensor emulator drives an interrupt pin: the bmi160, bma4xx, icm4268x
+      and bmp581 emulators have none. The icm4268x emulator, the natural
+      `stream0`, has no FIFO either. This is upstream emulator work: an
+      emulator that raises its INT line through `gpio_emul` would make all
+      three run. It is the next thing to propose there.
+- [ ] **The accelerometer chart on the page.** It runs, reads the tilt and
+      draws it, but slower than real time: under Node, 3 s of guest time
+      take about 10 s, with a first frame that takes several seconds. A
+      profile puts 96% of the time in LVGL's `lv_draw_sw_fill`: the chart
+      redraws a full-screen background fifty times a second, and a pixel
+      loop pays for a safepoint on every iteration. Making leaf pixel loops
+      cheap is performance work, which the issue lists as a non-goal. This
+      is the first case where it limits what can be shown, so it is worth
+      reconsidering here.
+- [ ] Optionally, the browser's Generic Sensor API behind the bridge, so a
+      phone's own tilt drives the board's accelerometer.
 
 ## Phase 6 — networking
 

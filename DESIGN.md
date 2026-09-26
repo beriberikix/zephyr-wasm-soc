@@ -549,6 +549,49 @@ LVGL's pointer, `input_dump` and `draw_touch_events` therefore all run
 against the real input subsystem. Scripted input under Node counts as a
 deadline, like a scripted GPIO event (D8c), so a touch test is repeatable.
 
+### D8j. Sensors are upstream's emulators, and the host sets what they read
+
+Phase 1's argument (D8c) one layer up: upstream already emulates sensor
+chips, on an emulated bus, for its own tests, so this board uses them. The
+devicetree has upstream's `zephyr,i2c-emul-controller`, as native_sim does,
+with two parts on it:
+- a bmi160 as `accel0`, the accelerometer upstream's LVGL chart sample puts
+  on native_sim's bus;
+- a bmp581 as `pressure-sensor`.
+
+The drivers are the real ones and talk to the chips over the bus. A sample
+reading an accelerometer runs every layer it would on hardware except the
+silicon. The board turns `CONFIG_EMUL` on for any build that uses sensors,
+because the emulated parts do not exist without it; a build that does not
+use sensors pays nothing. Neither part has an interrupt line, so their
+drivers run without triggers. No upstream sensor emulator drives an
+interrupt pin yet, which is what `accel_trig` and the FIFO-streaming samples
+wait on.
+
+**Setting what they read.** An emulated chip reports whatever its registers
+hold, and a person or a test has to decide what that is. Upstream's tests
+call the emulated-sensor backend API, `emul_sensor_backend_set_channel()`.
+`wasm,host-sensor-bridge` makes the same call on the host's behalf:
+- the host queues readings, each a sensor index, a `sensor_channel` and a
+  value in millionths of its SI unit, and raises `WASM_IRQ_SENSOR`;
+- the ISR reads them with `sensor_poll()`, a synchronous import, and sets
+  each on the emulator as a q31 value with the smallest shift that holds it;
+- the driver then reads the value back over I2C, through the chip's own
+  scaling. A reading of 1.5 m/s² comes back as 1.49999, from the bmi160's
+  16-bit register.
+
+The host keeps only the latest reading per channel, because that is all an
+emulator holds, so a page sending one reading per pointer move builds no
+backlog. Under Node, `--accel <ms>:<x>,<y>,<z>` scripts a reading, which
+counts as a deadline like a scripted touch. On the page, the Tilt pad is
+the board seen from above: dragging the dot tilts it, and gravity moves from
+Z onto X and Y. With nothing queued the emulators read as they always did,
+so an untouched run is byte-identical to one without the bridge.
+
+The bmp581's emulator has no backend API, so its pressure cannot be set.
+The pressure samples are `build_only` upstream, and building is all they
+need to do.
+
 ### D9. Link with wasm-ld directly
 
 The clang driver drops the wasm name section. Nothing in the kernel needs it,
