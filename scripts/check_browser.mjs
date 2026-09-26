@@ -643,13 +643,19 @@ const pageChecks = [
     await until('an instant click on Button 0 was not seen as a press',
                 (n) => window.zephyrOutput().split(' pressed ').length - 1 > n, before, 10_000);
     const afterClick = await presses();
+    /* Two instant clicks back to back are two presses, not one long one. */
+    await page.click('#board button[data-pin="4"]');
+    await page.click('#board button[data-pin="4"]');
+    await until('a double tap on Button 0 was not seen as two presses',
+                (n) => window.zephyrOutput().split(' pressed ').length - 1 >= n + 2, afterClick, 10_000);
+    const afterDouble = await presses();
     await page.focus('#board button[data-pin="4"]');
     await page.keyboard.press('Space');
     await until('Space on Button 0 was not seen as a press',
-                (n) => window.zephyrOutput().split(' pressed ').length - 1 > n, afterClick, 10_000);
+                (n) => window.zephyrOutput().split(' pressed ').length - 1 > n, afterDouble, 10_000);
     await page.click('#stop');
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
-    return 'an instant click and a Space press on Button 0 each reach the guest';
+    return 'an instant click, a double tap and a Space press on Button 0 each reach the guest';
   }],
   ['parts', async () => {
     /* Only the parts a build uses are shown -- visible, not merely marked
