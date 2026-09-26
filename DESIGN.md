@@ -308,6 +308,13 @@ recorded here because it bounds what "runs unmodified" can mean, and because
 it is the most upstreamable thing this port has found -- the fix is to give
 those entries the right signature, which costs nothing on any target.
 
+Those changes are written: `upstream/zephyr/` has them as a series for Zephyr,
+and `scripts/try_upstream.sh` shows every D8b entry passing with them. Clang's
+`-Wcast-function-type-strict` is how to find more. It reports the cast inside
+`K_THREAD_DEFINE()` that hides the mismatch. It also reports casts that differ
+only in pointer types, which wasm does not trap on, since its check compares
+value types and every pointer is an `i32`.
+
 ### D8c. GPIO is Zephyr's own emulated controller, bridged
 
 The pins are `drivers/gpio/gpio_emul.c`, which is board agnostic and already

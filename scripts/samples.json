@@ -153,7 +153,7 @@
     {
       "path": "zephyr/samples/basic/threads",
       "entry": "sample.basic.threads",
-      "note": "D8b, confirmed: blink0, blink1 and uart_out are declared void f(void) and handed to K_THREAD_DEFINE. Giving them k_thread_entry_t's signature makes the sample run.",
+      "note": "D8b, confirmed: blink0, blink1 and uart_out are declared void f(void) and handed to K_THREAD_DEFINE. Giving them k_thread_entry_t's signature makes the sample run. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -171,7 +171,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: coop_thread_entry is declared void f(void) and cast to k_thread_entry_t. Until picolibc, the link stopped earlier on __zephyr_init_array_start; the port now runs C++ constructors, and 'Create semaphore' prints before the trap."
+      "note": "D8b: coop_thread_entry is declared void f(void) and cast to k_thread_entry_t. Until picolibc, the link stopped earlier on __zephyr_init_array_start; the port now runs C++ constructors, and 'Create semaphore' prints before the trap. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
@@ -179,7 +179,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, as sample.cpp.synchronization: the same thread entry, now built against picolibc."
+      "note": "D8b, as sample.cpp.synchronization: the same thread entry, now built against picolibc. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/cpp/hello_world",
@@ -1130,7 +1130,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream."
+      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
@@ -1138,7 +1138,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream."
+      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
@@ -1146,7 +1146,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream."
+      "note": "D8b, but in Zephyr's CMSIS-RTOS v1 layer rather than the sample: zephyr_thread_wrapper calls the user's void (*)(void const *) through a void *(*)(void *), a different return type. One line to fix upstream. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/timer_synchronization",
@@ -1345,7 +1345,7 @@
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1353,7 +1353,7 @@
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_async_msg_sub",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1361,7 +1361,7 @@
     {
       "path": "zephyr/samples/subsys/zbus/benchmark",
       "entry": "sample.zbus.benchmark_sync",
-      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: producer_thread is declared void producer_thread(void) (src/benchmark.c:40) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1372,7 +1372,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: bar_sub1_task and friends are declared void f(void) (src/main.c:37) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: bar_sub1_task and friends are declared void f(void) (src/main.c:37) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/dyn_channel",
@@ -1380,7 +1380,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread and consumer_thread are declared void f(void) (src/producer.c:15) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_thread are declared void f(void) (src/producer.c:15) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/hello_world",
@@ -1388,7 +1388,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: subscriber_task is declared void subscriber_task(void) (src/main.c:86) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: subscriber_task is declared void subscriber_task(void) (src/main.c:86) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
@@ -1396,7 +1396,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
@@ -1404,7 +1404,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
@@ -1412,12 +1412,12 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small_use_default",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1425,7 +1425,7 @@
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_dynamic_isolated_too_small",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1436,12 +1436,12 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small_use_default",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1449,7 +1449,7 @@
     {
       "path": "zephyr/samples/subsys/zbus/msg_subscriber",
       "entry": "sample.zbus.msg_subscriber_static_isolated_too_small",
-      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering.",
+      "note": "D8b: msg_subscriber_task is declared void f(void *sub), one argument not three (src/main.c:84) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch"
@@ -1477,7 +1477,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/runtime_obs_registration",
@@ -1485,7 +1485,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: producer_thread and consumer_subscriber_thread are declared void f(void) (src/producer.c:16) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/subsys/zbus/uart_bridge",
@@ -1500,7 +1500,7 @@
       "status": "does-not-finish",
       "cause": "d8b",
       "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: thread_handler1_task and friends are declared void f(void) (src/main.c:131) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering."
+      "note": "D8b: thread_handler1_task and friends are declared void f(void) (src/main.c:131) and handed to K_THREAD_DEFINE. Correcting the signature makes zbus/hello_world run in full, with the section layout old or new; this was first mis-triaged as iterable-section ordering. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
     },
     {
       "path": "zephyr/samples/synchronization",

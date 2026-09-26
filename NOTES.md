@@ -878,3 +878,35 @@ with `CBPRINTF_FP_SUPPORT`, and under picolibc's own `printf`, which needed
 two of the three 128-bit helpers.
 
 Score 41 to 44.
+
+### Tick 53 — the D8b fixes, written for Zephyr
+
+D8b was the largest single thing between samples that build and samples
+that run: thread entries whose type is not `k_thread_entry_t`, which wasm
+traps on and every other target lets pass. The fixes belong in Zephyr, not
+here, so this tick wrote them as a series for Zephyr: `upstream/zephyr/`.
+
+The first triage had found the sites by reading. This time the compiler
+did it: clang's `-Wcast-function-type-strict` reports the cast inside
+`K_THREAD_DEFINE()` that hides every one of them. It found two that reading
+had missed: the zbus benchmark's consumer threads return `int` rather than
+`void`, which traps just the same, and `msg_subscriber` has a second
+one-argument entry. The second was missed a second time. The warning
+listed it, and the first try still failed on it. The CMSIS-RTOS v1 wrapper
+the warning cannot see at all, since it converts a `void *` rather than
+casting; it was found by reading.
+
+The warning also reports the minimal libc's `sprintf.c`, which passes a
+function taking `struct emitter *` where one taking `void *` is expected.
+In C that is the same undefined behaviour. Wasm does not trap on it:
+its check compares value types, and every pointer is an `i32`. Left alone.
+
+`scripts/try_upstream.sh` applies the series for one run and takes it out
+again. With it, all 23 entries pass, so all ten applications, and
+`tests/kernel/mutex/mutex_api` and `tests/kernel/pending` finish and pass.
+The score would be 54. It stays 44: "unmodified" means Zephyr as it is.
+
+Zephyr's contribution guidelines turned out to have a section on AI
+assistance. An agent must not add `Signed-off-by`, and AI help is
+disclosed with `Assisted-by: <agent>:<model version>`. The patches follow
+both, and `upstream/README.md` says what the person sending them has to add.
