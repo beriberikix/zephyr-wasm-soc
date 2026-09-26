@@ -375,6 +375,21 @@ forward without the guest being able to tell. An advance longer than
 deadline about two days out, and sitting through that would be a hang rather
 than pacing.
 
+The wait is measured against an anchor, the guest and wall clocks at one
+moment, not step by step. Waiting out each step's own difference loses the
+time the guest itself took, every step, and a paced clock drifted behind the
+wall clock by that much. The anchor is reset when the speed changes, after a
+step back, after a jump too long to wait out, and when the guest has fallen
+more than `PACE_BEHIND_MS` behind, so a slow stretch is not followed by a
+burst of catching up.
+
+One paced case does let the wall clock in: an interactive run with nothing to
+wake for but a person. Jumping to the next deadline there leaves the clock
+standing until they do something, so a five-second button press is logged as
+lasting no time. Instead the guest's clock advances with the wall clock while
+it idles. That run was never deterministic, since it reads a person; every
+run CI compares is scripted, and not affected.
+
 ### D8e. The host asks rather than reads
 
 A page that shows the kernel's threads needs the kernel's thread list, and

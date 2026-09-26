@@ -106,23 +106,35 @@ stopped these samples.
 
 The sweep runs weekly in CI (`.github/workflows/samples.yml`), re-running
 everything recorded as working and failing if any of it got worse. Dispatching
-that workflow with `everything` re-runs all 229 entries, which is how an
+that workflow with `everything` re-runs all 230 entries, which is how an
 improvement gets noticed.
 
-The issue proposes the measure but nothing counts it. That is the first thing to
-fix, because a number nobody computes drifts within a week:
+"Unmodified" is enforced by construction: a sample that needs a `prj.conf`
+edit or a source change is not counted. Devicetree overlays under `boards/`
+are allowed, because that is how every real board configures a sample, and a
+board overlay is not a change to the sample.
 
-* `scripts/stage_site.sh` writes `_site/manifest.json`, one entry per
-  application, and the page builds its menu from it. Adding a sample is one
-  line in one place instead of two that must agree.
-* CI runs every manifest entry and asserts the output each one is supposed to
-  produce. Today it greps three of the five builds by hand and never runs the
-  timeslice test at all, which is the only build with a self-checking
-  PASS/FAIL line in it.
-* "Unmodified" is enforced by construction: a sample that needs a `prj.conf`
-  edit or a source change is not counted. Devicetree overlays under
-  `boards/` are allowed, because that is how every real board configures a
-  sample, and a board overlay is not a change to the sample.
+The demo page is counted the same way. `scripts/apps.json` is the one list of
+what the page offers, `scripts/stage_site.sh` turns it into
+`_site/manifest.json`, and `scripts/check_site.mjs` runs every entry and
+asserts the output it is supposed to produce.
+
+## Where things stand, and what is next
+
+Phases 0 to 4 are done, apart from the small items still open in each. The
+score went from 3 to 41. Phases 5 to 7 have not started.
+
+What comes next, in order, and why:
+1. **A C library spike** (below, "Two levers"). Up to ten applications, all
+   of it in this port's hands.
+2. **The D8b fixes, proposed upstream.** Nine applications, `basic/threads`
+   among them, for about a dozen lines, once Zephyr takes them.
+3. **Phase 5, sensors**, before networking: eight samples are filtered out
+   only for want of a part upstream already emulates, and one of them puts a
+   live chart on the page.
+4. **The Phase 6 loopback spike**, the cheapest evidence on whether the IP
+   stack survives this port.
+5. **The first lesson**, with "which thread is waiting on what" before it.
 
 ## Phase 0 — foundations
 
@@ -165,10 +177,11 @@ the kernel, so this comes first.
 - [ ] **Twister.** It builds for this board but cannot find the module's SoC,
       because it takes a `--board-root` and no `--soc-root` and relies on
       module discovery, which finds nothing when the module is the manifest
-      repository. Until that is solved the scoreboard is a shell script.
-      `boards/wasm/wasm_node/wasm_node.yaml` also has no `supported:` list, so
-      twister would filter this board out of every `depends_on` test even once
-      it can build them.
+      repository. Until that is solved the scoreboard is
+      `scripts/check_samples.py`, which applies twister's own rules without
+      twister. Half done: `wasm_node.yaml` now has the `supported:` list
+      (`26fe63b`), so twister will not filter the board out of every
+      `depends_on` test once it can build them.
 - [x] **Logging.** Already works. `CONFIG_LOG` was on this list because
       nearly every sample past `basic/` calls `LOG_INF` and because it brings
       three more iterable families with it, which made it the first real test
@@ -181,28 +194,31 @@ the kernel, so this comes first.
       other architecture does. Before this, tracing backends and CPU load
       silently saw neither. `samples/subsys/tracing/basic`'s gpio entry
       checks for it.
-- [ ] **Make stack overflow loud.** The Asyncify buffer is not bounds-checked
-      and a learner will overflow a stack on the first afternoon. Binaryen will
-      not add a check, but the host can: the buffer's cursor and limit are two
-      words it already reads for tracing, so comparing them at every suspension
-      costs nothing and turns silent corruption into a reported fatal.
-      `CONFIG_STACK_SENTINEL` covers the C shadow stack and should be on.
-- [ ] **Build hygiene.** `scripts/instrument_safepoints.py` skips
-      `z_wasm_switch` by name, but that function is not exported, so the skip
-      matches nothing and a loop added there would be instrumented from inside
-      the switch path. `scripts/gen_sections_wasm.py` carries an `ITERABLES`
-      dict that looks like the registry of section families and is dead code.
-      `llvm-ar` is an undeclared tool dependency. `tools.env` will silently
-      select the LLVM 18 the README disclaims.
-- [ ] **Documentation drift.** The README says five patches in one place and
-      seven in another, says browsers are out of scope two paragraphs below the
-      section on running in a browser, and points at a final report in
-      `NOTES.md` that was deleted in `91afbd3`.
+- [x] **Make stack overflow loud.** The Asyncify buffer is not bounds-checked,
+      and Binaryen will not add a check, but the host can: the buffer's cursor
+      and limit are two words in linear memory, so both hosts compare them
+      after every unwind and stop the run with a message naming the buffer
+      and how far it overran (`a696395`). It is after the fact, but it turns
+      silent corruption into a reported fatal.
+- [ ] **`CONFIG_STACK_SENTINEL`**, which covers the C shadow stack, the other
+      half of a thread's stack. Not on yet, and not tried.
+- [x] **Build hygiene** (`10d1bdc`). The safepoint pass's skip of
+      `z_wasm_switch` matched nothing because the function was not exported;
+      it is exported now, and a skipped name that cannot be found fails the
+      build. The dead `ITERABLES` dict is gone. `llvm-ar` is looked for
+      beside clang and missing is an error. `tools.env` warns below LLVM 21.
+- [x] **Documentation drift** (`10d1bdc`). The patch count, the browser
+      scope and the dead link to a deleted report are fixed, and `DESIGN.md`
+      now says the brief's browser exclusion no longer holds.
 
-Unknowns that Phase 0 is expected to turn up, all of them untested today:
-`k_malloc` and the heap, `%f` in `printk` (`CONFIG_CBPRINTF_FP_SUPPORT` is off
-and the minimal libc is the only libc here), and `CONFIG_MULTITHREADING=n`,
-which nothing in the port has ever considered.
+Unknowns that Phase 0 was expected to turn up:
+- **The heap** works: `basic/sys_heap` passes, and so does
+  `tests/kernel/mem_heap/k_heap_api`.
+- **`%f` in `printk`** is still untested. `CONFIG_CBPRINTF_FP_SUPPORT` is off
+  and the minimal libc is the only libc here; see "A full C library" below.
+- **`CONFIG_MULTITHREADING=n`** is still untested. The `basic/minimal`
+  variants that set it are x86-only upstream and refuse this board in
+  Kconfig, so the sweep never reached it.
 
 ## Phase 1 — a virtual board
 
@@ -225,15 +241,6 @@ mostly a bridge, because Zephyr already ships the hard part.
       records the line and applies it at the top of its loop rather than
       writing guest memory from a message handler, because a message can
       arrive before the module is even instantiated.
-- [ ] **Entropy**, over one import. The catch is that
-      `crypto.getRandomValues` would break the determinism check CI depends on,
-      so the default has to be a seeded generator with true randomness as an
-      opt-in, in the same shape as `--realtime`.
-- [ ] **Real time.** Blinky sleeps a second between toggles; under virtual time
-      it finishes instantly and blinks nothing. The host needs a paced mode
-      that sleeps until the next deadline rather than jumping to it, and a time
-      scale, which is also the slow motion Phase 2 wants. Pacing changes when
-      the host sleeps, not what the guest observes, so determinism survives.
 - [x] **LEDs and buttons on the page**, and a devicetree describing them:
       four `gpio-leds` and two `gpio-keys`, wired active low with a pull-up
       the way a button usually is, with the `led0` and `sw0` aliases the
@@ -361,6 +368,25 @@ Done, apart from saying what a pending thread is pending on.
 As the issue has it. `subsys/emul` with the real sensor drivers on top is the
 same reuse argument as `gpio_emul`, one layer up.
 
+The sweep says where to start. Eight samples are
+filtered out here for want of one devicetree alias, and upstream ships an
+emulator for a part of each kind:
+
+| Alias | Samples | Upstream emulators |
+|---|---|---|
+| `accel0` | `sensor/accel_polling`, `accel_stream`, `accel_trig`, `lvgl/accelerometer_chart` | `bmi160`, `bma4xx` |
+| `pressure-sensor` | `sensor/pressure_polling`, `pressure_interrupt` | `bmp581` |
+| `stream0` | `sensor/6dof_fifo_stream`, `stream_drdy` | `icm4268x` |
+
+Whether each sample's trigger or streaming mode works against its emulator
+is the work; the parts exist. `lvgl/accelerometer_chart` is the one to aim
+at, since it puts a driver talking to a bus on the page as a moving chart.
+
+- [ ] An emulated I2C bus with an accelerometer on it, aliased `accel0`.
+- [ ] The pressure sensor and the streaming IMU, the same way.
+- [ ] Optionally, the browser's Generic Sensor API behind the emulator, so
+      tilting a phone moves the chart.
+
 ## Phase 6 — networking
 
 Add a step before the issue's first one: `CONFIG_NET_LOOPBACK` exercises the
@@ -368,12 +394,60 @@ whole IP stack, sockets included, with no host work at all. It is the cheapest
 possible test of whether the networking subsystem survives this port, and it
 should come before any virtual L2 between instances.
 
+The sweep has not touched networking: 106 entries use twister's `net`
+harness, which needs a peer, so none was tried. The loopback spike is the
+first evidence either way.
+
 ## Phase 7 — Bluetooth
 
 As the issue has it, with one dependency it does not name: Zephyr's H4 driver
 wants an interrupt-driven UART, and this port's UART is polled because nothing
 could fire the interrupt. The interrupt path from Phase 1 is what makes an
 interrupt-driven UART possible, and that has to come first.
+
+## Two levers on the score that no phase covers
+
+The sweep's record of what does not pass says where the next samples are,
+and the two largest groups are not in any phase.
+
+- [ ] **A full C library.** 20 entries in 10 applications either carry a
+      twister filter on `CONFIG_FULL_LIBC_SUPPORTED`, newlib or picolibc, or
+      fail to build for want of `string.h`: both C++ samples, four POSIX
+      samples (`env`, `eventfd`, `philosophers`, `uname`),
+      `logging/syst`, `testsuite/benchmark`, `cmsis_dsp/moving_average` and
+      `tflite-micro/hello_world`. The minimal libc is the only one here.
+      Picolibc is what Zephyr builds from source as a module, so the question
+      is whether it builds for wasm32 with clang; `setjmp`/`longjmp`, which
+      picolibc implements per architecture in assembly, is the likely snag.
+      A spike first. This is the largest lever that is entirely in this
+      port's hands, and it would also answer `%f`.
+- [ ] **Propose the D8b signature fixes upstream.** 21 entries in 9
+      applications trap on wasm's indirect-call check, plus
+      `tests/kernel/mutex/mutex_api` and `tests/kernel/pending`. Each fix is a
+      thread entry given the signature it should have had, about a dozen
+      lines in all, and each is undefined behaviour on every target today.
+      The patches can be prepared and checked here; they only count once
+      Zephyr takes them, because "unmodified" means upstream's tree. This is
+      also the only route to `basic/threads`, which Phase 1 was meant to
+      unlock.
+
+## Lessons
+
+The issue asks two things: how much of Zephyr runs in a tab, and whether that
+is a good way to learn it. The score answers the first, and has gone from 3
+to 41. Nothing yet answers the second. The page runs samples; it does not
+teach with them, and nobody learning Zephyr has tried it.
+
+- [ ] **One lesson**, to find out what a lesson needs. `philosophers` is the
+      obvious first: five threads contending for forks is what pause, step,
+      step back and the thread table were built to show. A lesson is a build
+      from the manifest plus a short script of what to do and what to watch
+      for, the "precompiled variants per lesson" the issue already chose.
+- [ ] **Which thread is waiting on what** (Phase 2's open item) comes first,
+      because "blocked on fork 3, which philosopher 2 holds" is the lesson.
+
+The score stays the measure. A lesson is how the page gets tested by the
+people it is for.
 
 ## Decisions that cut across phases
 
@@ -393,7 +467,8 @@ type-checks indirect calls, so upstream code that casts a thread entry to
 `k_thread_entry_t` traps where every other target shrugs. That is not
 fixable here and not worth working around: the honest answer is to fix those
 entry points upstream, where the cast is undefined behaviour anyway. The
-samples sweep measured the edge: nine upstream applications.
+samples sweep measured the edge: nine upstream applications. See "Propose
+the D8b signature fixes upstream", above.
 
 **Iterable sections have an order, and some code depends on it.** Upstream
 collects every iterable family with `SORT_BY_NAME`:
@@ -410,16 +485,45 @@ order from upstream, and a channel whose observers were spread across files
 could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
-the issue's own first risk and it is the right one. Two of its failure modes
+the issue's own first risk, and so far it has held up better than feared:
+after four phases, 41 samples, three file systems and LVGL there are still
+seven patches. Its real failures were archive members whose names collided
+and sections in the wrong order, both fixed and both now checked at every
+link. Two of its failure modes
 are quiet: a list that reads empty produces no error, just a subsystem that
 never initialises; and patch 0007's approximation of `DEVICE_API_EXT_END` is
 exact only while no device API class is extended, which is a wrong answer from
 `DEVICE_API_IS()` rather than a build failure. GPIO is the first class where
 that could bite.
 
-**The browser is the target, not a demo.** `DESIGN.md` still lists browsers as
-out of scope, which was true of the original brief and has not been true since
-the demo shipped.
+**The page runs long, interactive sessions, and needs checks that do the
+same.** Until PR #5 every check ran a build to its end in seconds and read
+the result through hooks. Nothing typed into the terminal, nothing ran for
+more than a few seconds, and nothing pressed a button the way a person does.
+The first walkthroughs by hand, and in Claude in Chrome, found about a dozen
+bugs in a week, none of which any check could have seen:
+- the terminal dropped escape sequences, so backspace and the cursor did
+  nothing;
+- every run froze or ended at 100 s of guest time, because the kernel's
+  "nothing soon" clamp was recognised by its absolute value (`DESIGN.md`
+  D5a);
+- the input queue overflowed under the paced clock;
+- the paced clock ran slower than the wall clock;
+- a second quick press of a button was lost.
+
+So the rules now:
+- the browser check drives the page with the real keyboard and mouse, never
+  a hook, and checks what is on the screen;
+- CI runs a build past 100 s of guest time on both engines;
+- the page's footer names the commit it was built from, so a report from a
+  walkthrough maps to code;
+- `scripts/apps.json` says which parts of the board each build uses, and
+  staging checks that against the build's `.config`;
+- a walkthrough by a person, or by an agent acting like one, comes before a
+  page change is called done.
+
+- [ ] **Check in the walkthrough prompt**, so the next one tests the same
+      things and quotes the build it tested.
 
 ## Open questions
 
@@ -435,6 +539,6 @@ the demo shipped.
   `wasm-opt` pass and its 1.22x code size. A spike would settle it cheaply.
 * Whether the browser backends belong upstream or here.
 * Letting people edit and rebuild, which the issue correctly calls the hard cap
-  on the whole idea. Precompiled variants per lesson need the manifest and
-  nothing else; a build service is a bigger decision and can wait until there
-  are lessons to serve.
+  on the whole idea. Precompiled variants per lesson are chosen for now: the
+  manifest already is that, and costs nothing to extend. A build service is a
+  bigger decision and waits until a lesson shows what people want to change.

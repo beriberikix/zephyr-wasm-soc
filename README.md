@@ -124,7 +124,7 @@ zephyr-wasm/scripts/apply_patches.sh
 and nothing else: `west.yml` imports them from Zephyr's manifest by name.
 
 The Zephyr tree is otherwise read-only. Seven patches are needed and each is
-explained in `patches/README.md`; four of the five are the same underlying
+explained in `patches/README.md`; most of them are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists.
 
@@ -338,7 +338,7 @@ judges it by the entry's own `harness_config`. An entry whose twister
 evaluated with twister's own parser, which needs `pip install ply`. It
 compares against `scripts/samples.json` and exits non-zero on anything that
 did worse. `--match samples/kernel` narrows it to one area; `--discover`
-regenerates the candidate list from upstream's `tests.yaml` files. All 229
+regenerates the candidate list from upstream's `tests.yaml` files. All 230
 candidates take a few hours, so CI runs them weekly in
 `.github/workflows/samples.yml` rather than on every push.
 
