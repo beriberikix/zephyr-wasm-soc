@@ -1,0 +1,41 @@
+From fc5da4c29235d6e80d21d5bf84d330344ac71504 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sat, 26 Sep 2026 18:46:47 +0000
+Subject: [PATCH 3/6] samples: cpp: synchronization: match thread entry to
+ k_thread_entry_t
+
+coop_thread_entry() is declared void f(void) and cast to
+k_thread_entry_t, which the kernel calls with three arguments. Calling a
+function through an incompatible function type is undefined behaviour,
+and it traps on targets that check indirect calls.
+
+Give the entry the signature k_thread_entry_t declares, and drop the cast
+that hid the mismatch.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ samples/cpp/cpp_synchronization/src/main.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/samples/cpp/cpp_synchronization/src/main.cpp b/samples/cpp/cpp_synchronization/src/main.cpp
+index 3ccf39bbb28..d9dcc82c287 100644
+--- a/samples/cpp/cpp_synchronization/src/main.cpp
++++ b/samples/cpp/cpp_synchronization/src/main.cpp
+@@ -110,7 +110,7 @@ void cpp_semaphore::give(void)
+ cpp_semaphore sem_main;
+ cpp_semaphore sem_coop;
+ 
+-void coop_thread_entry(void)
++void coop_thread_entry(void *, void *, void *)
+ {
+ 	struct k_timer timer;
+ 
+@@ -135,7 +135,7 @@ int main(void)
+ 	struct k_timer timer;
+ 
+ 	k_thread_create(&coop_thread, coop_stack, STACKSIZE,
+-			(k_thread_entry_t) coop_thread_entry,
++			coop_thread_entry,
+ 			NULL, NULL, NULL, K_PRIO_COOP(7), 0, K_NO_WAIT);
+ 	k_timer_init(&timer, NULL, NULL);
+ 

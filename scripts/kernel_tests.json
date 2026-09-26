@@ -129,13 +129,13 @@
       "path": "mutex/mutex_api",
       "status": "does-not-finish",
       "passes": 0,
-      "note": "Traps on the first case. The thread entries take two parameters and are cast to k_thread_entry_t, which takes three; wasm type-checks indirect calls, so the call traps where every other target tolerates it. Correcting the signatures locally makes all 11 pass. Not a port bug and not fixable in the port."
+      "note": "Traps on the first case. The thread entries take two parameters and are cast to k_thread_entry_t, which takes three; wasm type-checks indirect calls, so the call traps where every other target tolerates it. Correcting the signatures locally makes all 11 pass. Not a port bug and not fixable in the port. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes."
     },
     {
       "path": "pending",
       "status": "does-not-finish",
       "passes": 0,
-      "note": "The same signature mismatch, reached through K_THREAD_DEFINE with an entry declared void f(void) rather than through an explicit cast."
+      "note": "The same signature mismatch, reached through K_THREAD_DEFINE with an entry declared void f(void) rather than through an explicit cast. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes."
     },
     {
       "path": "threads/thread_apis",

@@ -133,8 +133,10 @@ Phases 0 to 4 are done, apart from the small items still open in each. The
 score went from 3 to 44. Phases 5 to 7 have not started.
 
 What comes next, in order, and why:
-1. **The D8b fixes, proposed upstream.** Ten applications, `basic/threads`
-   among them, for about a dozen lines, once Zephyr takes them.
+1. **Send the D8b fixes upstream.** They are prepared and checked in
+   `upstream/zephyr/`: ten applications, `basic/threads` among them, and two
+   kernel suites. Sending them is a person's job, since Zephyr needs the
+   submitter's own `Signed-off-by`.
 2. **Phase 5, sensors**, before networking: eight samples are filtered out
    only for want of a part upstream already emulates, and one of them puts a
    live chart on the page.
@@ -464,15 +466,25 @@ and the two largest groups are not in any phase.
 - [ ] **A C++ standard library.** `cpp/hello_world` and anything else that
       sets `REQUIRES_FULL_LIBCPP` needs libc++ or libstdc++ built for
       wasm32. Picolibc was the prerequisite for that, and it is done.
-- [ ] **Propose the D8b signature fixes upstream.** 23 entries in 10
-      applications trap on wasm's indirect-call check, plus
-      `tests/kernel/mutex/mutex_api` and `tests/kernel/pending`. Each fix is a
-      thread entry given the signature it should have had, about a dozen
-      lines in all, and each is undefined behaviour on every target today.
-      The patches can be prepared and checked here; they only count once
-      Zephyr takes them, because "unmodified" means upstream's tree. This is
-      also the only route to `basic/threads`, which Phase 1 was meant to
-      unlock.
+- [ ] **Propose the D8b signature fixes upstream.** Prepared and checked;
+      waiting on someone to send them. `upstream/zephyr/` holds six patches,
+      one per maintainer area:
+      - the CMSIS-RTOS v1 thread wrapper, a library bug rather than a sample
+        one;
+      - `basic/threads`, `cpp_synchronization` and seven zbus samples;
+      - the mutex and pending kernel tests.
+
+      Each gives a thread entry the signature `k_thread_entry_t` declares.
+      Clang's `-Wcast-function-type-strict` found the sites, including two the
+      first triage had missed: the zbus benchmark's `int`-returning consumers
+      and a second entry in `msg_subscriber`. The series applies to the pin
+      and to upstream `main`, and checkpatch finds nothing but the missing
+      `Signed-off-by`, which Zephyr requires a person to add.
+
+      `scripts/try_upstream.sh` applies it for one run. All 23 entries pass,
+      so all ten applications, and both kernel suites finish and pass. With
+      the series the score would be 54. It stays 44 until Zephyr takes the
+      patches and the pin moves, because "unmodified" means upstream's tree.
 
 ## Lessons
 

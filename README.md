@@ -375,6 +375,7 @@ tests/two_threads/    a minimal two-thread reproducer
 tests/timeslice/      two spinners that only run if preemption works
 tests/safepoint_cost/ fixed compute, for measuring what safepoints cost
 patches/              the seven Zephyr changes and one to picolibc, each explained
+upstream/             fixes proposed to Zephyr itself, not applied here
 .github/workflows/    builds from scratch and publishes the demo
 ```
 
