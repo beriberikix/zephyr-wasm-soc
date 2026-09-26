@@ -38,6 +38,18 @@ function(toolchain_ld_link_elf)
     ${ARGN}
   )
 
+  # The standard libraries go last, after everything that might call them,
+  # as lld's toolchain_linker_finalize() arranges. Only picolibc names one
+  # today; with the minimal libc the list is empty.
+  set(std_libs)
+  get_property(link_order TARGET linker PROPERTY link_order_library)
+  foreach(lib ${link_order})
+    get_property(link_flag TARGET linker PROPERTY ${lib}_library)
+    if(link_flag)
+      list(APPEND std_libs ${link_flag})
+    endif()
+  endforeach()
+
   target_link_libraries(
     ${TOOLCHAIN_LD_LINK_ELF_TARGET_ELF}
     ${TOOLCHAIN_LD_LINK_ELF_LIBRARIES_PRE_SCRIPT}
@@ -69,6 +81,7 @@ function(toolchain_ld_link_elf)
     -L${PROJECT_BINARY_DIR}
 
     ${TOOLCHAIN_LD_LINK_ELF_DEPENDENCIES}
+    ${std_libs}
   )
 endfunction()
 

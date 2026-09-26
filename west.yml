@@ -33,3 +33,6 @@ manifest:
           - fatfs
           - littlefs
           - lvgl
+          # A full C library (ROADMAP "Two levers"): the minimal libc cannot
+          # build C++, POSIX or anything that wants string.h beyond the basics.
+          - picolibc
