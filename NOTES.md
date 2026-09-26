@@ -984,3 +984,47 @@ found none. Both scripts are dependencies now.
 
 `posix/eventfd` now links, then prints nothing after the banner, and its
 `main` is gone within six switches. Not diagnosed.
+
+
+### Tick 56 — the first lesson, and what the table was missing
+
+The roadmap had named the first lesson, the philosophers, and what it needed
+first: the thread table said `pending` and not what a thread was pending on.
+For this sample that is the whole lesson.
+
+The guest now says, in three more fields of the record it already filled
+(`DESIGN.md` D8e):
+- the wait queue;
+- the mutex's owner, when the queue is a mutex's;
+- the time left on the thread's timeout.
+
+A wait queue does not know what it belongs to, so the owner is an
+inference. The guest reads the queue as a mutex and believes the owner only
+if it is a thread holding the lock. That is honest about its limits and
+good enough for a table.
+
+The time left was the subtle part. The kernel's answer,
+`z_timeout_remaining()`, walks the timeout list, and every loop in the image
+has a safepoint. None could dispatch, since the kernel holds its lock
+there, but each one counts towards the next progress report, and a report
+moves virtual time. So asking would have changed the run being looked at.
+The safepoint pass can only skip a function it can name by export, so the
+link now exports this one and the build tells the pass to skip it. The
+records also outgrew the inspect stack they borrow the top of: 24 of them at
+12 words is more than the 1 KB it had.
+
+The first run of the new column showed something no one had asked for.
+Philosopher 0 starts at priority 3 and was running at -2, because
+Philosopher 5 was waiting for its fork. That is priority inheritance, and
+the lesson now points it out.
+
+A lesson turned out to be small: a `lesson` list on the build's `apps.json`
+entry, and a panel with Previous and Next. It has six steps: run, pause,
+step, find a waiter and its holder, why Dijkstra's ordering cannot deadlock,
+and step back. The browser check follows them with real clicks and requires
+a "held by" row naming a thread in the same table. The Node check requires
+the same of `run.mjs --threads`. Both pass, as do all 18 site builds and all
+25 kernel suites, whose case counts are unchanged.
+
+Nobody learning Zephyr has tried it. That is the next test, and the only
+one that says whether it teaches.

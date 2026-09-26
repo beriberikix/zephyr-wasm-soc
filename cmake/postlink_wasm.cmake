@@ -66,6 +66,11 @@ function(wasm_add_asyncify_step)
   )
 
   if(CONFIG_WASM_SAFEPOINTS)
+    # Exported at link only in some builds; see arch/wasm/core/CMakeLists.txt.
+    set(skips)
+    if(CONFIG_WASM_INSPECT AND CONFIG_SYS_CLOCK_EXISTS)
+      list(APPEND skips --skip z_timeout_remaining)
+    endif()
     set(wat_in  ${PROJECT_BINARY_DIR}/zephyr.wat)
     set(wat_out ${PROJECT_BINARY_DIR}/zephyr.safepoints.wat)
     set(instrumented ${PROJECT_BINARY_DIR}/zephyr.safepoints.wasm)
@@ -73,7 +78,7 @@ function(wasm_add_asyncify_step)
       TARGET ${logical_target_for_zephyr_elf} POST_BUILD
       COMMAND ${WASM2WAT} ${linked} -o ${wat_in}
       COMMAND ${PYTHON_EXECUTABLE} ${WASM_MODULE_DIR}/scripts/instrument_safepoints.py
-              -i ${wat_in} -o ${wat_out}
+              -i ${wat_in} -o ${wat_out} ${skips}
       COMMAND ${WAT2WASM} ${wat_out} -o ${instrumented}
       COMMAND ${WASM_OPT} ${WASM_FEATURES} --asyncify
               --pass-arg=asyncify-imports@${WASM_ASYNCIFY_IMPORTS}

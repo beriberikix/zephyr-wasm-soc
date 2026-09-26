@@ -112,7 +112,11 @@ def main() -> int:
     ap.add_argument("-o", "--output", required=True, type=Path)
     ap.add_argument("--target", default="z_wasm_safepoint",
                     help="name of the function to call")
+    ap.add_argument("--skip", action="append", default=[], metavar="EXPORT",
+                    help="also leave this exported function alone; for names "
+                         "only some builds have, and held to the same rule")
     args = ap.parse_args()
+    skips = SKIP_EXPORTS + tuple(args.skip)
 
     lines = args.input.read_text().splitlines(keepends=True)
     exports = read_exports(lines)
@@ -122,15 +126,16 @@ def main() -> int:
             "no way to name it here. Is CONFIG_WASM_SAFEPOINTS on?\n")
         return 1
 
-    missing = [name for name in SKIP_EXPORTS if name not in exports]
+    missing = [name for name in skips if name not in exports]
     if missing:
         sys.stderr.write(
             "instrument_safepoints: not exported, so these cannot be skipped "
             f"and would be instrumented: {', '.join(missing)}. Give each an "
-            "export_name attribute, or drop it from SKIP_EXPORTS.\n")
+            "export_name attribute or a --export at link, or stop skipping "
+            "it.\n")
         return 1
 
-    skip_idx = {exports[name] for name in SKIP_EXPORTS}
+    skip_idx = {exports[name] for name in skips}
     out, inserted, skipped = instrument(lines, exports[args.target], skip_idx)
     args.output.write_text("".join(out))
     print(f"instrument_safepoints: {inserted} loops instrumented, {skipped} skipped")

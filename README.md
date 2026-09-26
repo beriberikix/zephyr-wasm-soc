@@ -24,7 +24,7 @@ log, including what did not work. `BRIEF.md` is the original task.
 
 * `samples/hello_world` boots and exits cleanly.
 * `samples/synchronization` alternates two threads with `k_msleep` honoured.
-* `samples/philosophers` runs, which is five threads, mutexes and sleeps.
+* `samples/philosophers` runs, which is six threads, mutexes and sleeps.
 * `samples/subsys/logging/logger` runs, hexdumps and all.
 * `samples/basic/sys_heap` runs, which is the heap.
 * `samples/basic/blinky` and `samples/basic/button` run, with the LEDs drawn
@@ -269,8 +269,11 @@ they do. A build that waits for a person runs on the real clock, so its
 timestamps are the ones you lived through. Choosing another build stops the
 one running and clears what it left. The
 kernel's thread table is shown underneath: who exists, who holds the CPU,
-and what the rest are waiting for. Pause stops the guest between two context
-switches and Step lets exactly one through. A server is needed because `file://`
+and what the rest are waiting for, which is a mutex and who holds it, or how
+long until they wake. Pause stops the guest between two context switches
+and Step lets exactly one through. The philosophers come with a lesson, six
+steps in a panel above the output: pause, step, find a philosopher waiting
+for a fork and the one holding it, and see why the sample never deadlocks. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.

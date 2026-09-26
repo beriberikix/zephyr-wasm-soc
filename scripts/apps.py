@@ -66,6 +66,9 @@ def load(module: str) -> list[dict]:
         for key in ("title", "hint"):
             if not b.get(key):
                 sys.exit(f"apps.json: {b['name']} has no {key}")
+        lesson = b.get("lesson", [])
+        if not isinstance(lesson, list) or not all(isinstance(x, str) and x for x in lesson):
+            sys.exit(f"apps.json: {b['name']} has a lesson that is not a list of steps")
         unknown = set(b.get("uses", [])) - USES
         if unknown:
             sys.exit(f"apps.json: {b['name']} uses unknown {sorted(unknown)}")

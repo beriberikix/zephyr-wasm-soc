@@ -577,6 +577,60 @@ const pageChecks = [
     if (!p || !s) throw new Error('Pause or Step stayed enabled after the run');
     return 'the status says Paused and Running; Pause and Step are off after the run';
   }],
+  ['lesson', async () => {
+    /* The philosophers' lesson, followed as a person would: through its
+     * steps, then Run, Pause and Step until the table shows a philosopher
+     * waiting for a fork that another one holds. */
+    const pos = () => page.evaluate(() => document.getElementById('lessonPos').textContent);
+    await page.selectOption('#build', 'hello');
+    if (await page.isVisible('#lesson')) throw new Error('a build with no lesson showed one');
+    await page.selectOption('#build', 'philo');
+    if (!(await page.isVisible('#lesson'))) throw new Error('the philosophers showed no lesson');
+    const steps = manifest.builds.find((b) => b.name === 'philo').lesson.length;
+    if (await pos() !== `step 1 of ${steps}`) throw new Error(`the lesson opened at ${JSON.stringify(await pos())}`);
+    await page.click('#lessonNext');
+    await page.click('#lessonNext');
+    await page.click('#lessonPrev');
+    if (await pos() !== `step 2 of ${steps}`) throw new Error(`Next, Next, Previous left it at ${JSON.stringify(await pos())}`);
+    /* Looking at another build and back keeps the place. */
+    await page.selectOption('#build', 'hello');
+    await page.selectOption('#build', 'philo');
+    if (await pos() !== `step 2 of ${steps}`) throw new Error('coming back to the lesson started it over');
+    await page.click('#lessonPrev');
+
+    await page.click('#run');
+    await until('the philosophers never started', () => (window.zephyrState()?.threads ?? []).length > 1, null, 30_000);
+    await page.click('#pause');
+    await until('Pause did not say so', () => document.getElementById('status').textContent.startsWith('Paused.'));
+    /* The table as shown: a waiter names its holder, and the holder is a
+     * thread in the same table. */
+    const heldBy = () => page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#threads tr')]
+        .map((tr) => [...tr.cells].map((td) => td.textContent));
+      const names = new Set(rows.map((r) => r[0]));
+      for (const r of rows) {
+        const m = / held by (.+?)(,|$)/.exec(r[4] ?? '');
+        if (m && names.has(m[1]) && m[1] !== r[0]) return `${r[0]}: ${r[4]}`;
+      }
+      return null;
+    });
+    /* A few steps at least, so the column is seen to follow them. */
+    let seen = await heldBy();
+    let taken = 0;
+    for (; (!seen || taken < 3) && taken < 200; taken++) {
+      const before = await page.evaluate(() => document.getElementById('kstat').textContent);
+      await page.click('#step');
+      await until('Step changed nothing', (b) => document.getElementById('kstat').textContent !== b, before);
+      seen ??= await heldBy();
+    }
+    const sleeping = await page.evaluate(() => [...document.querySelectorAll('#threads td.wait')]
+      .some((td) => /^wakes in \d+ ms$/.test(td.textContent)));
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    if (!seen) throw new Error(`in ${taken} steps no philosopher was shown waiting for a fork another held`);
+    if (!sleeping) throw new Error('no sleeping philosopher was shown with when it wakes');
+    return `the lesson steps through and remembers its place; in ${taken} steps: ${seen}`;
+  }],
   ['final', async () => {
     await page.selectOption('#build', 'sem');
     await page.click('#run');

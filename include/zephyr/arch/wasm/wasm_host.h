@@ -151,6 +151,10 @@ struct wasm_thread_info {
 	uint32_t stack_size;
 	uint32_t sp;          /* the saved shadow-stack pointer */
 	uint32_t asyncify_buf;
+	/* What the thread is waiting for. */
+	uint32_t pended_on;   /* the wait queue it is pending on, or 0 */
+	uint32_t held_by;     /* when that queue is a mutex's, its owner, or 0 */
+	int32_t timeout_ms;   /* time left on its timeout, or -1 with none */
 };
 
 /*

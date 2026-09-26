@@ -18,7 +18,13 @@
  * It also must not be instrumented: a safepoint inside this walk would
  * dispatch interrupts and reschedule from a call the kernel did not make.
  * scripts/instrument_safepoints.py skips it by export name, and refuses to
- * run if it cannot find it.
+ * run if it cannot find it. That covers this function's own loops, which is
+ * why the helpers below are always inlined, but not the functions it calls.
+ * The one kernel function it calls with a loop, z_timeout_remaining(), is
+ * exported by the link for this reason alone and skipped the same way.
+ * Even its safepoints could not dispatch, since it holds a lock, but each
+ * one counts towards the next progress report, and a report moves virtual
+ * time: looking would change what is looked at.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -26,6 +32,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/kernel_structs.h>
 #include <zephyr/arch/wasm/wasm_host.h>
+#include <timeout_q.h>
 
 /* A stack of its own, so the walk does not spend the headroom of whichever
  * thread happens to be suspended. The host points __stack_pointer here for
@@ -39,6 +46,61 @@ uint32_t z_wasm_inspect_stack_top(void)
 {
 	/* Shadow stacks grow down. */
 	return (uint32_t)(uintptr_t)(inspect_stack + sizeof(inspect_stack));
+}
+
+static ALWAYS_INLINE bool is_thread(const struct k_thread *candidate)
+{
+	for (struct k_thread *t = _kernel.threads; t != NULL; t = t->next_thread) {
+		if (t == candidate) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * Who holds what a thread is waiting for, when that is a mutex.
+ *
+ * A wait queue does not say what kind of object it belongs to, and without
+ * CONFIG_USERSPACE nothing else records it either. So this infers: the queue
+ * is read as a k_mutex's wait_q, and the result is believed only if the
+ * owner it finds is a thread in the kernel's list, is not the waiter, and
+ * holds the lock at least once. A semaphore with a waiter has a count of
+ * zero where the owner would be, and most other objects hold something that
+ * is not a thread there. Something that happens to hold a thread pointer in
+ * that place would be misread, and the page says "held by" only for this.
+ */
+static ALWAYS_INLINE uint32_t mutex_owner(const struct k_thread *waiter)
+{
+	_wait_q_t *q = waiter->base.pended_on;
+
+	if (q == NULL || (waiter->base.thread_state & _THREAD_PENDING) == 0U) {
+		return 0U;
+	}
+
+	const struct k_mutex *m = CONTAINER_OF(q, struct k_mutex, wait_q);
+
+	if (m->owner == NULL || m->owner == waiter || m->lock_count == 0U ||
+	    !is_thread(m->owner)) {
+		return 0U;
+	}
+	return (uint32_t)(uintptr_t)m->owner;
+}
+
+static ALWAYS_INLINE int32_t timeout_ms(const struct k_thread *t)
+{
+#ifdef CONFIG_SYS_CLOCK_EXISTS
+	if (z_is_inactive_timeout(&t->base.timeout)) {
+		return -1;
+	}
+
+	k_ticks_t ticks = z_timeout_remaining(&t->base.timeout);
+
+	return (int32_t)k_ticks_to_ms_ceil32(ticks > 0 ? (uint64_t)ticks : 0U);
+#else
+	ARG_UNUSED(t);
+	return -1;
+#endif
 }
 
 __attribute__((export_name("z_wasm_inspect_threads")))
@@ -66,6 +128,9 @@ uint32_t z_wasm_inspect_threads(struct wasm_thread_info *out, uint32_t max)
 #endif
 		out[n].sp = (uint32_t)(uintptr_t)t->callee_saved.sp;
 		out[n].asyncify_buf = (uint32_t)(uintptr_t)t->callee_saved.asyncify_buf;
+		out[n].pended_on = (uint32_t)(uintptr_t)t->base.pended_on;
+		out[n].held_by = mutex_owner(t);
+		out[n].timeout_ms = timeout_ms(t);
 		n++;
 	}
 

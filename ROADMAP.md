@@ -132,7 +132,8 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 46. Phase 5 has started; 6 and 7 have not.
+score went from 3 to 46. Phases 5 and 6 have started; 7 has not. The first
+lesson is on the page.
 
 What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
@@ -145,13 +146,17 @@ What comes next, in order, and why:
    being cheaper.
 3. **mbedTLS**, now that the loopback spike shows the IP stack works: TLS,
    DTLS and the IPv6 suite wait on it.
-4. **The first lesson**, with "which thread is waiting on what" before it.
+4. **Someone learning Zephyr tries the lesson.** It is built and checked,
+   but whether it teaches is a question only its audience can answer, and
+   what they get stuck on should decide the second lesson.
 5. **A C++ standard library**, now that picolibc builds (below, "Two
    levers"). Last, because it waits on two applications, one of which also
    needs a module.
 
 The C library spike that was first on this list is done: picolibc builds,
-three more samples pass, and C++ constructors run (below, "Two levers").
+three more samples pass, and C++ constructors run (below, "Two levers"). So
+is the first lesson, with the thread table's answer to what each thread is
+waiting for (below, "Lessons").
 
 ## Phase 0 — foundations
 
@@ -287,7 +292,7 @@ way. See the note on what "unmodified" can mean, below.
 
 ## Phase 2 — see the kernel working
 
-Done, apart from saying what a pending thread is pending on.
+Done.
 
 - [x] **The thread table**: names, priorities, states, which one holds the
       CPU, and the stack pointer, updated as the run goes. The page does not
@@ -307,8 +312,15 @@ Done, apart from saying what a pending thread is pending on.
       returns the clock, the switch counter and the thread holding the CPU
       to exactly where they were, which the browser check asserts.
       `DESIGN.md` D8g.
-- [ ] **Which thread is waiting on what.** The table says `pending`, not
-      what it is pending on, and the kernel knows.
+- [x] **Which thread is waiting on what.** A "waiting for" column: the
+      mutex a thread waits on and which thread holds it, the address of any
+      other kernel object, and how long is left before a sleeping thread
+      wakes or a waiting one gives up. The guest works out the mutex's
+      owner, and tells a mutex from other objects by checking that what it
+      finds is a thread holding the lock (`DESIGN.md` D8e). Watching the
+      philosophers this way shows priority inheritance at work, which
+      nothing on the page showed before: a philosopher holding a fork runs
+      at the priority of the one waiting for it.
 
 ## Phase 3 — storage
 
@@ -561,13 +573,28 @@ is a good way to learn it. The score answers the first, and has gone from 3
 to 46. Nothing yet answers the second. The page runs samples; it does not
 teach with them, and nobody learning Zephyr has tried it.
 
-- [ ] **One lesson**, to find out what a lesson needs. `philosophers` is the
-      obvious first: five threads contending for forks is what pause, step,
-      step back and the thread table were built to show. A lesson is a build
-      from the manifest plus a short script of what to do and what to watch
-      for, the "precompiled variants per lesson" the issue already chose.
-- [ ] **Which thread is waiting on what** (Phase 2's open item) comes first,
-      because "blocked on fork 3, which philosopher 2 holds" is the lesson.
+- [x] **Which thread is waiting on what** (Phase 2's open item) came first,
+      because "waiting for a fork that Philosopher 2 holds" is the lesson.
+- [x] **One lesson**, to find out what a lesson needs. `philosophers`, six
+      threads contending for six forks, which is what pause, step, step back
+      and the thread table were built to show. It takes six steps:
+      1. run it;
+      2. pause;
+      3. step one context switch at a time, and see which priority wins;
+      4. find a waiting philosopher, who holds its fork, and priority
+         inheritance;
+      5. why it never deadlocks, which is Dijkstra's ordering: everyone
+         takes the lower-numbered fork first;
+      6. step back through a fork changing hands.
+
+      A lesson turned out to need very little: a `lesson` list on a build's
+      `apps.json` entry, which the page shows as a panel with Previous and
+      Next, and the thread table saying what each thread waits for. So the
+      next lesson is an entry, not code. The steps are text and nothing
+      checks that a person followed them. The browser check follows them
+      itself, so a change that breaks what the lesson describes fails CI.
+      What a lesson needs beyond this is for its audience to say. Nobody
+      learning Zephyr has tried it yet.
 
 The score stays the measure. A lesson is how the page gets tested by the
 people it is for.

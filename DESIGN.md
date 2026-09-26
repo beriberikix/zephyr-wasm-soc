@@ -417,7 +417,7 @@ quietly wrong whenever a struct moved rather than failing.
 
 So the guest answers questions instead. `z_wasm_inspect_threads()` walks
 `_kernel.threads` and fills an array of `struct wasm_thread_info`, which is
-nine 32-bit fields in a fixed order and the only Zephyr shape the host
+twelve 32-bit fields in a fixed order and the only Zephyr shape the host
 knows. Adding a field costs an edit on each side, which is the usual price
 of an ABI and cheap at this size.
 
@@ -434,6 +434,43 @@ if it cannot find a name it was told to skip.
 
 It runs on a stack of its own rather than spending the headroom of whichever
 thread happens to be suspended when the host asks.
+
+**What a thread waits for.** The last three fields answer the question a
+thread table raises first: a thread is `pending`, but on what?
+- `pended_on` is the wait queue the thread is on, which is the kernel
+  object's address for every object whose wait queue comes first.
+- `held_by` is who holds it, when it is a mutex. A wait queue does not say
+  what it belongs to, and without `CONFIG_USERSPACE` nothing else records
+  that either, so the guest infers it. It reads the queue as a `k_mutex`'s
+  `wait_q` and believes the owner it finds only if that owner is a thread in
+  the kernel's list, is not the waiter, and holds the lock at least once. A
+  semaphore with a waiter has a count of zero there, and most other objects
+  hold something that is not a thread. An object that happened to keep a
+  thread pointer in that place would be misread as a mutex. That is the
+  price of not having a type tag, and the page says "held by" for this case
+  only. `CONFIG_OBJ_CORE` would give an exact answer, at the cost of a list
+  node in every kernel object of every build, which is more than a thread
+  table is worth.
+- `timeout_ms` is what is left on the thread's timeout, or -1 with none:
+  when a sleeping thread wakes, or when a waiting one gives up. The guest
+  asks the kernel, through `z_timeout_remaining()`.
+
+That call is where the "not instrumented" rule reaches past this file. The
+skip list protects the walk's own loops, which is why its helpers are
+always inlined, but not the functions it calls, and `z_timeout_remaining()`
+walks the timeout list. A safepoint there could not dispatch, since the
+kernel holds its lock, but each safepoint counts towards the next progress
+report, and a report moves virtual time: looking would change what was
+looked at. So the link exports `z_timeout_remaining` whenever inspection and
+a clock are both built in, and the build passes its name to the safepoint
+pass, which leaves it alone under the same rule: a name it is told to skip
+must be exported, or the pass refuses to run. The kernel's own callers lose
+those safepoints too. They held the lock already, so all they lose is
+counting.
+
+The records sit at the top of the inspect stack, 48 bytes for each of up to
+24 threads, so the stack grew from 1 KB to 2 KB to keep the walk's own
+headroom.
 
 ### D8f. A step is a suspension
 

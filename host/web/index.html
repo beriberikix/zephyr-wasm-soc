@@ -66,6 +66,17 @@
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* A lesson: its controls sit on the first line, so moving through steps
+   * of different lengths never moves the buttons under the pointer. */
+  #lesson {
+    margin: 0 0 12px; padding: 8px 12px; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  #lesson[hidden] { display: none; }
+  #lesson .lhead { display: flex; gap: 8px; align-items: center; }
+  #lesson .lhead span { color: var(--muted); flex: 1; }
+  #lesson p { margin: 6px 0 0; min-height: 3em; }
+  #lesson code { font-size: 12px; }
   /* A scrollbar that comes and goes would shift the page sideways. */
   html { scrollbar-gutter: stable; }
   #board {
@@ -134,6 +145,8 @@
   }
   table.threads th { color: var(--muted); font-weight: 500; }
   table.threads td.mono { font: 12px ui-monospace, monospace; }
+  /* The one column that can be long, so the one that wraps. */
+  table.threads td.wait { white-space: normal; }
   table.threads tr.cur td { font-weight: 600; }
   table.threads tr.cur td:first-child::before { content: "\25B8 "; color: var(--accent); }
   kbd {
@@ -186,6 +199,17 @@
   <div id="hint"></div>
   <div id="status">Loading the list of builds…</div>
 
+  <!-- A guided lesson, for a build whose apps.json entry has one. The steps
+       are text; nothing checks that they were followed. -->
+  <section id="lesson" hidden aria-label="lesson">
+    <div class="lhead">
+      <strong>Lesson</strong><span id="lessonPos"></span>
+      <button id="lessonPrev">Previous</button>
+      <button id="lessonNext">Next</button>
+    </div>
+    <p id="lessonText" aria-live="polite"></p>
+  </section>
+
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
 
@@ -207,7 +231,7 @@
       <span id="kstat"></span>
     </div>
     <table class="threads">
-      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th></tr></thead>
+      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th><th>waiting for</th></tr></thead>
       <tbody id="threads"></tbody>
     </table>
   </div>
@@ -221,7 +245,8 @@
     runs on its own in real time has a speed control, remembered for each
     build, which changes how fast it goes and not what it does; one that
     waits for you keeps to your time. Choosing another build stops the one
-    running.
+    running. A build with a lesson shows it above the output, one step at a
+    time.
   </p>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
@@ -231,6 +256,7 @@
 import { Terminal } from './vendor/xterm.mjs';
 import { FitAddon } from './vendor/addon-fit.mjs';
 import { IRQ } from './irq_lines.mjs';
+import { describeWait } from './threads.mjs';
 
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
@@ -670,18 +696,22 @@ function showKernel(state) {
 
   if (!state.threads) {
     threadsEl.innerHTML =
-      '<tr><td colspan="4">this build has no CONFIG_WASM_INSPECT</td></tr>';
+      '<tr><td colspan="5">this build has no CONFIG_WASM_INSPECT</td></tr>';
     return;
   }
   threadsEl.innerHTML = '';
   for (const t of state.threads) {
     const tr = document.createElement('tr');
     if (t.current) tr.className = 'cur';
+    /* What it waits for is the guest's answer too: which wait queue, who
+     * owns it when it is a mutex, and how long its timeout has left. */
     const cells = [t.name || '(unnamed)', String(t.prio),
-                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`];
+                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`,
+                   describeWait(t, state.threads)];
     cells.forEach((text, i) => {
       const td = document.createElement('td');
       if (i === 3) td.className = 'mono';
+      if (i === 4) td.className = 'wait';
       td.textContent = text;
       tr.append(td);
     });
@@ -690,10 +720,14 @@ function showKernel(state) {
 }
 
 /* A hint is plain text, with anything to type in `backticks`, shown as
- * code. Built from text nodes, never parsed as HTML. */
+ * code. Built from text nodes, never parsed as HTML. A lesson's steps are
+ * written the same way. */
 const hintEl = document.getElementById('hint');
 function showHint(text) {
-  hintEl.replaceChildren(...String(text ?? '').split('`').map((part, i) => {
+  showText(hintEl, text);
+}
+function showText(el, text) {
+  el.replaceChildren(...String(text ?? '').split('`').map((part, i) => {
     if (i % 2 === 0) return document.createTextNode(part);
     const code = document.createElement('code');
     code.textContent = part;
@@ -770,8 +804,41 @@ function showSelected() {
     'not what happens, and is remembered for each build.';
   speedEl.value = speeds.get(build.name) ?? '1';
   showHint(build.hint);
+  showLesson(build);
   statusEl.textContent = 'Ready.';
 }
+
+/* A lesson is a list of steps on a build's apps.json entry, shown one at a
+ * time. The step each build was left at is kept, like its speed, so that
+ * looking at another build and coming back does not start it over. */
+const lessonEl = document.getElementById('lesson');
+const lessonPosEl = document.getElementById('lessonPos');
+const lessonTextEl = document.getElementById('lessonText');
+const lessonPrevEl = document.getElementById('lessonPrev');
+const lessonNextEl = document.getElementById('lessonNext');
+const lessonSteps = new Map();
+let lesson = null;
+
+function showLesson(build) {
+  lesson = build.lesson?.length ? build : null;
+  lessonEl.hidden = !lesson;
+  if (lesson) showLessonStep(lessonSteps.get(build.name) ?? 0);
+}
+
+function showLessonStep(step) {
+  const steps = lesson.lesson;
+  step = Math.max(0, Math.min(step, steps.length - 1));
+  lessonSteps.set(lesson.name, step);
+  lessonPosEl.textContent = `step ${step + 1} of ${steps.length}`;
+  showText(lessonTextEl, steps[step]);
+  lessonPrevEl.disabled = step === 0;
+  lessonNextEl.disabled = step === steps.length - 1;
+}
+
+lessonPrevEl.addEventListener('click', () =>
+  showLessonStep(lessonSteps.get(lesson.name) - 1));
+lessonNextEl.addEventListener('click', () =>
+  showLessonStep(lessonSteps.get(lesson.name) + 1));
 
 /* The simulated flash, kept per build in IndexedDB so that what a sample
  * stored is still there after a reload, as it would be on a board that had

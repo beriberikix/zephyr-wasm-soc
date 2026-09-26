@@ -84,10 +84,10 @@ const PACE_BEHIND_MS = 250;
  * that it advances at all, so deadlines can expire. */
 const SAFEPOINT_TICK_NS = 100_000n;
 
-/* struct wasm_thread_info: nine 32-bit fields, in the order the header
+/* struct wasm_thread_info: twelve 32-bit fields, in the order the header
  * declares them. The guest fills it; the host only reads it, and learns no
  * Zephyr struct offsets in the process. */
-const THREAD_INFO_WORDS = 9;
+const THREAD_INFO_WORDS = 12;
 const THREAD_INFO_MAX = 24;
 
 /* _THREAD_* in kernel_structs.h, lowest bit first. A thread with no bits set
@@ -581,6 +581,7 @@ export class Host {
     }
 
     const words = new Uint32Array(this.mem.buffer, this.infoAddr, count * THREAD_INFO_WORDS);
+    const signed = new Int32Array(this.mem.buffer, this.infoAddr, count * THREAD_INFO_WORDS);
     const bytes = new Uint8Array(this.mem.buffer);
     const rows = [];
     for (let i = 0; i < count; i++) {
@@ -599,11 +600,16 @@ export class Host {
         states: THREAD_STATE_BITS.filter((_, b) => state & (1 << b)),
         current: words[at + 2] === 1,
         name,
-        prio: new Int32Array(this.mem.buffer, this.infoAddr + (at + 4) * 4, 1)[0],
+        prio: signed[at + 4],
         stackBase: words[at + 5],
         stackSize: words[at + 6],
         sp: words[at + 7],
         asyncifyBuf: words[at + 8],
+        /* What it waits for: a wait queue, the mutex owner when the guest
+         * can tell the queue is a mutex's, and ms left on its timeout. */
+        pendedOn: words[at + 9],
+        heldBy: words[at + 10],
+        timeoutMs: signed[at + 11],
       });
     }
     return rows;
