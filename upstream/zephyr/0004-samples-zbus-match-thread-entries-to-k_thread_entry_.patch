@@ -1,4 +1,4 @@
-From 0d1a2208090407b8bccf7bd924b99ad0180c65b2 Mon Sep 17 00:00:00 2001
+From 9ff760c928d98ac949f18ff7bfaac9ec04241f9e Mon Sep 17 00:00:00 2001
 From: Jonathan Beri <jmberi@gmail.com>
 Date: Sat, 26 Sep 2026 18:46:48 +0000
 Subject: [PATCH 4/6] samples: zbus: match thread entries to k_thread_entry_t
@@ -19,8 +19,7 @@ indirect calls, such as WebAssembly or a CFI-enabled build.
 Give every entry the signature k_thread_entry_t declares. The benchmark
 threads' unreachable "return -EFAULT" goes with their int return type.
 
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+Assisted-by: Claude:MODEL-VERSION
 ---
  samples/subsys/zbus/benchmark/src/benchmark.c  |  6 +++++-
  samples/subsys/zbus/benchmark/src/msg_sub.c    |  4 +---
@@ -29,12 +28,12 @@ Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
  samples/subsys/zbus/dyn_channel/src/consumer.c |  6 +++++-
  samples/subsys/zbus/dyn_channel/src/producer.c |  6 +++++-
  samples/subsys/zbus/hello_world/src/main.c     |  6 +++++-
- samples/subsys/zbus/msg_subscriber/src/main.c  |  5 ++++-
+ samples/subsys/zbus/msg_subscriber/src/main.c  | 10 ++++++++--
  .../runtime_obs_registration/src/consumer.c    |  6 +++++-
  .../runtime_obs_registration/src/producer.c    |  6 +++++-
  samples/subsys/zbus/work_queue/src/main.c      | 18 +++++++++++++++---
  samples/subsys/zbus/work_queue/src/sensors.c   |  6 +++++-
- 12 files changed, 71 insertions(+), 19 deletions(-)
+ 12 files changed, 75 insertions(+), 20 deletions(-)
 
 diff --git a/samples/subsys/zbus/benchmark/src/benchmark.c b/samples/subsys/zbus/benchmark/src/benchmark.c
 index e7df35ef3f1..12c0ed041e5 100644
@@ -198,7 +197,7 @@ index 2294859a473..1c1859eaae4 100644
  
  	while (!zbus_sub_wait(&bar_sub, &chan, K_FOREVER)) {
 diff --git a/samples/subsys/zbus/msg_subscriber/src/main.c b/samples/subsys/zbus/msg_subscriber/src/main.c
-index e58266b16f1..428eb245f57 100644
+index e58266b16f1..93b0bbb789e 100644
 --- a/samples/subsys/zbus/msg_subscriber/src/main.c
 +++ b/samples/subsys/zbus/msg_subscriber/src/main.c
 @@ -81,8 +81,11 @@ ZBUS_MSG_SUBSCRIBER_DEFINE(bar_msg_sub16);
@@ -207,6 +206,19 @@ index e58266b16f1..428eb245f57 100644
  
 -static void msg_subscriber_task(void *sub)
 +static void msg_subscriber_task(void *sub, void *p2, void *p3)
+ {
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	const struct zbus_channel *chan;
+ 
+ 	struct acc_msg acc;
+@@ -133,8 +136,11 @@ K_THREAD_DEFINE(subscriber_task_id15, CONFIG_MAIN_STACK_SIZE, msg_subscriber_tas
+ K_THREAD_DEFINE(subscriber_task_id16, CONFIG_MAIN_STACK_SIZE, msg_subscriber_task, &bar_msg_sub16,
+ 		NULL, NULL, 3, 0, 0);
+ 
+-static void subscriber_task(void *sub)
++static void subscriber_task(void *sub, void *p2, void *p3)
  {
 +	ARG_UNUSED(p2);
 +	ARG_UNUSED(p3);

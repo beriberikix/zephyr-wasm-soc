@@ -25,7 +25,7 @@ which is why the compiler never says so; clang's
 | 0001 `portability: cmsis_rtos_v1` | `zephyr_thread_wrapper()` calls an `os_pthread` through a `void *(*)(void *)`: a library bug, not a sample one | `cmsis_rtos_v1/philosophers` (3 entries) |
 | 0002 `samples: basic: threads` | `blink0`, `blink1`, `uart_out` are `void f(void)` | `basic/threads` |
 | 0003 `samples: cpp: synchronization` | `coop_thread_entry(void)`, cast by hand | `cpp/cpp_synchronization` (2 entries) |
-| 0004 `samples: zbus` | `void f(void)` in six samples, a one-argument entry in `msg_subscriber`, and `int`-returning entries in `benchmark` | seven zbus applications (17 entries) |
+| 0004 `samples: zbus` | `void f(void)` in six samples, two one-argument entries in `msg_subscriber`, and `int`-returning entries in `benchmark` | seven zbus applications (17 entries) |
 | 0005 `tests: kernel: mutex` | `thread_05` to `_08` take two `struct k_sem *` and are cast | `tests/kernel/mutex/mutex_api` |
 | 0006 `tests: kernel: pending` | `task_high`, `task_low` are `void f(void)` | `tests/kernel/pending` |
 

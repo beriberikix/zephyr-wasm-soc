@@ -1,4 +1,4 @@
-From 9ef8a28fb4cf72f9945f95d8df1e9db7d6e6dc89 Mon Sep 17 00:00:00 2001
+From 95d816941104cf8d2cdaa359b280b5e680a85cd1 Mon Sep 17 00:00:00 2001
 From: Jonathan Beri <jmberi@gmail.com>
 Date: Sat, 26 Sep 2026 18:46:47 +0000
 Subject: [PATCH 2/6] samples: basic: threads: match thread entries to
@@ -12,8 +12,7 @@ check indirect calls, such as WebAssembly or a CFI-enabled build.
 
 Give the entries the signature k_thread_entry_t declares.
 
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+Assisted-by: Claude:MODEL-VERSION
 ---
  samples/basic/threads/src/main.c | 18 +++++++++++++++---
  1 file changed, 15 insertions(+), 3 deletions(-)

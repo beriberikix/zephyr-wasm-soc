@@ -1,4 +1,4 @@
-From 2a733f610dfa24d7290f9b24ba6ef86982ebd3ad Mon Sep 17 00:00:00 2001
+From 9bfa803740879ed723c4bddcf8a49afacbfe2dc0 Mon Sep 17 00:00:00 2001
 From: Jonathan Beri <jmberi@gmail.com>
 Date: Sat, 26 Sep 2026 18:46:48 +0000
 Subject: [PATCH 6/6] tests: kernel: pending: match thread entries to
@@ -12,8 +12,7 @@ calls.
 
 Give the entries the signature k_thread_entry_t declares.
 
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+Assisted-by: Claude:MODEL-VERSION
 ---
  tests/kernel/pending/src/main.c | 12 ++++++++++--
  1 file changed, 10 insertions(+), 2 deletions(-)

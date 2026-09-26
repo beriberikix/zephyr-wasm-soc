@@ -1,4 +1,4 @@
-From 91cb8bfb71ed74027467dbe565a77de0d8b279ab Mon Sep 17 00:00:00 2001
+From 4e17c36ceea44e879ce3e250469debf0e3f0ad8a Mon Sep 17 00:00:00 2001
 From: Jonathan Beri <jmberi@gmail.com>
 Date: Sat, 26 Sep 2026 18:46:47 +0000
 Subject: [PATCH 1/6] portability: cmsis_rtos_v1: call thread function through
@@ -13,8 +13,7 @@ Most targets tolerate it. Targets that check the type of indirect calls do
 not: WebAssembly traps on the call, and so would a CFI-enabled build.
 Declare the pointer as os_pthread, the type osThreadDef stores it as.
 
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+Assisted-by: Claude:MODEL-VERSION
 ---
  subsys/portability/cmsis_rtos_v1/cmsis_thread.c | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)

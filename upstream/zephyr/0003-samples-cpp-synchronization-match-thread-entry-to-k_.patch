@@ -1,4 +1,4 @@
-From ddbbeab4419035c542b69f4211866f54954b496b Mon Sep 17 00:00:00 2001
+From fc5da4c29235d6e80d21d5bf84d330344ac71504 Mon Sep 17 00:00:00 2001
 From: Jonathan Beri <jmberi@gmail.com>
 Date: Sat, 26 Sep 2026 18:46:47 +0000
 Subject: [PATCH 3/6] samples: cpp: synchronization: match thread entry to
@@ -12,8 +12,7 @@ and it traps on targets that check indirect calls.
 Give the entry the signature k_thread_entry_t declares, and drop the cast
 that hid the mismatch.
 
-Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01APoUNc1caCDU2PVRFEQRyi
+Assisted-by: Claude:MODEL-VERSION
 ---
  samples/cpp/cpp_synchronization/src/main.cpp | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
