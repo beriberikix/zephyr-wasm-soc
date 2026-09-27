@@ -63,7 +63,13 @@
     "  expect, which is checked against that board's own output. They are",
     "  built as <name>-0 and <name>-1. The page runs them side by side; the",
     "  Node check runs them with run.mjs --peer. The link is real-time, so a",
-    "  pair is paced and its expectations are thresholds."
+    "  pair is paced and its expectations are thresholds.",
+    "  A board's args may only turn the link on and set addresses, ports and",
+    "  IP versions (PAIR_ARG in apps.py); overrides says in words what was",
+    "  set, and the page shows it. start_after_ms powers a board on after the",
+    "  other, as a client is plugged in after its server; the first board is",
+    "  the one that starts first. ci_link_frames_at_least is how many frames",
+    "  the browser check wants each way (default 100)."
   ],
   "builds": [
     {
@@ -429,6 +435,318 @@
             "Network connected",
             "IPv4 TCP: Exchanged 1000 packets",
             "IPv6 TCP: Exchanged 1000 packets"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "echo-async",
+      "kind": "sample",
+      "title": "Echo, asynchronous server (two boards)",
+      "hint": "echo_client against echo_async, a single-threaded server that serves several clients with poll(). TCP only, so the client's UDP half reports that nothing came back.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/echo_async",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "Connection #1 from 192.0.2.2"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/echo_client",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "start_after_ms": 2000,
+          "expect": [
+            "IPv4 TCP: Exchanged 1000 packets",
+            "IPv6 TCP: Exchanged 1000 packets"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "echo-select",
+      "kind": "sample",
+      "title": "Echo, select() server (two boards)",
+      "hint": "echo_client against echo_async_select, the same server built on select(). TCP only, so the client's UDP half reports that nothing came back.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/echo_async_select",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "Connection #1 from 192.0.2.2"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/echo_client",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "start_after_ms": 2000,
+          "expect": [
+            "IPv4 TCP: Exchanged 1000 packets",
+            "IPv6 TCP: Exchanged 1000 packets"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "echo-one",
+      "kind": "sample",
+      "title": "Echo, one client at a time (two boards)",
+      "hint": "echo_client against the simplest echo server, which serves one TCP connection at a time. The client connects over IPv6 first, so its IPv4 connection waits in the backlog.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/echo",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "Connection #0 from"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/echo_client",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "start_after_ms": 2000,
+          "expect": [
+            "IPv6 TCP: Exchanged 1000 packets"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coap",
+      "kind": "sample",
+      "title": "CoAP client and server (two boards)",
+      "hint": "coap_client asks coap_server for resources over IPv6: GET, PUT, POST and DELETE, a 2 KB resource in 64-byte blocks, and an observed counter that the server pushes every 5 s.",
+      "overrides": "The client is given the address 2001:db8::2 and pointed at the server's CoAP port, [2001:db8::1]:5683; as shipped, both boards would be ::1 and the client would look for a server at ::2.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 15000,
+      "ci_link_frames_at_least": 20,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/coap_server",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "CoAP service coap_server started",
+            "CoAP observer added"
+          ],
+          "uses": [
+            "terminal"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/coap_client",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_SAMPLE_COAP_CLIENT_PEER=\"[2001:db8::1]:5683\""
+          ],
+          "expect": [
+            "CoAP client GET",
+            "CoAP client DELETE",
+            "CoAP client Large GET (block 31)",
+            "CoAP OBS Notification"
+          ],
+          "uses": [
+            "terminal"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coap-up",
+      "kind": "sample",
+      "title": "CoAP upload (two boards)",
+      "hint": "coap_upload sends coap_server four PUTs over IPv6: two short, two in 128-byte blocks, which the server asks to have in 64s.",
+      "overrides": "The client is given the address 2001:db8::2 and the server's, 2001:db8::1, and its IPv4 is turned off: the server speaks only IPv6, and as shipped the client tries IPv4 first and waits minutes for each timeout.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "ci_link_frames_at_least": 10,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/coap_server",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "CoAP service coap_server started"
+          ],
+          "uses": [
+            "terminal"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/coap_upload",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV6_ADDR=\"2001:db8::1\"",
+            "-DCONFIG_NET_CONFIG_NEED_IPV4=n",
+            "-DCONFIG_NET_IPV4=n",
+            "-DCONFIG_NET_CONFIG_MY_IPV4_ADDR=\"\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV4_ADDR=\"\""
+          ],
+          "expect": [
+            "CoAP upload short done in",
+            "CoAP upload blockwise done in",
+            "CoAP upload blockwise with callback done in"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coap-down",
+      "kind": "sample",
+      "title": "CoAP download (two boards)",
+      "hint": "coap_download fetches a 2 KB resource from coap_server over IPv6, 64 bytes at a time.",
+      "overrides": "The client is given the address 2001:db8::2 and the server's, 2001:db8::1, and its IPv4 is turned off, as for the upload; and it asks for the server's large resource, since the file it names by default is not one coap_server has.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "ci_link_frames_at_least": 20,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/coap_server",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "CoAP service coap_server started"
+          ],
+          "uses": [
+            "terminal"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/coap_download",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV6_ADDR=\"2001:db8::1\"",
+            "-DCONFIG_NET_CONFIG_NEED_IPV4=n",
+            "-DCONFIG_NET_IPV4=n",
+            "-DCONFIG_NET_CONFIG_MY_IPV4_ADDR=\"\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV4_ADDR=\"\"",
+            "-DCONFIG_NET_SAMPLE_COAP_RESOURCE_PATH=\"large\""
+          ],
+          "expect": [
+            "CoAP download done, got 2048 bytes"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "http",
+      "kind": "sample",
+      "title": "HTTP client and server (two boards)",
+      "hint": "http_client makes GET and POST requests of http_server over IPv4 and IPv6. The server also has a shell: try `net iface` there.",
+      "overrides": "The server listens on port 8000, which the client has built in, rather than 80; and the client's addresses are swapped to 192.0.2.2 and 2001:db8::2, with the server as its peer.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "ci_link_frames_at_least": 20,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/http_server",
+          "uses": [
+            "terminal"
+          ],
+          "ci_stdin": "net iface\n",
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_SAMPLE_HTTP_SERVER_SERVICE_PORT=8000"
+          ],
+          "expect": [
+            "(Ethernet)",
+            "192.0.2.1"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/http_client",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV4_ADDR=\"192.0.2.2\"",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV4_ADDR=\"192.0.2.1\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV6_ADDR=\"2001:db8::1\""
+          ],
+          "expect": [
+            "Response to IPv4 GET",
+            "Response to IPv6 GET",
+            "Response status OK"
+          ],
+          "uses": [
+            "terminal"
           ]
         }
       ]

@@ -70,6 +70,8 @@
    * pausing or stopping a run never reflows the page under the pointer. */
   #hint { margin: -4px 0 2px; color: var(--muted); font-size: 13px; min-height: 1.5em; }
   #hint code { font-size: 12px; }
+  #overrides { margin: 2px 0 2px; color: var(--muted); font-size: 12px; font-style: italic; }
+  #overrides[hidden] { display: none; }
   #status {
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -205,6 +207,9 @@
 
   <!-- What the selected build does or wants, and then how it ended. -->
   <div id="hint"></div>
+  <!-- For a two-board build set up differently from how upstream ships it:
+       what was changed, in words. Only addresses and ports ever are. -->
+  <div id="overrides" hidden></div>
   <div id="status">Loading the list of builds…</div>
 
   <!-- A guided lesson, for a build whose apps.json entry has one. The steps
@@ -323,6 +328,7 @@ const backEl = document.getElementById('back');
 let worker = null;
 /* The second board of a two-board build, and the frames between them. */
 let peerWorker = null;
+let peerOn = false;
 let linkCounts = [0, 0];
 let running = false;
 let builds = [];
@@ -368,12 +374,17 @@ async function loadManifest() {
     builds = manifest.builds;
     showBuildInfo(manifest.site);
     buildEl.innerHTML = '';
+    /* Two-board builds after the rest, in a group of their own, so a
+     * dozen pairs do not bury the single boards. */
+    const pairs = document.createElement('optgroup');
+    pairs.label = 'Two boards';
     for (const b of builds) {
       const opt = document.createElement('option');
       opt.value = b.name;
-      opt.textContent = b.title;
-      buildEl.append(opt);
+      opt.textContent = b.boards ? b.title.replace(/ \(two boards\)$/, '') : b.title;
+      (b.boards ? pairs : buildEl).append(opt);
     }
+    if (pairs.children.length) buildEl.append(pairs);
     buildEl.disabled = false;
     runEl.disabled = false;
     showSelected();
@@ -858,6 +869,9 @@ function showSelected() {
     peer.fitTerm();
   }
   showHint(build.hint);
+  const overridesEl = document.getElementById('overrides');
+  overridesEl.hidden = !build.overrides;
+  overridesEl.textContent = build.overrides ? `Built with: ${build.overrides}` : '';
   showLesson(build);
   statusEl.textContent = 'Ready.';
 }
@@ -931,7 +945,7 @@ const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
  * made the buffer for this and has no further use for it. */
 function relay(from, frame) {
   const to = from === 0 ? peerWorker : worker;
-  if (!to) return;
+  if (!to || (from === 0 && !peerOn)) return;
   linkCounts[from]++;
   to.postMessage({ type: 'eth-in', frame }, [frame.buffer]);
   /* Thousands of frames a second: redraw the count once a frame. */
@@ -976,16 +990,29 @@ function startPeer(build, board) {
     }
   };
   w.onerror = (e) => peer.term.note(`\n*** worker error: ${e.message} ***\n`);
-  w.postMessage({
-    type: 'run',
-    url: `./${board.path}`,
-    interactive: !!build.interactive,
-    maxTimeMs: build.max_time_ms ?? 60_000,
-    clock: build.clock ?? 'virtual',
-    timeScale: 1,
-    linked: true,
-    seed: (DEFAULT_SEED + 1) >>> 0,
-  });
+  const run = () => {
+    if (peerWorker !== w) return;
+    peerOn = true;
+    w.postMessage({
+      type: 'run',
+      url: `./${board.path}`,
+      interactive: !!build.interactive,
+      maxTimeMs: build.max_time_ms ?? 60_000,
+      clock: build.clock ?? 'virtual',
+      timeScale: 1,
+      linked: true,
+      seed: (DEFAULT_SEED + 1) >>> 0,
+    });
+  };
+  /* A client plugged in after its server, as a person would: until then,
+   * what the first board sends goes nowhere. */
+  peerOn = false;
+  if (board.start_after_ms) {
+    peer.term.note(`(powered on ${board.start_after_ms / 1000} s after the ${build.boards[0].label.toLowerCase()})\n`);
+    setTimeout(run, board.start_after_ms);
+  } else {
+    run();
+  }
 }
 
 async function start() {

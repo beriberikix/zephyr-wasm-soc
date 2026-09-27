@@ -46,7 +46,10 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
   if (threads) argv.push('--threads');
   /* A two-board entry: the second board runs in the same process, linked,
    * and its output goes to a file of its own. */
-  if (peer) argv.push('--peer', peer.wasm, '--peer-out', peer.out);
+  if (peer) {
+    argv.push('--peer', peer.wasm, '--peer-out', peer.out);
+    if (peer.delayMs) argv.push('--peer-delay', String(peer.delayMs));
+  }
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -93,7 +96,8 @@ for (const b of manifest.builds) {
   const wasm = path.join(site, first.path);
   const maxTime = b.ci_max_time_ms ?? b.max_time_ms;
   const peer = second &&
-    { wasm: path.join(site, second.path), out: path.join(os.tmpdir(), `check-site-${second.name}.out`) };
+    { wasm: path.join(site, second.path), out: path.join(os.tmpdir(), `check-site-${second.name}.out`),
+      delayMs: second.start_after_ms ?? 0 };
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
   const stdin = first.ci_stdin;

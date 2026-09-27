@@ -19,6 +19,7 @@ Subcommands:
 """
 import argparse
 import json
+import re
 import os
 import pathlib
 import sys
@@ -60,6 +61,21 @@ USES = {"leds", "buttons", "flash", "terminal", "accel"}
 SYMBOL = {"terminal": "SHELL", "accel": "SENSOR_WASM_BRIDGE"}
 
 
+# What a pair's board may be built with, beyond upstream's own files. The
+# score counts samples that run unmodified; for a pair that means unmodified
+# source, with build arguments limited to putting the two boards on one
+# network: turning the link on, addresses, ports, and switching off an IP
+# version the other side does not speak. Anything else, a buffer size or a
+# feature, is a change to the sample and is refused here. ROADMAP's "The
+# measure" states the rule.
+PAIR_ARG = re.compile(
+    r"^-D(?:SNIPPET=wasm-ethernet"
+    r"|CONFIG_NET_CONFIG_(?:MY|PEER)_IPV[46]_ADDR=.*"
+    r"|CONFIG_NET_CONFIG_NEED_IPV[46]=n"
+    r"|CONFIG_NET_IPV[46]=n"
+    r"|CONFIG_NET_SAMPLE_[A-Z0-9_]*(?:_PEER|_PORT|_ADDR|_RESOURCE_PATH)=.*)$")
+
+
 def units(b: dict) -> list[dict]:
     """What gets built for an entry: itself, or each of its boards.
 
@@ -83,6 +99,18 @@ def load(module: str) -> list[dict]:
                 sys.exit(f"apps.json: {b['name']} needs two boards, each with an app and a label")
             if "app" in b:
                 sys.exit(f"apps.json: {b['name']} has boards, so it has no app of its own")
+            overridden = False
+            for x in boards:
+                for arg in x.get("args", []):
+                    if not PAIR_ARG.match(arg):
+                        sys.exit(f"apps.json: {b['name']}: {x['label']} is built with {arg}, and a "
+                                 "pair's boards may only be given the link, addresses, ports and "
+                                 "IP versions (see PAIR_ARG in scripts/apps.py)")
+                    overridden |= arg.startswith("-DCONFIG_")
+            # Anything set at build time is said in words on the page.
+            if overridden and not b.get("overrides"):
+                sys.exit(f"apps.json: {b['name']} overrides its boards' configuration, "
+                         "so it needs an overrides sentence saying how")
         for u in units(b):
             u["app"] = u["app"].replace("{module}", module)
         if "boards" in b:

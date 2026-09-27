@@ -38,6 +38,7 @@ function parseArgs(argv) {
     else if (a === '--accel') opts.inputScript.push(parseAccel(argv[++i]));
     else if (a === '--peer') opts.peer = argv[++i];
     else if (a === '--peer-out') opts.peerOut = argv[++i];
+    else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -155,7 +156,10 @@ function usage() {
                      frames arrive when they arrive; each gets its own
                      entropy seed, so their MACs differ
   --peer-out <file>  write the second board's output here. Without it the
-                     output is dropped`);
+                     output is dropped
+  --peer-delay <ms>  power the second board on this long after the first,
+                     as a person plugging in a client after its server.
+                     Wall-clock milliseconds, since the pair is paced`);
 }
 
 const nodePlatform = {
@@ -282,10 +286,17 @@ if (opts.peer) {
 
 const host = new Host(nodePlatform, opts);
 if (peer) {
-  nodePlatform.ethSend = (frame) => peer.pushEthernet(frame);
+  /* Until the second board is powered on, what the first sends is lost,
+   * as on a cable with nothing at the other end. */
+  let peerOn = !(opts.peerDelayMs > 0);
+  nodePlatform.ethSend = (frame) => { if (peerOn) peer.pushEthernet(frame); };
   peer.platform.ethSend = (frame) => host.pushEthernet(frame);
+  const peerStart = peerOn
+    ? Promise.resolve()
+    : new Promise((resolve) => setTimeout(resolve, opts.peerDelayMs));
   /* The pair ends together: when either board stops, so does the other. */
-  const [a, b] = [host.run(), peer.run()];
+  const [a, b] = [host.run(),
+                  peerStart.then(() => { peerOn = true; return host.done ? 0 : peer.run(); })];
   process.exitCode = await Promise.race([a, b]);
   host.done = peer.done = true;
   await Promise.allSettled([a, b]);
