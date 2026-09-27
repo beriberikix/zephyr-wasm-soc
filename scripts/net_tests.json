@@ -478,8 +478,8 @@
     },
     {
       "path": "pmtu",
-      "status": "build-fails",
-      "note": "Build fails late (in the link or post-link steps). Not yet diagnosed."
+      "status": "passes",
+      "passes": 26
     },
     {
       "path": "ppp/driver",

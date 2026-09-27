@@ -1146,7 +1146,10 @@ already existed:
   network shell's, and `ar x` writes both to one path. The generator
   already kept archives apart for exactly this reason, but a collision
   inside one archive was new. It now reads the archive format itself, and
-  the link check that caught the missing entry passes.
+  the link check that caught the missing entry passes. The same collision
+  was why `tests/net/pmtu`, which also builds the socket library and the
+  shell, failed to build, recorded as not diagnosed. It now passes, which
+  makes 119 of 139 network suites.
 - `echo_server` trapped at its first thread: four `void f(void)` entries
   through `K_THREAD_DEFINE`, the D8b pattern again. `echo_service`, a
   single-threaded server that pairs with the client as shipped, took its

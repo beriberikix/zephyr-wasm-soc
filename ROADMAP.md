@@ -575,7 +575,9 @@ What happened to each:
       Two port bugs came out of building the pair. The section generator
       lost one of two same-named members of one archive
       (`libsubsys__net.a` has two `sockets.c.obj`), and the link check
-      caught it. The driver's first `get_capabilities` had an older
+      caught it. The same bug had been failing `tests/net/pmtu`'s build,
+      recorded as not diagnosed; it now passes, and 119 of 139 network
+      suites pass. The driver's first `get_capabilities` had an older
       signature, and the compiler caught that, where wasm would have trapped
       at run time.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
