@@ -22,7 +22,7 @@
     {
       "path": "all",
       "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "note": "Devicetree: it wants a zephyr,ieee802154 chosen node, and this board has no 802.15.4 radio."
     },
     {
       "path": "arp",
@@ -115,8 +115,8 @@
     },
     {
       "path": "ieee802154/l2",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 24
     },
     {
       "path": "iface",
@@ -150,8 +150,8 @@
     },
     {
       "path": "ipv6",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 61
     },
     {
       "path": "ipv6_fragment",
@@ -185,8 +185,8 @@
     },
     {
       "path": "lib/coap_server/common",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 9
     },
     {
       "path": "lib/dns_addremove",
@@ -245,8 +245,8 @@
     },
     {
       "path": "lib/http_server/h3",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "does-not-finish",
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "lib/http_server/hpack",
@@ -255,8 +255,8 @@
     },
     {
       "path": "lib/http_server/tls",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/llmnr_responder",
@@ -300,13 +300,13 @@
     },
     {
       "path": "lib/lwm2m/interop",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "does-not-finish",
+      "note": "Not a ztest suite: upstream drives it from pytest against a Leshan LwM2M server, so alone it waits for a peer until the time limit."
     },
     {
       "path": "lib/lwm2m/lwm2m_engine",
-      "status": "build-fails",
-      "note": "Needs mbedTLS headers ('mbedtls/ssl_ciphersuites.h'); the module is not imported."
+      "status": "passes",
+      "passes": 15
     },
     {
       "path": "lib/lwm2m/lwm2m_rd_client",
@@ -362,8 +362,8 @@
     },
     {
       "path": "lib/ocpp",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "does-not-finish",
+      "note": "Kernel panic. Upstream only builds it, and only for native_sim. Not yet diagnosed."
     },
     {
       "path": "lib/prometheus/collector",
@@ -397,8 +397,8 @@
     },
     {
       "path": "lib/quic",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "does-not-finish",
+      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
     },
     {
       "path": "lib/ssh/ssh_pkt",
@@ -407,8 +407,8 @@
     },
     {
       "path": "lib/ssh/ssh_server",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 1
     },
     {
       "path": "lib/tls_credentials",
@@ -423,7 +423,7 @@
     {
       "path": "lib/wifi_credentials_backend_psa",
       "status": "build-fails",
-      "note": "Needs PSA crypto headers; the mbedtls module is not imported."
+      "note": "Compile error: an initializer that is not a compile-time constant, the same as the settings backend. Not yet diagnosed."
     },
     {
       "path": "lib/wifi_credentials_backend_settings",
@@ -433,7 +433,7 @@
     {
       "path": "lib/wireguard",
       "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "note": "Needs EKEYEXPIRED, an errno value picolibc does not define."
     },
     {
       "path": "lib/zperf",
@@ -610,8 +610,8 @@
     },
     {
       "path": "socket/offload_dispatcher",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 19
     },
     {
       "path": "socket/poll",
@@ -650,18 +650,18 @@
     },
     {
       "path": "socket/tls",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 49
     },
     {
       "path": "socket/tls_configurations",
       "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "note": "Compile error: mbedtls_ssl_get_session() undeclared, so one of its configurations wants an mbedTLS option Zephyr's configuration leaves off. Not yet diagnosed."
     },
     {
       "path": "socket/tls_ext",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 7
     },
     {
       "path": "socket/udp",
@@ -670,8 +670,8 @@
     },
     {
       "path": "socket/websocket",
-      "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "status": "passes",
+      "passes": 16
     },
     {
       "path": "tcp",
@@ -718,7 +718,7 @@
     {
       "path": "wifi/configs",
       "status": "build-fails",
-      "note": "Kconfig refuses it: it wants mbedTLS or PSA crypto (TLS, DTLS, IPv6 privacy extensions, among others), and the mbedtls module is not imported."
+      "note": "Needs the hostap module (WPA supplicant), which is not imported."
     },
     {
       "path": "wifi/wifi_nm",
