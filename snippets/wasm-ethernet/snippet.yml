@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Turns on wasm_node's Ethernet link to another board (wasm,host-ethernet),
+# for a build that is one half of a pair: scripts/apps.json's two-board
+# entries build each board with -DSNIPPET=wasm-ethernet.
+name: wasm-ethernet
+append:
+  EXTRA_DTC_OVERLAY_FILE: wasm-ethernet.overlay
+  EXTRA_CONF_FILE: wasm-ethernet.conf

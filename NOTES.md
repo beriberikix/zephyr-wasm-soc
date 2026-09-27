@@ -1118,3 +1118,54 @@ samples sweep, re-run, is unchanged.
 a healthy sample. In the HTTP/3 suite, though, it reported an overflow on a
 thread whose test does almost nothing, which is not explained. Until it is,
 it is not a tool to rely on.
+
+
+### Tick 59 — two boards, one wire
+
+The roadmap had it as the next network item: several instances on one
+page, with a virtual L2 between them. Networking's samples need a peer, and
+until now a board had nobody to talk to but itself.
+
+The wire is a small Ethernet driver, `wasm,host-ethernet`. Each frame the
+stack sends goes to the host, and the host hands it to the other board. On
+the page that is another Worker. In Node, `run.mjs --peer` runs the second
+board in the same process. Two choices shaped it:
+- **The node is off by default.** A snippet turns it on, so none of the 139
+  network suites gains an interface it never asked for.
+- **The link is real-time.** Both boards follow the wall clock, and frames
+  arrive when they arrive. A lockstep coordinator would make a pair as
+  repeatable as one board, but it means taking the clock away from
+  `run()`. DESIGN D8k records what that would take.
+
+Three things went wrong on the way, and each was caught by something that
+already existed:
+- The driver's `get_capabilities` had an older signature. The compiler
+  refused it; on wasm it would have trapped instead.
+- The section generator lost `net_sock`'s log entry. `libsubsys__net.a`
+  holds two members named `sockets.c.obj`, the socket library's and the
+  network shell's, and `ar x` writes both to one path. The generator
+  already kept archives apart for exactly this reason, but a collision
+  inside one archive was new. It now reads the archive format itself, and
+  the link check that caught the missing entry passes.
+- `echo_server` trapped at its first thread: four `void f(void)` entries
+  through `K_THREAD_DEFINE`, the D8b pattern again. `echo_service`, a
+  single-threaded server that pairs with the client as shipped, took its
+  place. Patch 0010 fixes `echo_server` upstream.
+
+With `echo_client` and `echo_service` the pair works as shipped:
+- TCP over IPv4 and IPv6, each at about 750 packets a second in Node and
+  about 160 on the page, where each frame travels from one Worker through
+  the page to the other;
+- UDP at the client's own pace of one packet every 150 ms;
+- `net ping 192.0.2.2` from the service's shell, with 1 ms replies after
+  the first, which waited for ARP.
+
+The MAC comes from the board's entropy source, because the samples set
+`CONFIG_TEST_RANDOM_GENERATOR` and two boards would otherwise share an
+address.
+
+The score is 52. Like blinky, the echo samples have no criterion twister
+can run, since `harness: net` wants a peer. So the demo's checks judge
+them: the Node check wants 1,000 echoes each way on both IP versions, and
+the browser check wants the same through the page, typed into and stopped
+by a person.

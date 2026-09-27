@@ -31,7 +31,7 @@ const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !==
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -44,6 +44,9 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads)
   for (const touch of touches ?? []) argv.push('--touch', touch);
   for (const accel of accels ?? []) argv.push('--accel', accel);
   if (threads) argv.push('--threads');
+  /* A two-board entry: the second board runs in the same process, linked,
+   * and its output goes to a file of its own. */
+  if (peer) argv.push('--peer', peer.wasm, '--peer-out', peer.out);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -84,17 +87,23 @@ let failures = 0;
 for (const b of manifest.builds) {
   if (only && !only.has(b.name)) continue;
 
-  const wasm = path.join(site, b.path);
+  /* A pair is judged board by board: each board's expect against its own
+   * output. The first board is the one run.mjs writes to stdout. */
+  const [first, second] = b.boards ?? [b];
+  const wasm = path.join(site, first.path);
   const maxTime = b.ci_max_time_ms ?? b.max_time_ms;
+  const peer = second &&
+    { wasm: path.join(site, second.path), out: path.join(os.tmpdir(), `check-site-${second.name}.out`) };
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
-  const stdin = b.ci_stdin;
+  const stdin = first.ci_stdin;
   /* A build with a display is also judged by what it drew: the last frame
    * has to show at least display.colors_at_least distinct colours, so a
    * blank or black screen fails even when the console looks right. */
   const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
   const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                                       !!b.threads_expect);
+                                       !!b.threads_expect, peer);
+  const peerOut = peer ? await readFile(peer.out, 'utf8').catch(() => '') : '';
 
   const problems = [];
   /* A build that never finishes ends at --max-time, which is exit 2 and is
@@ -105,8 +114,13 @@ for (const b of manifest.builds) {
   }
   /* ci_expect is what the scripted ci_* input should produce, which only
    * this check scripts; the browser check gives the page real input. */
-  for (const want of [...(b.expect ?? []), ...(b.ci_expect ?? [])]) {
-    if (!out.includes(want)) problems.push(`missing from the output: ${JSON.stringify(want)}`);
+  for (const want of [...(first.expect ?? []), ...(b.ci_expect ?? [])]) {
+    if (!out.includes(want)) {
+      problems.push(`missing from the ${second ? `${first.label}'s ` : ''}output: ${JSON.stringify(want)}`);
+    }
+  }
+  for (const want of second?.expect ?? []) {
+    if (!peerOut.includes(want)) problems.push(`missing from the ${second.label}'s output: ${JSON.stringify(want)}`);
   }
   /* The thread table goes to stderr, so the output stays what the
    * application printed. */
@@ -134,7 +148,8 @@ for (const b of manifest.builds) {
     failures++;
     console.log(`  FAIL  ${b.name.padEnd(8)} ${b.title}`);
     for (const p of problems) console.log(`          ${p}`);
-    const tail = (out + err).trimEnd().split('\n').slice(-12);
+    const tail = (out + err + (second ? `\n--- ${second.label} ---\n${peerOut}` : ''))
+      .trimEnd().split('\n').slice(-12);
     for (const line of tail) console.log(`        | ${line}`);
   }
 }

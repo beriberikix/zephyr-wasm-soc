@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config ETH_WASM_HOST
+	bool "Ethernet to another board, through the host"
+	default y
+	depends on DT_HAS_WASM_HOST_ETHERNET_ENABLED
+	depends on ETH_DRIVER && NET_L2_ETHERNET
+	select ENTROPY_GENERATOR
+	help
+	  An Ethernet interface whose frames go to the host, which relays
+	  them to another board: the page's two-board builds, and run.mjs
+	  --peer. The node is off on wasm_node; the wasm-ethernet snippet
+	  turns it on.

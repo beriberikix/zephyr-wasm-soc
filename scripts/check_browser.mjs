@@ -326,7 +326,71 @@ if (listed.length !== manifest.builds.length) {
   console.log(`  ok    manifest  ${listed.length} builds listed`);
 }
 
+/* A two-board build, as a person would use it: both terminals and the
+ * link line shown, Run starting both boards, the first board's terminal
+ * typed into, each board printing its own expectations, frames crossing
+ * the link both ways, and Stop ending both. */
+async function checkPair(b) {
+  const [first, second] = b.boards;
+  await page.selectOption('#build', b.name);
+  const shown = await page.evaluate(() =>
+    ['term2', 'link', 'term2Label'].every((id) => !document.getElementById(id).hidden) &&
+    !document.getElementById('kernel').classList.contains('on'));
+  if (!shown) {
+    fail(b.name, 'selecting the pair did not show both terminals and the link, without the kernel panel');
+    return;
+  }
+  await page.click('#run');
+  const outputOf = (i) => page.evaluate((n) => window.zephyrOutputs()[n], i);
+  try {
+    if (first.ci_stdin) {
+      await page.waitForFunction(() => window.zephyrOutputs()[0].includes('uart:~$'), null,
+                                 { timeout: 60_000, polling: 250 });
+      await page.click('#term');
+      for (const line of first.ci_stdin.split('\n').filter(Boolean)) {
+        await page.keyboard.type(line);
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(250);
+      }
+    }
+    for (const [i, board] of [first, second].entries()) {
+      for (const want of board.expect ?? []) {
+        try {
+          await page.waitForFunction(([n, w]) => window.zephyrOutputs()[n].includes(w), [i, want],
+                                     { timeout: 60_000, polling: 250 });
+        } catch {
+          throw Object.assign(new Error(`${board.label} never printed ${JSON.stringify(want)}`),
+                              { extra: await outputOf(i) });
+        }
+      }
+    }
+    await page.waitForFunction(() => window.zephyrLink().every((n) => n >= 100), null,
+                               { timeout: 30_000, polling: 250 });
+    const shownLink = await page.evaluate(() => document.getElementById('link').textContent);
+    if (shots) {
+      await mkdir(shots, { recursive: true });
+      await page.screenshot({ path: path.join(shots, `${b.name}.png`), fullPage: true });
+    }
+    await page.click('#stop');
+    await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 });
+    /* Both boards stopped: nothing crosses the link any more. */
+    const settled = await page.evaluate(() => window.zephyrLink().join());
+    await page.waitForTimeout(1000);
+    if (await page.evaluate(() => window.zephyrLink().join()) !== settled) {
+      throw new Error('frames still crossed the link after Stop');
+    }
+    console.log(`  ok    ${b.name.padEnd(8)} ${b.title}: ${shownLink}`);
+  } catch (err) {
+    fail(b.name, err.message, err.extra);
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
+  }
+}
+
 for (const b of manifest.builds) {
+  if (b.boards) {
+    await checkPair(b);
+    continue;
+  }
   const expect = b.expect ?? [];
 
   await page.selectOption('#build', b.name);

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+description: |
+  An Ethernet interface whose wire is the host: frames the board sends go to
+  the host, which hands them to another board, and frames from that board
+  arrive on the interrupt. On the page the other board runs in another
+  Worker; under Node, in the same process.
+
+  Off by default on wasm_node, so that no build grows an interface it did
+  not ask for. The wasm-ethernet snippet turns it on.
+
+compatible: "wasm,host-ethernet"
+
+include: [base.yaml, ethernet-controller.yaml]
+
+properties:
+  interrupts:
+    required: true

@@ -295,6 +295,19 @@
 			interrupts = <WASM_IRQ_SENSOR>;
 		};
 
+		/*
+		 * An Ethernet link to another board, through the host. Off unless
+		 * a build asks for it with the wasm-ethernet snippet, which is how
+		 * the page's two-board builds get it. The driver draws the MAC from
+		 * the board's entropy source, which the host seeds per board, so
+		 * two boards differ.
+		 */
+		host_eth: ethernet {
+			compatible = "wasm,host-ethernet";
+			status = "disabled";
+			interrupts = <WASM_IRQ_ETH>;
+		};
+
 		host_gpio: gpio-bridge {
 			compatible = "wasm,host-gpio-bridge";
 			status = "okay";

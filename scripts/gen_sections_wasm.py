@@ -242,6 +242,43 @@ def render(init_entries) -> str:
     return "\n".join(out)
 
 
+def extract_members(archive: Path, into: Path) -> bool:
+    """Write every member of a GNU or BSD ar archive to its own file.
+
+    Each file is named after the member's position as well as its name, so
+    two members with the same name both survive. Returns False for anything
+    this does not read, a thin archive for one, which is left to `ar x`.
+    """
+    data = archive.read_bytes()
+    if not data.startswith(b"!<arch>\n"):
+        return False
+    pos, index, longnames = 8, 0, b""
+    while pos + 60 <= len(data):
+        header = data[pos:pos + 60]
+        name = header[:16].decode("ascii", "replace").rstrip()
+        size = int(header[48:58].decode("ascii").strip() or 0)
+        body = data[pos + 60:pos + 60 + size]
+        pos += 60 + size + (size & 1)
+        if name in ("/", "/SYM64/", "__.SYMDEF", "__.SYMDEF SORTED"):
+            continue
+        if name == "//":
+            longnames = body
+            continue
+        if name.startswith("#1/"):
+            # BSD: the name is the first n bytes of the body.
+            n = int(name[3:])
+            name, body = body[:n].rstrip(b"\0").decode(), body[n:]
+        elif name.startswith("/") and name[1:].isdigit():
+            # GNU: an offset into the long-name table, ended by "/\n".
+            start = int(name[1:])
+            name = longnames[start:longnames.index(b"/\n", start)].decode()
+        else:
+            name = name.rstrip("/")
+        (into / f"{index:04d}-{Path(name).name}").write_bytes(body)
+        index += 1
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -278,12 +315,19 @@ def main() -> int:
         # list came out empty. That is how a parameterised ztest suite ran
         # once with a null parameter instead of seven times with its values.
         # check_sections_wasm.py now catches that class of mistake at link.
+        #
+        # Names collide inside one archive too. libsubsys__net.a holds two
+        # sockets.c.obj, the socket library's and the network shell's, and
+        # `ar x` writes both to one path, so the second replaced the first
+        # and net_sock's log entry fell outside its list. So the members are
+        # read here, and each is written under its position in the archive.
         tmp = tempfile.mkdtemp(prefix="wasm_sections_")
         for n, archive in enumerate(sorted(args.scan_dir.rglob("*.a"))):
             into = Path(tmp) / f"{n:03d}-{archive.stem}"
             into.mkdir()
-            subprocess.run([args.ar, "x", "--output", str(into), str(archive)],
-                           capture_output=True, check=False)
+            if not extract_members(archive, into):
+                subprocess.run([args.ar, "x", "--output", str(into), str(archive)],
+                               capture_output=True, check=False)
         paths += sorted(Path(tmp).rglob("*.obj")) + sorted(Path(tmp).rglob("*.o"))
     paths = [p for p in paths if p.suffix in (".obj", ".o") and p.exists()]
     if not paths:

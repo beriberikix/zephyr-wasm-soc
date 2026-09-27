@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **50**. 47 pass upstream's own criterion, and three more are counted
+today: **52**. 47 pass upstream's own criterion, and five more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -22,9 +22,11 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button` and `input/draw_touch_events`: upstream
-gives those no criterion twister can run, because it has no way to watch an
-LED or press a button or a screen, so the demo's own checks judge them.
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the two
+halves of the echo pair, `net/sockets/echo_client` and `echo_service`.
+Upstream gives those no criterion twister can run, because it has no way to
+watch an LED, press a button or a screen, or give a board a peer, so the
+demo's own checks judge them.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -146,9 +148,10 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **Two boards and a wire between them**, Phase 6's virtual L2. The stack
-   works, TLS included, and what keeps networking's samples off the score
-   now is that nearly all of them need a peer.
+3. **More pairs.** Two boards and a wire now exist (Phase 6), with echo as
+   the first pair. CoAP, HTTP, zperf and mDNS pairs each need only their
+   client's addresses swapped, and QUIC's needs patch 0007 as well.
+   Lockstep time would make a pair as repeatable as a single board.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -162,7 +165,8 @@ is the first lesson, with the thread table's answer to what each thread is
 waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
 four. So is diagnosing the network suites' indirect-call traps, most of
 which were a stack overflow in the port. Between them, 118 of 139 network
-suites now pass (Phase 6).
+suites now pass (Phase 6). And so is the virtual L2: two boards on the
+page, echoing over Ethernet, which raised the score to 52.
 
 ## Phase 0 — foundations
 
@@ -542,15 +546,44 @@ What happened to each:
       **118 of 139 now pass.** Finding them needed two tools the port did
       not have: a way to name a trapping function, and a way to catch a
       store to one address (`DESIGN.md` D8 and D9).
-- [ ] **Several instances in one page, with a virtual L2 between them.**
-      The spike says the stack above the link layer works, so this is now
-      the host's job: an Ethernet or IEEE 802.15.4 driver whose frames go to
-      another instance's Worker instead of a wire.
+- [x] **Two boards on one page, with a virtual Ethernet between them.**
+      A small driver, `wasm,host-ethernet`, sends each frame to the host,
+      and the host hands it to the other board: on the page another
+      Worker, in Node another `Host` in the same process (`run.mjs
+      --peer`). The link is off unless a build asks for it with the
+      `wasm-ethernet` snippet, so no other build changes. `DESIGN.md` D8k.
+      - The first pair is upstream's `echo_client` and `echo_service`, as
+        shipped. The client echoes TCP over IPv4 and IPv6, and UDP at its
+        own pace of one packet every 150 ms. TCP runs at about 750 packets a
+        second on each IP version in Node, and about 160 on the page, where
+        each frame travels from one Worker through the page to the other.
+      - Both boards have the network shell, so `net ping` from one to the
+        other works, and so does `net iface`.
+      - The page shows both terminals, labelled, and counts the frames each
+        way. Pause and step are hidden for a pair, since stepping one board
+        would leave its peer's clock behind.
+      - Checks: the Node check requires 1,000 TCP echoes each way on
+        both IP versions. The browser check does the same through the page,
+        typing into the server's terminal, and requires Stop to end both
+        boards.
+      - The link is real-time: each board follows the wall clock, and a run
+        is not byte-for-byte repeatable. That was a choice, recorded in D8k
+        with what lockstep time would need.
+      - `echo_server`, the obvious server, traps on D8b. Patch 0010 in
+        `upstream/zephyr/` fixes it.
+
+      Two port bugs came out of building the pair. The section generator
+      lost one of two same-named members of one archive
+      (`libsubsys__net.a` has two `sockets.c.obj`), and the link check
+      caught it. The driver's first `get_capabilities` had an older
+      signature, and the compiler caught that, where wasm would have trapped
+      at run time.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`
-harness: they need a peer, so none counts yet. The virtual L2 is what gives
-them one.
+harness: they need a peer, which twister never gives them. The virtual L2
+gives them one, and a pair on the page counts both its samples, as blinky
+counts, by the demo's checks.
 
 ## Phase 7 — Bluetooth
 

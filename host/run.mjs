@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import process from 'node:process';
 
-import { Host } from './core.mjs';
+import { Host, DEFAULT_SEED } from './core.mjs';
 import { describeWait } from './threads.mjs';
 
 function parseArgs(argv) {
@@ -36,6 +36,8 @@ function parseArgs(argv) {
     else if (a === '--touch') opts.inputScript.push(...parseTouch(argv[++i]));
     else if (a === '--key') opts.inputScript.push(...parseKey(argv[++i]));
     else if (a === '--accel') opts.inputScript.push(parseAccel(argv[++i]));
+    else if (a === '--peer') opts.peer = argv[++i];
+    else if (a === '--peer-out') opts.peerOut = argv[++i];
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -146,7 +148,14 @@ function usage() {
                      repeatable. code is a Zephyr INPUT_KEY_* value
   --accel <ms>:<x>,<y>,<z>
                      from a given guest time, the board's accelerometer
-                     reads this, in m/s^2. Repeatable`);
+                     reads this, in m/s^2. Repeatable
+  --peer <wasm>      run a second board, linked to this one by Ethernet
+                     (a build with the wasm-ethernet snippet). Both run
+                     paced, since their clocks follow the wall clock and
+                     frames arrive when they arrive; each gets its own
+                     entropy seed, so their MACs differ
+  --peer-out <file>  write the second board's output here. Without it the
+                     output is dropped`);
 }
 
 const nodePlatform = {
@@ -246,8 +255,43 @@ if (opts.flashFile) {
   };
 }
 
+/* --peer: a second board in this process, on the other end of an Ethernet
+ * link. Each board's eth_send hands the frame straight to the other's
+ * queue. Nothing coordinates the two clocks: both follow the wall clock,
+ * which is why a linked pair is always paced. */
+let peer = null;
+if (opts.peer) {
+  opts.clock = 'paced';
+  opts.linked = true;
+  const peerOut = opts.peerOut ? fs.openSync(opts.peerOut, 'w') : null;
+  const peerPlatform = {
+    ...nodePlatform,
+    writeOut: (bytes) => { if (peerOut !== null) fs.writeSync(peerOut, Buffer.from(bytes)); },
+    writeErr: (text) => process.stderr.write(`[peer] ${text}`),
+    startInput: undefined,
+    stopInput: undefined,
+    onState: undefined,
+    flashChanged: undefined,
+  };
+  peer = new Host(peerPlatform, {
+    ...opts, wasm: opts.peer, interactive: false, threads: false,
+    gpio: [], inputScript: [], flashImage: undefined,
+    seed: ((opts.seed ?? DEFAULT_SEED) + 1) >>> 0,
+  });
+}
+
 const host = new Host(nodePlatform, opts);
-process.exitCode = await host.run();
+if (peer) {
+  nodePlatform.ethSend = (frame) => peer.pushEthernet(frame);
+  peer.platform.ethSend = (frame) => host.pushEthernet(frame);
+  /* The pair ends together: when either board stops, so does the other. */
+  const [a, b] = [host.run(), peer.run()];
+  process.exitCode = await Promise.race([a, b]);
+  host.done = peer.done = true;
+  await Promise.allSettled([a, b]);
+} else {
+  process.exitCode = await host.run();
+}
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
 
 /* The display's last frame, as a PPM: the simplest image format there is,

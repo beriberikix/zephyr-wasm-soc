@@ -29,8 +29,12 @@
  * emulated sensors. */
 #define WASM_IRQ_SENSOR 3
 
+/** Ethernet. The host raises this when it has queued frames from the other
+ * end of the board's link. */
+#define WASM_IRQ_ETH 4
+
 /*
- * 4 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
+ * 5 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
  * the software ISR table is CONFIG_WASM_IRQ_LINES deep, so the ceiling is 32.
  */
 

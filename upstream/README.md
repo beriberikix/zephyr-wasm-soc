@@ -39,9 +39,10 @@ two of them no compiler warning would find:
 | 0007 `net: lib: quic` | QUIC's socket vtables fill `.close` with `int f(void *)`, but `zvfs_close()` calls a socket's `close2(obj, fd)` | `tests/net/lib/quic`, and gets `lib/http_server/h3` further |
 | 0008 `net: sockets: can` | the same, in CAN sockets | nothing here: found by reading, since no CAN suite runs on this board |
 | 0009 `tests: net: lib: lwm2m: rd_client` | the stub keeps `void f(struct lwm2m_message *)` callbacks in a `void *(*)()` | `tests/net/lib/lwm2m/lwm2m_rd_client` |
+| 0010 `samples: net: sockets: echo_server` | its four thread entries are `void f(void)` | `net/sockets/echo_server`, as a peer for `echo_client` over the two-board link |
 
 Checked against Zephyr `e201b84b` (this workspace's pin) and upstream `main`
-at `6f1ab6c` (26 and 27 September 2026): the series applies to both. checkpatch
+at `1ee3b93` (27 September 2026): the series applies to both. checkpatch
 reports nothing but the missing `Signed-off-by`, which is deliberate.
 
 `-Wcast-function-type-strict` reports one more kind of cast these patches
@@ -71,7 +72,9 @@ A suggested split, by who maintains what:
 3. 0005 and 0006, the kernel tests;
 4. 0007 and 0008 together, for the networking maintainers: one bug in two
    socket families;
-5. 0009 on its own, for the LwM2M maintainers.
+5. 0009 on its own, for the LwM2M maintainers;
+6. 0010 with 0002 to 0004, the samples, or on its own for the networking
+   samples' maintainers.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main
