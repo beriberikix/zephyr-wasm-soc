@@ -56,7 +56,7 @@ log, including what did not work. `BRIEF.md` is the original task.
   chips on upstream's emulated I2C bus, read by the real drivers. The page
   has a Tilt pad that sets what the accelerometer reads, and
   `samples/sensor/accel_polling` shows gravity move as the board is tilted.
-* Networking: Zephyr's IP stack over loopback, sockets included. 112 of the
+* Networking: Zephyr's IP stack over loopback, sockets included. 118 of the
   139 network test suites pass: UDP, TCP, TLS and DTLS, IPv4, IPv6, DHCP,
   DNS, CoAP, MQTT, websockets, the HTTP server and more.
   `scripts/net_tests.json` records every suite.

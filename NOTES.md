@@ -1067,3 +1067,54 @@ Results:
 Two suites that now build trap on an indirect call, the HTTP/3 server and
 QUIC, which makes six in `tests/net`. That is enough to be worth one
 diagnosis for all of them.
+
+
+### Tick 58 — six "signature mismatches", and only three were
+
+Six network suites trapped with `null function or function signature
+mismatch`, and the record called D8b the first suspect. It was the right
+suspect for half of them.
+
+The first obstacle was that no trap could be named. A trap said
+`wasm-function[116]`, and neither the module nor `zephyr.elf` had a name
+section. DESIGN D9 said the link called wasm-ld directly so that names
+would survive. It never did: the link goes through the clang driver, and
+the driver runs `wasm-opt` over the linked module, which drops the names
+and rewrites the code. Building with `--no-wasm-opt` kept them.
+
+With names, `conn_mgr_conn` trapped in ztest's `test_cb`, calling a
+test's function. That entry's pointer was right in the image and zero at
+the trap. So something had written to it. A copy of the module run through
+Binaryen's `--instrument-memory`, with a host that watched one address,
+caught the store: a `k_work_submit_to_queue` frame spilling its argument
+into the ztest list. The ztest thread's stack, 1 KB by default, sits just
+above that list, and the test had run off the bottom of it.
+
+No guard noticed, because there is none. There is no MPU, and wasm does not
+trap on a store inside its own memory. So an overflow shows up wherever the
+damage is next used, which here was a function pointer, which made it look
+like D8b. The board now defaults the ztest stack to 4 KB; 2 KB was not
+enough for one suite. That fixed three of the six, and three suites
+recorded with other symptoms: two PTP suites and `virtual`, whose eight
+failures were the same overflow.
+
+The other three were D8b:
+- QUIC's socket vtables fill `.close`, and `zvfs_close()` calls a socket's
+  `.close2(obj, fd)`, so every QUIC close traps. HTTP/3 runs on QUIC.
+- CAN sockets have the same bug, found by looking for the pattern.
+- The LwM2M RD client test keeps its callbacks in a `void *(*)()`.
+
+Neither kind is visible to `-Wcast-function-type-strict`: one is a function
+put in the wrong member of a union, and the other is an unprototyped
+pointer. They are patches 0007 to 0009 in `upstream/zephyr/`. With them,
+QUIC passes 81 cases and the RD client 28. HTTP/3 gets as far as a slab
+corruption, which larger network stacks do not change, and which is not
+diagnosed.
+
+`tests/net` goes from 112 to 118 of 139. The score does not move: the
+samples sweep, re-run, is unchanged.
+
+`CONFIG_STACK_SENTINEL` was the obvious tool for this, and it works here on
+a healthy sample. In the HTTP/3 suite, though, it reported an overflow on a
+thread whose test does almost nothing, which is not explained. Until it is,
+it is not a tool to rely on.

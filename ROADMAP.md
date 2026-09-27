@@ -137,9 +137,11 @@ lesson is on the page.
 
 What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
-   `upstream/zephyr/`: ten applications, `basic/threads` among them, and two
-   kernel suites. Sending them is a person's job, since Zephyr needs the
-   submitter's own `Signed-off-by`.
+   `upstream/zephyr/`: ten applications, `basic/threads` among them, two
+   kernel suites and two network suites. With them go the QUIC and CAN
+   socket fixes, and one for mbedTLS in `upstream/mbedtls/`. Sending them
+   is a person's job, since Zephyr needs the submitter's own
+   `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
@@ -158,7 +160,9 @@ The C library spike that was first on this list is done: picolibc builds,
 three more samples pass, and C++ constructors run (below, "Two levers"). So
 is the first lesson, with the thread table's answer to what each thread is
 waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
-four and the network suites to 112 of 139 (Phase 6).
+four. So is diagnosing the network suites' indirect-call traps, most of
+which were a stack overflow in the port. Between them, 118 of 139 network
+suites now pass (Phase 6).
 
 ## Phase 0 — foundations
 
@@ -516,6 +520,28 @@ What happened to each:
       - `wifi/configs` needs the hostap module;
       - one TLS configuration wants an mbedTLS option Zephyr leaves off;
       - one credentials backend has a compile error not yet looked at.
+- [x] **The indirect-call traps.** Six suites trapped on "null function or
+      function signature mismatch", recorded with D8b as the first suspect.
+      Three were D8b and three were not:
+      - **The port's own bug:** the ztest thread's 1 KB stack overflowed
+        on a test that calls down through conn_mgr, net_if and net_mgmt.
+        The overflow zeroed a test's function pointer in the ztest list
+        below the stack, and the suite trapped much later. There is no
+        guard page to notice, and wasm does not trap on a store inside its
+        memory (`DESIGN.md` D8). The board now defaults the ztest stack to
+        4 KB. That fixed `conn_mgr_conn` and two PTP suites, and three
+        suites recorded with other symptoms: two more PTP suites and
+        `virtual`.
+      - **Upstream bugs, as patches:** QUIC closes sockets through the
+        wrong member of a union, so every close traps (0007, with the same
+        bug in CAN sockets as 0008). The LwM2M RD client test calls its
+        callbacks through the wrong pointer type (0009). With the patches,
+        QUIC passes and so does the RD client. HTTP/3 then gets as far as
+        a slab corruption that is not diagnosed.
+
+      **118 of 139 now pass.** Finding them needed two tools the port did
+      not have: a way to name a trapping function, and a way to catch a
+      store to one address (`DESIGN.md` D8 and D9).
 - [ ] **Several instances in one page, with a virtual L2 between them.**
       The spike says the stack above the link layer works, so this is now
       the host's job: an Ethernet or IEEE 802.15.4 driver whose frames go to

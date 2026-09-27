@@ -41,9 +41,8 @@
     },
     {
       "path": "conn_mgr_conn",
-      "status": "does-not-finish",
-      "passes": 36,
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "status": "passes",
+      "passes": 37
     },
     {
       "path": "conn_mgr_monitor",
@@ -246,7 +245,7 @@
     {
       "path": "lib/http_server/h3",
       "status": "does-not-finish",
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "note": "D8b in QUIC, which HTTP/3 runs on: the same close2 trap as lib/quic. With upstream/zephyr/0007 the first suite passes and the second panics on a slab corruption in the HTTP server thread, not yet diagnosed; larger network stacks do not change it."
     },
     {
       "path": "lib/http_server/hpack",
@@ -312,7 +311,7 @@
       "path": "lib/lwm2m/lwm2m_rd_client",
       "status": "does-not-finish",
       "passes": 0,
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "note": "D8b in the test: its stub keeps void f(struct lwm2m_message *) callbacks in a void *(*)() and calls them. With upstream/zephyr/0009 it passes, 28 cases."
     },
     {
       "path": "lib/lwm2m/lwm2m_registry",
@@ -398,7 +397,7 @@
     {
       "path": "lib/quic",
       "status": "does-not-finish",
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "note": "D8b in QUIC: zvfs_close() calls a socket's close2(obj, fd), and QUIC fills .close with a one-argument function, so every close traps. With upstream/zephyr/0007 it passes, 81 cases."
     },
     {
       "path": "lib/ssh/ssh_pkt",
@@ -494,9 +493,8 @@
     },
     {
       "path": "ptp/btca_state_machine",
-      "status": "does-not-finish",
-      "passes": 7,
-      "note": "Traps on an out-of-bounds memory access after 7 cases. Not yet diagnosed."
+      "status": "passes",
+      "passes": 8
     },
     {
       "path": "ptp/clock",
@@ -510,9 +508,8 @@
     },
     {
       "path": "ptp/clock_wakeup",
-      "status": "does-not-finish",
-      "passes": 3,
-      "note": "exit 1. Not yet diagnosed."
+      "status": "passes",
+      "passes": 21
     },
     {
       "path": "ptp/foreign_master",
@@ -531,9 +528,8 @@
     },
     {
       "path": "ptp/port_events",
-      "status": "does-not-finish",
-      "passes": 2,
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "status": "passes",
+      "passes": 30
     },
     {
       "path": "ptp/state_matrix",
@@ -542,9 +538,8 @@
     },
     {
       "path": "ptp/transport_retry",
-      "status": "does-not-finish",
-      "passes": 0,
-      "note": "Traps on an indirect call: a null pointer or a wrong signature. Not yet diagnosed; D8b is the first suspect."
+      "status": "passes",
+      "passes": 6
     },
     {
       "path": "route/ipv4",
@@ -705,10 +700,8 @@
     },
     {
       "path": "virtual",
-      "status": "fails",
-      "passes": 3,
-      "failures": 8,
-      "note": "Finishes with failures. Not yet diagnosed."
+      "status": "passes",
+      "passes": 11
     },
     {
       "path": "vlan",
