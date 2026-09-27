@@ -11,14 +11,22 @@ pin moves.
 `scripts/try_upstream.sh` applies them for one run, re-runs the samples and
 kernel suites they are meant to fix, and takes them back out.
 
-## zephyr/: thread entries that match `k_thread_entry_t` (D8b)
+## zephyr/: calls through the wrong function type (D8b)
 
-Wasm checks the type of every indirect call, so a thread entry that is not
-exactly `void (*)(void *, void *, void *)` traps as its thread starts
-(`DESIGN.md` D8b). On every other target it is undefined behaviour that
-happens to work. `K_THREAD_DEFINE()` casts the entry to `k_thread_entry_t`,
-which is why the compiler never says so; clang's
-`-Wcast-function-type-strict` does, and is how these sites were found.
+Wasm checks the type of every indirect call, so a function called through a
+pointer of another type traps (`DESIGN.md` D8b). On every other target it
+is undefined behaviour that happens to work. Most of these are thread
+entries. A thread entry that is not exactly
+`void (*)(void *, void *, void *)` traps as its thread starts.
+`K_THREAD_DEFINE()` casts the entry to `k_thread_entry_t`, which is why the
+compiler never says so; clang's `-Wcast-function-type-strict` does, and is
+how 0001 to 0006 were found.
+
+0007 to 0009 were found differently, from the network suites' traps, and
+two of them no compiler warning would find:
+- the socket ones put a function in the wrong member of a union;
+- the LwM2M test's pointer is unprototyped, `void *(*)()`, which converts
+  from anything.
 
 | Patch | Fixes | Here, unlocks |
 |---|---|---|
@@ -28,9 +36,13 @@ which is why the compiler never says so; clang's
 | 0004 `samples: zbus` | `void f(void)` in six samples, two one-argument entries in `msg_subscriber`, and `int`-returning entries in `benchmark` | seven zbus applications (17 entries) |
 | 0005 `tests: kernel: mutex` | `thread_05` to `_08` take two `struct k_sem *` and are cast | `tests/kernel/mutex/mutex_api` |
 | 0006 `tests: kernel: pending` | `task_high`, `task_low` are `void f(void)` | `tests/kernel/pending` |
+| 0007 `net: lib: quic` | QUIC's socket vtables fill `.close` with `int f(void *)`, but `zvfs_close()` calls a socket's `close2(obj, fd)` | `tests/net/lib/quic`, and gets `lib/http_server/h3` further |
+| 0008 `net: sockets: can` | the same, in CAN sockets | nothing here: found by reading, since no CAN suite runs on this board |
+| 0009 `tests: net: lib: lwm2m: rd_client` | the stub keeps `void f(struct lwm2m_message *)` callbacks in a `void *(*)()` | `tests/net/lib/lwm2m/lwm2m_rd_client` |
+| 0010 `samples: net: sockets: echo_server` | its four thread entries are `void f(void)` | `net/sockets/echo_server`, as a peer for `echo_client` over the two-board link |
 
 Checked against Zephyr `e201b84b` (this workspace's pin) and upstream `main`
-at `6f1ab6c` (26 September 2026): the series applies to both. checkpatch
+at `1ee3b93` (27 September 2026): the series applies to both. checkpatch
 reports nothing but the missing `Signed-off-by`, which is deliberate.
 
 `-Wcast-function-type-strict` reports one more kind of cast these patches
@@ -57,9 +69,45 @@ A suggested split, by who maintains what:
    samples' maintainers;
 2. 0002, 0003 and 0004 together, or 0004 separately for the zbus
    maintainers;
-3. 0005 and 0006, the kernel tests.
+3. 0005 and 0006, the kernel tests;
+4. 0007 and 0008 together, for the networking maintainers: one bug in two
+   socket families;
+5. 0009 on its own, for the LwM2M maintainers;
+6. 0010 with 0002 to 0004, the samples, or on its own for the networking
+   samples' maintainers.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main
 git -C zephyr am --signoff ../zephyr-wasm/upstream/zephyr/*.patch
 ```
+
+## mbedtls/: an initialised time in `x509_crt.c`
+
+mbedTLS builds with `-Werror` by default (`MBEDTLS_FATAL_WARNINGS`), and
+clang 21 added `-Wuninitialized-const-pointer`. In `x509_crt_verify_chain()`,
+`now` is only written when `MBEDTLS_HAVE_TIME_DATE` is defined, and is
+passed by pointer either way. Nothing reads it when the option is off, so
+the warning is a false positive, but it stops the build on every target
+built with clang 21 and that option off, which is Zephyr's default.
+
+| Patch | Fixes |
+|---|---|
+| 0001 `x509: initialise the time passed to x509_crt_find_parent()` | the build with clang 21 and `MBEDTLS_HAVE_TIME_DATE` off. It zero-initialises `now`, and adds a `ChangeLog.d` entry, since this is a build fix in a supported configuration |
+
+The patch applies to Zephyr's mbedTLS fork at its pin (`098e120`) and to
+upstream `development` at `c0748be` (27 September 2026). Until it lands,
+`cmake/modules_wasm.cmake` turns that one warning off for the one target
+that has it, `mbedx509`, instead of patching the module.
+
+Mbed TLS wants its fixes sent to `Mbed-TLS/mbedtls`, where Zephyr's fork
+picks them up. Its contribution rules ask for the Developer Certificate of
+Origin, a `Signed-off-by` from the person sending the patch, and this patch
+has none for the same reason as the Zephyr ones: it is the sender's to add,
+with `git am --signoff`. It carries the same `Assisted-by` placeholder to
+fill in.
+
+```sh
+git -C mbedtls checkout -b x509-now-init origin/development
+git -C mbedtls am --signoff ../zephyr-wasm/upstream/mbedtls/*.patch
+```
+

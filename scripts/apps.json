@@ -50,7 +50,20 @@
     "  pad instead, which cannot land on exact values, so what the script",
     "  should produce goes in ci_expect, which only the Node check reads.",
     "args: build arguments, only ever the upstream entry's own extra_configs",
-    "  (the LVGL demos app chooses its demo that way)."
+    "  (the LVGL demos app chooses its demo that way).",
+    "lesson: a guided lesson, as a list of steps the page shows one at a",
+    "  time, each written like a hint. Nothing checks that a step was",
+    "  followed; the browser check follows them to see that they still hold.",
+    "threads_expect: substrings the thread table must show at some point in",
+    "  the Node check's run (run.mjs --threads), for a lesson that relies",
+    "  on what the table says.",
+    "boards: two boards joined by an Ethernet link, in place of app. Each",
+    "  has an app, a label, and what a build has: args (with",
+    "  -DSNIPPET=wasm-ethernet, which gives it the link), uses, ci_stdin and",
+    "  expect, which is checked against that board's own output. They are",
+    "  built as <name>-0 and <name>-1. The page runs them side by side; the",
+    "  Node check runs them with run.mjs --peer. The link is real-time, so a",
+    "  pair is paced and its expectations are thresholds."
   ],
   "builds": [
     {
@@ -199,6 +212,18 @@
         "Dining Philosophers",
         "Philosopher 0",
         "EATING"
+      ],
+      "threads_expect": [
+        "held by Philosopher",
+        "wakes in"
+      ],
+      "lesson": [
+        "Press Run. Six philosophers share six forks, and each philosopher is a thread. The table under the output is the kernel's own list of threads: watch each one think, wait for a fork, and eat.",
+        "Press Pause. Nothing runs now, and nothing is lost: every thread keeps its state and its stack. The table is the kernel's answer, asked of the guest between two context switches, not a guess.",
+        "Press Step. The kernel runs to its next stop: a context switch, or waking from idle. The arrow marks the thread that holds the CPU. Philosophers 0 to 5 start at priorities 3, 2, 1, 0, -1 and -2, which the output shows as `P:` for preemptible and `C:` for cooperative. The lower number runs first, and a cooperative thread, once running, keeps the CPU until it waits for something.",
+        "Find a philosopher whose state is `pending`. The waiting-for column says which fork, a mutex, it is waiting for, and which philosopher holds it. Compare the holder's priority with the one it started at. A mutex lends its owner the priority of the most urgent thread waiting for it, so that the owner finishes and lets go sooner. That is priority inheritance.",
+        "Why does this never deadlock? If each philosopher took the fork on one side and then waited for the other, all six could hold one fork each and wait forever. Here each takes the lower-numbered of their two forks first, so Philosopher 5 reaches for fork 0 before fork 5. A circle of waiting would need someone to hold a higher fork while waiting for a lower one, and no one ever does. See `philosopher()` in `samples/philosophers/src/main.c`.",
+        "Press Back to undo a step. The whole machine is one block of memory, so the page keeps a copy from before each step and puts it back. Step back to the moment a fork changed hands: the waiter leaves `pending`, and the holder's priority drops back to where it started."
       ]
     },
     {
@@ -362,6 +387,50 @@
         "uart:~$",
         "Zephyr version 4.4.99",
         "pong"
+      ]
+    },
+    {
+      "name": "echo",
+      "kind": "sample",
+      "title": "Echo over Ethernet (two boards)",
+      "hint": "Two boards on one link: the client echoes TCP and UDP off the server. Type `net iface` or `net ping 192.0.2.2` in the server's terminal.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/sockets/echo_service",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "ci_stdin": "net iface\n",
+          "expect": [
+            "(Ethernet)",
+            "192.0.2.1"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/sockets/echo_client",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "expect": [
+            "Network connected",
+            "IPv4 TCP: Exchanged 1000 packets",
+            "IPv6 TCP: Exchanged 1000 packets"
+          ]
+        }
       ]
     }
   ]

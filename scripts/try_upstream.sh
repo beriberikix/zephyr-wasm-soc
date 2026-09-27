@@ -8,7 +8,8 @@
 # score counts samples that run on Zephyr as it is, so a sample that only
 # runs with them does not count until Zephyr takes them. This applies them to
 # the workspace's Zephyr tree on top of the port's own patches, runs the
-# samples and kernel suites they are meant to fix, and takes them back out
+# samples, kernel suites and network suites they are meant to fix, and takes
+# them back out
 # whatever happens, leaving the tree as apply_patches.sh left it.
 #
 # Usage: scripts/try_upstream.sh
@@ -48,5 +49,16 @@ PY
 status=0
 python3 "$here/check_samples.py" --only "$entries" --update --record "$record" || status=1
 python3 "$here/check_kernel.py" --only mutex/mutex_api,pending || status=1
+# And the network suites: each one a patch is for names it in its note.
+suites="$(python3 - "$module/scripts/net_tests.json" <<'PY'
+import json, sys
+print(",".join(s["path"] for s in json.load(open(sys.argv[1]))["suites"]
+               if "upstream/zephyr/" in s.get("note", "")))
+PY
+)"
+if [ -n "$suites" ]; then
+  python3 "$here/check_kernel.py" --list "$module/scripts/net_tests.json" \
+    --only "$suites" || status=1
+fi
 echo "scratch record: $record"
 exit "$status"

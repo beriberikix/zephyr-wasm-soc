@@ -52,11 +52,19 @@
   /* xterm.js draws inside; this is the frame around it. It scrolls
    * sideways rather than squeezing below 80 columns, which is the width the
    * shell's line editor assumes. */
-  #term {
+  #term, #term2 {
     background: var(--term-bg); border: 1px solid var(--line); border-radius: 8px;
     padding: 8px 10px; height: 400px; overflow-x: auto; overflow-y: hidden;
   }
-  #term:focus-within { border-color: var(--accent); }
+  #term:focus-within, #term2:focus-within { border-color: var(--accent); }
+  /* A two-board build: two terminals, one above the other, since each
+   * wants 80 columns, and a label over each saying which board it is. */
+  #terms.pair #term, #terms.pair #term2 { height: 260px; }
+  #term2[hidden], .termlabel[hidden], #link[hidden] { display: none; }
+  .termlabel { color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  .termlabel:first-child { margin-top: 0; }
+  #link { color: var(--muted); font-size: 12px; margin: 8px 0 0;
+          font-variant-numeric: tabular-nums; }
   /* The selected build's hint, which does not change while it runs, and
    * one short line of status under it. Kept apart so that starting,
    * pausing or stopping a run never reflows the page under the pointer. */
@@ -66,6 +74,17 @@
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* A lesson: its controls sit on the first line, so moving through steps
+   * of different lengths never moves the buttons under the pointer. */
+  #lesson {
+    margin: 0 0 12px; padding: 8px 12px; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  #lesson[hidden] { display: none; }
+  #lesson .lhead { display: flex; gap: 8px; align-items: center; }
+  #lesson .lhead span { color: var(--muted); flex: 1; }
+  #lesson p { margin: 6px 0 0; min-height: 3em; }
+  #lesson code { font-size: 12px; }
   /* A scrollbar that comes and goes would shift the page sideways. */
   html { scrollbar-gutter: stable; }
   #board {
@@ -134,6 +153,8 @@
   }
   table.threads th { color: var(--muted); font-weight: 500; }
   table.threads td.mono { font: 12px ui-monospace, monospace; }
+  /* The one column that can be long, so the one that wraps. */
+  table.threads td.wait { white-space: normal; }
   table.threads tr.cur td { font-weight: 600; }
   table.threads tr.cur td:first-child::before { content: "\25B8 "; color: var(--accent); }
   kbd {
@@ -186,6 +207,17 @@
   <div id="hint"></div>
   <div id="status">Loading the list of builds…</div>
 
+  <!-- A guided lesson, for a build whose apps.json entry has one. The steps
+       are text; nothing checks that they were followed. -->
+  <section id="lesson" hidden aria-label="lesson">
+    <div class="lhead">
+      <strong>Lesson</strong><span id="lessonPos"></span>
+      <button id="lessonPrev">Previous</button>
+      <button id="lessonNext">Next</button>
+    </div>
+    <p id="lessonText" aria-live="polite"></p>
+  </section>
+
   <!-- Pin numbering mirrors boards/wasm/wasm_node/wasm_node.dts. -->
   <div id="board" hidden></div>
 
@@ -193,7 +225,15 @@
   <canvas id="screen" width="320" height="240" tabindex="0" hidden
           aria-label="the board's display"></canvas>
 
-  <div id="term"></div>
+  <!-- The output, and for a two-board build the second board's under it,
+       with the link between them counted. -->
+  <div id="terms">
+    <div class="termlabel" id="termLabel" hidden></div>
+    <div id="term"></div>
+    <div class="termlabel" id="term2Label" hidden></div>
+    <div id="term2" hidden></div>
+    <div id="link" hidden></div>
+  </div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
        the kernel looks like between them. Nothing here reads Zephyr struct
@@ -207,7 +247,7 @@
       <span id="kstat"></span>
     </div>
     <table class="threads">
-      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th></tr></thead>
+      <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th><th>waiting for</th></tr></thead>
       <tbody id="threads"></tbody>
     </table>
   </div>
@@ -221,7 +261,8 @@
     runs on its own in real time has a speed control, remembered for each
     build, which changes how fast it goes and not what it does; one that
     waits for you keeps to your time. Choosing another build stops the one
-    running.
+    running. A build with a lesson shows it above the output, one step at a
+    time.
   </p>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
@@ -231,6 +272,8 @@
 import { Terminal } from './vendor/xterm.mjs';
 import { FitAddon } from './vendor/addon-fit.mjs';
 import { IRQ } from './irq_lines.mjs';
+import { describeWait } from './threads.mjs';
+import { DEFAULT_SEED } from './core.mjs';
 
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
@@ -278,6 +321,9 @@ const stepEl = document.getElementById('step');
 const backEl = document.getElementById('back');
 
 let worker = null;
+/* The second board of a two-board build, and the frames between them. */
+let peerWorker = null;
+let linkCounts = [0, 0];
 let running = false;
 let builds = [];
 let lastState = null;
@@ -366,99 +412,114 @@ function termTheme() {
   }
   return theme;
 }
-const xterm = new Terminal({
-  cursorBlink: true,
-  /* The guest sends CRLF itself, and the shell uses a bare LF to mean
-   * "down one line, same column" when it wraps, as a VT100 does. */
-  convertEol: false,
-  /* A ztest or the logging sample prints thousands of lines, and the start
-   * is usually the part worth scrolling back to. */
-  scrollback: 20000,
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 13,
-  disableStdin: true,
-  theme: termTheme(),
-});
-const fitAddon = new FitAddon();
-xterm.loadAddon(fitAddon);
-xterm.open(termEl);
-/* As many rows as fit, and as many columns, but never fewer than 80: the
- * shell does not know the width and assumes 80, so a narrower screen would
- * wrap its line editor somewhere it did not expect. */
-function fitTerm() {
-  const dims = fitAddon.proposeDimensions();
-  if (!dims || !dims.cols || !dims.rows) return;
-  const cols = Math.max(80, dims.cols);
-  if (cols !== xterm.cols || dims.rows !== xterm.rows) xterm.resize(cols, dims.rows);
-}
-fitTerm();
-new ResizeObserver(fitTerm).observe(termEl);
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  xterm.options.theme = termTheme();
-});
+/* One terminal: an xterm in `el`, the log of what it printed, and where
+ * its keystrokes go. The page has one per board: a two-board build shows
+ * both, and the second is otherwise hidden. */
+function makeTerminal(el, target) {
+  const xterm = new Terminal({
+    cursorBlink: true,
+    /* The guest sends CRLF itself, and the shell uses a bare LF to mean
+     * "down one line, same column" when it wraps, as a VT100 does. */
+    convertEol: false,
+    /* A ztest or the logging sample prints thousands of lines, and the start
+     * is usually the part worth scrolling back to. */
+    scrollback: 20000,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: 13,
+    disableStdin: true,
+    theme: termTheme(),
+  });
+  const fitAddon = new FitAddon();
+  xterm.loadAddon(fitAddon);
+  xterm.open(el);
+  /* As many rows as fit, and as many columns, but never fewer than 80: the
+   * shell does not know the width and assumes 80, so a narrower screen would
+   * wrap its line editor somewhere it did not expect. */
+  function fitTerm() {
+    const dims = fitAddon.proposeDimensions();
+    if (!dims || !dims.cols || !dims.rows) return;
+    const cols = Math.max(80, dims.cols);
+    if (cols !== xterm.cols || dims.rows !== xterm.rows) xterm.resize(cols, dims.rows);
+  }
+  fitTerm();
+  new ResizeObserver(fitTerm).observe(el);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    xterm.options.theme = termTheme();
+  });
 
-/* Everything the guest has printed, as text, for the checks. It is the
- * stream with escape sequences dropped, carriage returns and backspaces
- * applied, which is what an expectation in apps.json means by "printed".
- * What the screen shows is xterm's business, and window.zephyrScreen reads
- * that. */
-const log = {
-  lines: [''],
-  col: 0,
-  decoder: new TextDecoder(),
-  pending: '',
+  /* Everything the guest has printed, as text, for the checks. It is the
+   * stream with escape sequences dropped, carriage returns and backspaces
+   * applied, which is what an expectation in apps.json means by "printed".
+   * What the screen shows is xterm's business, and window.zephyrScreen reads
+   * that. */
+  const log = {
+    lines: [''],
+    col: 0,
+    decoder: new TextDecoder(),
+    pending: '',
 
-  write(chunk) {
-    const text = this.pending + this.decoder.decode(chunk, { stream: true });
-    this.pending = '';
-    let i = 0;
-    while (i < text.length) {
-      const ch = text[i];
-      if (ch === '\u001b') {
-        /* CSI ... final byte, or a short escape. If the sequence is split
-         * across chunks, keep it for next time. */
-        const m = /^\u001b\[[0-9;?]*[ -/]*[@-~]/.exec(text.slice(i));
-        if (m) { i += m[0].length; continue; }
-        if (text.length - i < 12) { this.pending = text.slice(i); break; }
-        i += 2; continue;
+    write(chunk) {
+      const text = this.pending + this.decoder.decode(chunk, { stream: true });
+      this.pending = '';
+      let i = 0;
+      while (i < text.length) {
+        const ch = text[i];
+        if (ch === '\u001b') {
+          /* CSI ... final byte, or a short escape. If the sequence is split
+           * across chunks, keep it for next time. */
+          const m = /^\u001b\[[0-9;?]*[ -/]*[@-~]/.exec(text.slice(i));
+          if (m) { i += m[0].length; continue; }
+          if (text.length - i < 12) { this.pending = text.slice(i); break; }
+          i += 2; continue;
+        }
+        if (ch === '\n') { this.lines.push(''); this.col = 0; i++; continue; }
+        if (ch === '\r') { this.col = 0; i++; continue; }
+        if (ch === '\b') { if (this.col > 0) this.col--; i++; continue; }
+        if (ch === '\u0007') { i++; continue; }              // bell
+        const line = this.lines[this.lines.length - 1];
+        this.lines[this.lines.length - 1] =
+          line.slice(0, this.col) + ch + line.slice(this.col + 1);
+        this.col++;
+        i++;
       }
-      if (ch === '\n') { this.lines.push(''); this.col = 0; i++; continue; }
-      if (ch === '\r') { this.col = 0; i++; continue; }
-      if (ch === '\b') { if (this.col > 0) this.col--; i++; continue; }
-      if (ch === '\u0007') { i++; continue; }              // bell
-      const line = this.lines[this.lines.length - 1];
-      this.lines[this.lines.length - 1] =
-        line.slice(0, this.col) + ch + line.slice(this.col + 1);
-      this.col++;
-      i++;
-    }
-    /* Bounded, like the screen's scrollback. */
-    if (this.lines.length > 20000) this.lines.splice(0, this.lines.length - 20000);
-  },
+      /* Bounded, like the screen's scrollback. */
+      if (this.lines.length > 20000) this.lines.splice(0, this.lines.length - 20000);
+    },
 
-  clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
-};
+    clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
+  };
 
-/* Guest output goes to both. */
-const term = {
-  write(bytes) { xterm.write(bytes); log.write(bytes); },
-  /* Host messages, which use bare newlines. */
-  note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
-  /* A new run starts on a fresh terminal. */
-  reset() { xterm.reset(); log.clear(); },
-  /* The Clear button: everything but the line the cursor is on, which in a
-   * shell is its prompt. */
-  clear() { xterm.clear(); log.clear(); },
-};
+  /* Guest output goes to both. */
+  const term = {
+    write(bytes) { xterm.write(bytes); log.write(bytes); },
+    /* Host messages, which use bare newlines. */
+    note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
+    /* A new run starts on a fresh terminal. */
+    reset() { xterm.reset(); log.clear(); },
+    /* The Clear button: everything but the line the cursor is on, which in a
+     * shell is its prompt. */
+    clear() { xterm.clear(); log.clear(); },
+  };
 
-/* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
- * Backspace, which is what the shell expects by default
- * (CONFIG_SHELL_BACKSPACE_MODE_DELETE), and escape sequences for the arrows,
- * which is what its history and cursor movement read. */
-xterm.onData((data) => {
-  if (!running || !worker || xterm.options.disableStdin) return;
-  worker.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
-});
+  /* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
+   * Backspace, which is what the shell expects by default
+   * (CONFIG_SHELL_BACKSPACE_MODE_DELETE), and escape sequences for the arrows,
+   * which is what its history and cursor movement read. */
+  xterm.onData((data) => {
+    const w = target();
+    if (!running || !w || xterm.options.disableStdin) return;
+    w.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
+  });
+  return { xterm, log, term, fitTerm };
+}
+const main = makeTerminal(termEl, () => worker);
+const { xterm, log, term } = main;
+const peerTermEl = document.getElementById('term2');
+const termsEl = document.getElementById('terms');
+const termLabelEl = document.getElementById('termLabel');
+const term2LabelEl = document.getElementById('term2Label');
+const linkEl = document.getElementById('link');
+const peer = makeTerminal(peerTermEl, () => peerWorker);
 
 /* The virtual board.
  *
@@ -670,18 +731,22 @@ function showKernel(state) {
 
   if (!state.threads) {
     threadsEl.innerHTML =
-      '<tr><td colspan="4">this build has no CONFIG_WASM_INSPECT</td></tr>';
+      '<tr><td colspan="5">this build has no CONFIG_WASM_INSPECT</td></tr>';
     return;
   }
   threadsEl.innerHTML = '';
   for (const t of state.threads) {
     const tr = document.createElement('tr');
     if (t.current) tr.className = 'cur';
+    /* What it waits for is the guest's answer too: which wait queue, who
+     * owns it when it is a mutex, and how long its timeout has left. */
     const cells = [t.name || '(unnamed)', String(t.prio),
-                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`];
+                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`,
+                   describeWait(t, state.threads)];
     cells.forEach((text, i) => {
       const td = document.createElement('td');
       if (i === 3) td.className = 'mono';
+      if (i === 4) td.className = 'wait';
       td.textContent = text;
       tr.append(td);
     });
@@ -690,10 +755,14 @@ function showKernel(state) {
 }
 
 /* A hint is plain text, with anything to type in `backticks`, shown as
- * code. Built from text nodes, never parsed as HTML. */
+ * code. Built from text nodes, never parsed as HTML. A lesson's steps are
+ * written the same way. */
 const hintEl = document.getElementById('hint');
 function showHint(text) {
-  hintEl.replaceChildren(...String(text ?? '').split('`').map((part, i) => {
+  showText(hintEl, text);
+}
+function showText(el, text) {
+  el.replaceChildren(...String(text ?? '').split('`').map((part, i) => {
     if (i % 2 === 0) return document.createTextNode(part);
     const code = document.createElement('code');
     code.textContent = part;
@@ -722,6 +791,10 @@ function setRunning(state) {
  * thread table, LEDs off, a black display. */
 function resetBoard() {
   term.reset();
+  peer.term.reset();
+  peer.xterm.write('\x1b[?25l');
+  linkCounts = [0, 0];
+  showLink();
   /* No cursor until a build that reads the keyboard is running. */
   xterm.write('\x1b[?25l');
   showLeds(0);
@@ -741,8 +814,10 @@ function stopRun({ detach = false } = {}) {
   if (!worker || !running) return;
   stopping = true;
   worker.postMessage({ type: 'stop' });
+  peerWorker?.postMessage({ type: 'stop' });
   if (detach) {
     worker = null;
+    peerWorker = null;
     setRunning(false);
   }
 }
@@ -769,9 +844,55 @@ function showSelected() {
   speedWrapEl.title = 'How fast virtual time passes against the wall clock. It changes the pace, ' +
     'not what happens, and is remembered for each build.';
   speedEl.value = speeds.get(build.name) ?? '1';
+  /* A pair: both boards' terminals, labelled, and the link between them.
+   * No kernel panel, which describes one board, and no pausing or stepping
+   * one board while its peer's clock runs on. */
+  const pair = build.boards ?? null;
+  termsEl.classList.toggle('pair', !!pair);
+  peerTermEl.hidden = term2LabelEl.hidden = termLabelEl.hidden = linkEl.hidden = !pair;
+  if (pair) {
+    termLabelEl.textContent = pair[0].label;
+    term2LabelEl.textContent = pair[1].label;
+    kernelEl.classList.remove('on');
+    main.fitTerm();
+    peer.fitTerm();
+  }
   showHint(build.hint);
+  showLesson(build);
   statusEl.textContent = 'Ready.';
 }
+
+/* A lesson is a list of steps on a build's apps.json entry, shown one at a
+ * time. The step each build was left at is kept, like its speed, so that
+ * looking at another build and coming back does not start it over. */
+const lessonEl = document.getElementById('lesson');
+const lessonPosEl = document.getElementById('lessonPos');
+const lessonTextEl = document.getElementById('lessonText');
+const lessonPrevEl = document.getElementById('lessonPrev');
+const lessonNextEl = document.getElementById('lessonNext');
+const lessonSteps = new Map();
+let lesson = null;
+
+function showLesson(build) {
+  lesson = build.lesson?.length ? build : null;
+  lessonEl.hidden = !lesson;
+  if (lesson) showLessonStep(lessonSteps.get(build.name) ?? 0);
+}
+
+function showLessonStep(step) {
+  const steps = lesson.lesson;
+  step = Math.max(0, Math.min(step, steps.length - 1));
+  lessonSteps.set(lesson.name, step);
+  lessonPosEl.textContent = `step ${step + 1} of ${steps.length}`;
+  showText(lessonTextEl, steps[step]);
+  lessonPrevEl.disabled = step === 0;
+  lessonNextEl.disabled = step === steps.length - 1;
+}
+
+lessonPrevEl.addEventListener('click', () =>
+  showLessonStep(lessonSteps.get(lesson.name) - 1));
+lessonNextEl.addEventListener('click', () =>
+  showLessonStep(lessonSteps.get(lesson.name) + 1));
 
 /* The simulated flash, kept per build in IndexedDB so that what a sample
  * stored is still there after a reload, as it would be on a board that had
@@ -805,6 +926,68 @@ const saveFlash = (name, image) => {
 };
 const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
 
+/* The wire between the two boards of a pair: a frame from one Worker is
+ * handed to the other, and counted. Transferred, not copied: the sender
+ * made the buffer for this and has no further use for it. */
+function relay(from, frame) {
+  const to = from === 0 ? peerWorker : worker;
+  if (!to) return;
+  linkCounts[from]++;
+  to.postMessage({ type: 'eth-in', frame }, [frame.buffer]);
+  /* Thousands of frames a second: redraw the count once a frame. */
+  if (!linkDrawPending) {
+    linkDrawPending = true;
+    requestAnimationFrame(() => { linkDrawPending = false; showLink(); });
+  }
+}
+let linkDrawPending = false;
+
+function showLink() {
+  const build = currentBuild;
+  if (!build?.boards) return;
+  const [a, b] = build.boards.map((x) => x.label.toLowerCase());
+  const n = (x) => x.toLocaleString('en');
+  linkEl.textContent = `Link: ${n(linkCounts[0])} frames ${a} \u2192 ${b}, ` +
+    `${n(linkCounts[1])} ${b} \u2192 ${a}`;
+}
+
+/* The second board of a pair. Its own seed, so its MAC is not its peer's:
+ * two boards with one address would each refuse the other's as a
+ * duplicate. */
+function startPeer(build, board) {
+  peerWorker?.terminate();
+  const w = new Worker('./worker.js', { type: 'module' });
+  peerWorker = w;
+  const terminal = (board.uses ?? []).includes('terminal');
+  peer.xterm.options.disableStdin = !terminal;
+  peer.xterm.write(terminal ? '\x1b[?25h' : '\x1b[?25l');
+  w.onmessage = ({ data }) => {
+    if (peerWorker !== w) {
+      if (data.type === 'done') w.terminate();
+      return;
+    }
+    if (data.type === 'eth') relay(1, data.frame);
+    else if (data.type === 'out') peer.term.write(new Uint8Array(data.buf));
+    else if (data.type === 'err') peer.term.note(data.text);
+    else if (data.type === 'done') {
+      peer.xterm.write('\x1b[?25l');
+      /* The pair ends together. */
+      if (running) stopRun();
+    }
+  };
+  w.onerror = (e) => peer.term.note(`\n*** worker error: ${e.message} ***\n`);
+  w.postMessage({
+    type: 'run',
+    url: `./${board.path}`,
+    interactive: !!build.interactive,
+    maxTimeMs: build.max_time_ms ?? 60_000,
+    clock: build.clock ?? 'virtual',
+    timeScale: 1,
+    linked: true,
+    seed: (DEFAULT_SEED + 1) >>> 0,
+  });
+}
+
 async function start() {
   const build = builds.find((b) => b.name === buildEl.value);
   if (!build) return;
@@ -814,9 +997,12 @@ async function start() {
   setRunning(true);
   const flashImage = await loadFlash(build.name);
   const interactive = !!build.interactive;
+  /* A two-board build runs its first board here, as a single build runs,
+   * and its second in a Worker of its own, with the page as the wire. */
+  const [first, second] = build.boards ?? [build];
   /* Waiting for a person is not the same as reading the keyboard: the
    * touch and button samples wait for a finger, and type nothing. */
-  const terminal = (build.uses ?? []).includes('terminal');
+  const terminal = (first.uses ?? []).includes('terminal');
   xterm.options.disableStdin = !terminal;
   /* A cursor says "type here". Where nothing reads the keyboard it only
    * marks wherever the guest last wrote, which for the philosophers is the
@@ -835,13 +1021,16 @@ async function start() {
       if (data.type === 'done') w.terminate();
       return;
     }
-    if (data.type === 'state') showKernel(data.state);
+    if (data.type === 'eth') relay(0, data.frame);
+    else if (data.type === 'state') { if (!second) showKernel(data.state); }
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.note(data.text);
     else if (data.type === 'flash') saveFlash(build.name, data.image);
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
+      /* The pair ends together. */
+      peerWorker?.postMessage({ type: 'stop' });
       setRunning(false);
       /* The board is off: LEDs dark, the display dimmed, and nothing reads
        * the keyboard any more, so no cursor. */
@@ -870,13 +1059,15 @@ async function start() {
 
   w.postMessage({
     type: 'run',
-    url: `./${build.path}`,
+    url: `./${first.path}`,
     interactive,
     maxTimeMs: build.max_time_ms ?? 60_000,
     clock: build.clock ?? 'virtual',
     timeScale: paced ? Number(speedEl.value) : 1,
     flashImage,
+    linked: !!second,
   });
+  if (second) startPeer(build, second);
   /* The board starts as the tilt pad has it: level, unless someone tilted
    * it. An emulated chip that nobody set would read no gravity at all. */
   tiltSent = null;
@@ -902,6 +1093,7 @@ stopEl.onclick = () => stopRun();
  * it from: the button took focus away from it. */
 clearEl.onclick = () => {
   term.clear();
+  peer.term.clear();
   if (running && currentBuild?.display && currentBuild.interactive) screenEl.focus();
   else if (running && (currentBuild?.uses ?? []).includes('terminal')) {
     xterm.focus();
@@ -927,6 +1119,10 @@ window.zephyrType = (text) => {
   return true;
 };
 window.zephyrOutput = () => log.lines.join('\n');
+/* A two-board build's output, board by board, and the frames each has
+ * sent over the link. */
+window.zephyrOutputs = () => [log.lines.join('\n'), peer.log.lines.join('\n')];
+window.zephyrLink = () => [...linkCounts];
 /* What the terminal shows right now: its visible rows, and the cursor. */
 window.zephyrScreen = () => {
   const buf = xterm.buffer.active;

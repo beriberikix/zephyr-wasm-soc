@@ -79,6 +79,13 @@ const browserPlatform = {
     cancelWait = finish;
   }),
 
+  /* A frame for the board at the other end of the link. The page relays
+   * it to the other Worker. The core handed over a copy of its own, so the
+   * buffer can be transferred rather than copied again. */
+  ethSend(frame) {
+    self.postMessage({ type: 'eth', frame }, [frame.buffer]);
+  },
+
   /* An output pin moved. The page draws it. */
   gpioOut(port, values) {
     self.postMessage({ type: 'gpio', port, values });
@@ -165,6 +172,14 @@ self.onmessage = async (event) => {
     return;
   }
 
+  if (msg.type === 'eth-in') {
+    /* A frame from the other board. Queued like a touch, and the paced wait
+     * is cut short so it is taken now rather than at the next deadline. */
+    host?.pushEthernet(msg.frame);
+    cancelWait?.();
+    return;
+  }
+
   if (msg.type === 'input') {
     /* Every byte goes to the guest, Ctrl-C included: the page has a Stop
      * button, so Ctrl-C can be what it is on a board's serial console,
@@ -196,6 +211,10 @@ self.onmessage = async (event) => {
     timeScale: msg.timeScale ?? 1,
     wasm: msg.url,
     flashImage: msg.flashImage ?? null,
+    /* One board of a pair: it idles waiting for frames rather than ending,
+     * and has its own seed, so its MAC differs from its peer's. */
+    linked: !!msg.linked,
+    seed: msg.seed,
   };
   lastFlash = msg.flashImage ?? null;
 

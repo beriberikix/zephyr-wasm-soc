@@ -128,6 +128,16 @@ WASM_HOST_IMPORT(input_poll) int32_t wasm_host_input_poll(int32_t *ev);
  */
 WASM_HOST_IMPORT(sensor_poll) int32_t wasm_host_sensor_poll(int32_t *ev);
 
+/* Ethernet: the board's link to another board. eth_send hands the host one
+ * whole frame, header included and no FCS, which the host copies before it
+ * returns. The host queues frames from the other end and raises
+ * WASM_IRQ_ETH; eth_recv copies the next one into buf and returns its
+ * length, or returns 0 when none is waiting. A frame longer than max is
+ * dropped, and the call returns -1 for it. Neither suspends.
+ */
+WASM_HOST_IMPORT(eth_send) void wasm_host_eth_send(const void *frame, uint32_t len);
+WASM_HOST_IMPORT(eth_recv) int32_t wasm_host_eth_recv(void *buf, uint32_t max);
+
 /*
  * What the host is told about a thread.
  *
@@ -151,6 +161,10 @@ struct wasm_thread_info {
 	uint32_t stack_size;
 	uint32_t sp;          /* the saved shadow-stack pointer */
 	uint32_t asyncify_buf;
+	/* What the thread is waiting for. */
+	uint32_t pended_on;   /* the wait queue it is pending on, or 0 */
+	uint32_t held_by;     /* when that queue is a mutex's, its owner, or 0 */
+	int32_t timeout_ms;   /* time left on its timeout, or -1 with none */
 };
 
 /*

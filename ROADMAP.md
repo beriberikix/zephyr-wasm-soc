@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **46**. 43 pass upstream's own criterion, and three more are counted
+today: **52**. 47 pass upstream's own criterion, and five more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -22,23 +22,25 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button` and `input/draw_touch_events`: upstream
-gives those no criterion twister can run, because it has no way to watch an
-LED or press a button or a screen, so the demo's own checks judge them.
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the two
+halves of the echo pair, `net/sockets/echo_client` and `echo_service`.
+Upstream gives those no criterion twister can run, because it has no way to
+watch an LED, press a button or a screen, or give a board a peer, so the
+demo's own checks judge them.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 66 | |
-| **Runnable: what twister itself would run here** | **164** | **102** |
-| Pass upstream's own criterion | 66 | 43 |
+| Filtered out by upstream's own twister filter | 68 | |
+| **Runnable: what twister itself would run here** | **162** | **102** |
+| Pass upstream's own criterion | 70 | 47 |
 | Build, but upstream only builds them | 12 | |
 | Run, with no criterion upstream | 4 | |
 | Run and fail their criterion | 3 | |
 | Do not finish | 24 | |
-| Do not build | 55 | |
+| Do not build | 49 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -132,26 +134,39 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 46. Phase 5 has started; 6 and 7 have not.
+score went from 3 to 50. Phases 5 and 6 have started; 7 has not. The first
+lesson is on the page.
 
 What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
-   `upstream/zephyr/`: ten applications, `basic/threads` among them, and two
-   kernel suites. Sending them is a person's job, since Zephyr needs the
-   submitter's own `Signed-off-by`.
+   `upstream/zephyr/`: ten applications, `basic/threads` among them, two
+   kernel suites and two network suites. With them go the QUIC and CAN
+   socket fixes, and one for mbedTLS in `upstream/mbedtls/`. Sending them
+   is a person's job, since Zephyr needs the submitter's own
+   `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **mbedTLS**, now that the loopback spike shows the IP stack works: TLS,
-   DTLS and the IPv6 suite wait on it.
-4. **The first lesson**, with "which thread is waiting on what" before it.
+3. **More pairs.** Two boards and a wire now exist (Phase 6), with echo as
+   the first pair. CoAP, HTTP, zperf and mDNS pairs each need only their
+   client's addresses swapped, and QUIC's needs patch 0007 as well.
+   Lockstep time would make a pair as repeatable as a single board.
+4. **Someone learning Zephyr tries the lesson.** It is built and checked,
+   but whether it teaches is a question only its audience can answer, and
+   what they get stuck on should decide the second lesson.
 5. **A C++ standard library**, now that picolibc builds (below, "Two
    levers"). Last, because it waits on two applications, one of which also
    needs a module.
 
 The C library spike that was first on this list is done: picolibc builds,
-three more samples pass, and C++ constructors run (below, "Two levers").
+three more samples pass, and C++ constructors run (below, "Two levers"). So
+is the first lesson, with the thread table's answer to what each thread is
+waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
+four. So is diagnosing the network suites' indirect-call traps, most of
+which were a stack overflow in the port. Between them, 118 of 139 network
+suites now pass (Phase 6). And so is the virtual L2: two boards on the
+page, echoing over Ethernet, which raised the score to 52.
 
 ## Phase 0 — foundations
 
@@ -287,7 +302,7 @@ way. See the note on what "unmodified" can mean, below.
 
 ## Phase 2 — see the kernel working
 
-Done, apart from saying what a pending thread is pending on.
+Done.
 
 - [x] **The thread table**: names, priorities, states, which one holds the
       CPU, and the stack pointer, updated as the run goes. The page does not
@@ -307,8 +322,15 @@ Done, apart from saying what a pending thread is pending on.
       returns the clock, the switch counter and the thread holding the CPU
       to exactly where they were, which the browser check asserts.
       `DESIGN.md` D8g.
-- [ ] **Which thread is waiting on what.** The table says `pending`, not
-      what it is pending on, and the kernel knows.
+- [x] **Which thread is waiting on what.** A "waiting for" column: the
+      mutex a thread waits on and which thread holds it, the address of any
+      other kernel object, and how long is left before a sleeping thread
+      wakes or a waiting one gives up. The guest works out the mutex's
+      owner, and tells a mutex from other objects by checking that what it
+      finds is a thread holding the lock (`DESIGN.md` D8e). Watching the
+      philosophers this way shows priority inheritance at work, which
+      nothing on the page showed before: a philosopher holding a fork runs
+      at the priority of the one waiting for it.
 
 ## Phase 3 — storage
 
@@ -469,17 +491,101 @@ What happened to each:
       - 1 tests native_sim's offloaded sockets, which exist only there.
       - The last 6 do not finish or do not build for reasons not yet looked
         at. Each has a note in the record.
-- [ ] **mbedTLS.** Importing it, as picolibc was imported, is the next lever:
-      TLS, DTLS and the IPv6 suite all wait on it.
-- [ ] **Several instances in one page, with a virtual L2 between them.**
-      The spike says the stack above the link layer works, so this is now
-      the host's job: an Ethernet or IEEE 802.15.4 driver whose frames go to
-      another instance's Worker instead of a wire.
+- [x] **mbedTLS.** Imported as picolibc was: two modules, `mbedtls` and
+      `tf-psa-crypto`, at the revisions Zephyr pins. **112 of 139 network
+      suites now pass**, ten more than before, among them:
+      - TLS sockets, with DTLS handshakes (`socket/tls`, 49 cases);
+      - IPv6 (61 cases), whose privacy extensions select PSA;
+      - websockets;
+      - the CoAP server, the HTTP TLS server, the LwM2M engine and the SSH
+        server.
+
+      Four samples pass too, which is the score going from 46 to 50:
+      `drivers/crypto`, `psa/its`, `psa/persistent_key` and `subsys/uuid`,
+      whose version 5 UUIDs are hashed through PSA.
+
+      The port needed two things, and Zephyr and mbedTLS needed nothing:
+      - A TLS handshake suspends from 4,160 bytes of wasm frames, just
+        over the 4 KB Asyncify buffer every stack reserves. A build with
+        mbedTLS gets 8 KB (`DESIGN.md` D8).
+      - mbedTLS builds itself with `-Werror`, and clang 21's
+        `-Wuninitialized-const-pointer` fires on a false positive in
+        `x509_crt.c`, as it would on any target. The port turns that one
+        warning off for that one library, and `upstream/mbedtls/` has the
+        fix for mbedTLS.
+
+      Of the 19 suites that waited on mbedTLS, the 9 that still do not pass
+      each have another cause:
+      - the HTTP/3 server and QUIC trap on an indirect call;
+      - LwM2M interop is driven by pytest against a server;
+      - OCPP panics, and upstream only builds it;
+      - `all` needs an 802.15.4 radio in the devicetree;
+      - WireGuard needs an errno picolibc lacks;
+      - `wifi/configs` needs the hostap module;
+      - one TLS configuration wants an mbedTLS option Zephyr leaves off;
+      - one credentials backend has a compile error not yet looked at.
+- [x] **The indirect-call traps.** Six suites trapped on "null function or
+      function signature mismatch", recorded with D8b as the first suspect.
+      Three were D8b and three were not:
+      - **The port's own bug:** the ztest thread's 1 KB stack overflowed
+        on a test that calls down through conn_mgr, net_if and net_mgmt.
+        The overflow zeroed a test's function pointer in the ztest list
+        below the stack, and the suite trapped much later. There is no
+        guard page to notice, and wasm does not trap on a store inside its
+        memory (`DESIGN.md` D8). The board now defaults the ztest stack to
+        4 KB. That fixed `conn_mgr_conn` and two PTP suites, and three
+        suites recorded with other symptoms: two more PTP suites and
+        `virtual`.
+      - **Upstream bugs, as patches:** QUIC closes sockets through the
+        wrong member of a union, so every close traps (0007, with the same
+        bug in CAN sockets as 0008). The LwM2M RD client test calls its
+        callbacks through the wrong pointer type (0009). With the patches,
+        QUIC passes and so does the RD client. HTTP/3 then gets as far as
+        a slab corruption that is not diagnosed.
+
+      **118 of 139 now pass.** Finding them needed two tools the port did
+      not have: a way to name a trapping function, and a way to catch a
+      store to one address (`DESIGN.md` D8 and D9).
+- [x] **Two boards on one page, with a virtual Ethernet between them.**
+      A small driver, `wasm,host-ethernet`, sends each frame to the host,
+      and the host hands it to the other board: on the page another
+      Worker, in Node another `Host` in the same process (`run.mjs
+      --peer`). The link is off unless a build asks for it with the
+      `wasm-ethernet` snippet, so no other build changes. `DESIGN.md` D8k.
+      - The first pair is upstream's `echo_client` and `echo_service`, as
+        shipped. The client echoes TCP over IPv4 and IPv6, and UDP at its
+        own pace of one packet every 150 ms. TCP runs at about 750 packets a
+        second on each IP version in Node, and about 160 on the page, where
+        each frame travels from one Worker through the page to the other.
+      - Both boards have the network shell, so `net ping` from one to the
+        other works, and so does `net iface`.
+      - The page shows both terminals, labelled, and counts the frames each
+        way. Pause and step are hidden for a pair, since stepping one board
+        would leave its peer's clock behind.
+      - Checks: the Node check requires 1,000 TCP echoes each way on
+        both IP versions. The browser check does the same through the page,
+        typing into the server's terminal, and requires Stop to end both
+        boards.
+      - The link is real-time: each board follows the wall clock, and a run
+        is not byte-for-byte repeatable. That was a choice, recorded in D8k
+        with what lockstep time would need.
+      - `echo_server`, the obvious server, traps on D8b. Patch 0010 in
+        `upstream/zephyr/` fixes it.
+
+      Two port bugs came out of building the pair. The section generator
+      lost one of two same-named members of one archive
+      (`libsubsys__net.a` has two `sockets.c.obj`), and the link check
+      caught it. The same bug had been failing `tests/net/pmtu`'s build,
+      recorded as not diagnosed; it now passes, and 119 of 139 network
+      suites pass. The driver's first `get_capabilities` had an older
+      signature, and the compiler caught that, where wasm would have trapped
+      at run time.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`
-harness: they need a peer, so none counts yet. The virtual L2 is what gives
-them one.
+harness: they need a peer, which twister never gives them. The virtual L2
+gives them one, and a pair on the page counts both its samples, as blinky
+counts, by the demo's checks.
 
 ## Phase 7 — Bluetooth
 
@@ -558,16 +664,31 @@ and the two largest groups are not in any phase.
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 46. Nothing yet answers the second. The page runs samples; it does not
+to 50. Nothing yet answers the second. The page runs samples; it does not
 teach with them, and nobody learning Zephyr has tried it.
 
-- [ ] **One lesson**, to find out what a lesson needs. `philosophers` is the
-      obvious first: five threads contending for forks is what pause, step,
-      step back and the thread table were built to show. A lesson is a build
-      from the manifest plus a short script of what to do and what to watch
-      for, the "precompiled variants per lesson" the issue already chose.
-- [ ] **Which thread is waiting on what** (Phase 2's open item) comes first,
-      because "blocked on fork 3, which philosopher 2 holds" is the lesson.
+- [x] **Which thread is waiting on what** (Phase 2's open item) came first,
+      because "waiting for a fork that Philosopher 2 holds" is the lesson.
+- [x] **One lesson**, to find out what a lesson needs. `philosophers`, six
+      threads contending for six forks, which is what pause, step, step back
+      and the thread table were built to show. It takes six steps:
+      1. run it;
+      2. pause;
+      3. step one context switch at a time, and see which priority wins;
+      4. find a waiting philosopher, who holds its fork, and priority
+         inheritance;
+      5. why it never deadlocks, which is Dijkstra's ordering: everyone
+         takes the lower-numbered fork first;
+      6. step back through a fork changing hands.
+
+      A lesson turned out to need very little: a `lesson` list on a build's
+      `apps.json` entry, which the page shows as a panel with Previous and
+      Next, and the thread table saying what each thread waits for. So the
+      next lesson is an entry, not code. The steps are text and nothing
+      checks that a person followed them. The browser check follows them
+      itself, so a change that breaks what the lesson describes fails CI.
+      What a lesson needs beyond this is for its audience to say. Nobody
+      learning Zephyr has tried it yet.
 
 The score stays the measure. A lesson is how the page gets tested by the
 people it is for.
@@ -609,7 +730,7 @@ could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk, and so far it has held up better than feared:
-after four phases, 46 samples, three file systems and LVGL there are still
+after four phases, 50 samples, three file systems, LVGL and mbedTLS there are still
 seven patches to Zephyr, and one to picolibc. Its real failures were archive members whose names collided
 and sections in the wrong order, both fixed and both now checked at every
 link. Two of its failure modes

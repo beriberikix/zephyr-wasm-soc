@@ -37,13 +37,16 @@ def score(builds: list[dict]) -> int:
     criterion upstream: blinky's harness is an LED fixture and button is
     build_only, so upstream CI never runs either. Those count through the
     demo list instead, whose hand-written expectations CI checks on every
-    push. A sample counts once, whichever source it comes from.
+    push. A sample counts once, whichever source it comes from. A
+    two-board entry counts each board's application: the pair's checks are
+    what judges both.
     """
     return len(counted(builds))
 
 
 def counted(builds: list[dict]) -> set[str]:
-    ours = {b["app"] for b in builds if b.get("upstream") and b.get("kind") == "sample"}
+    ours = {u["app"] for b in builds if b.get("upstream") and b.get("kind") == "sample"
+            for u in units(b)}
     record = HERE / "samples.json"
     theirs = set()
     if record.exists():
@@ -57,18 +60,45 @@ USES = {"leds", "buttons", "flash", "terminal", "accel"}
 SYMBOL = {"terminal": "SHELL", "accel": "SENSOR_WASM_BRIDGE"}
 
 
+def units(b: dict) -> list[dict]:
+    """What gets built for an entry: itself, or each of its boards.
+
+    A two-board entry has no app of its own. Its boards are built as
+    <name>-0 and <name>-1, and each carries what a single build would:
+    app, args, uses, expect.
+    """
+    if "boards" not in b:
+        return [b]
+    return [dict(board, name=f"{b['name']}-{i}") for i, board in enumerate(b["boards"])]
+
+
 def load(module: str) -> list[dict]:
     builds = json.loads(APPS.read_text())["builds"]
     for b in builds:
-        b["app"] = b["app"].replace("{module}", module)
+        if "boards" in b:
+            # Two boards joined by the wasm-ethernet link: the page runs
+            # them side by side, run.mjs --peer runs them in CI.
+            boards = b["boards"]
+            if len(boards) != 2 or not all(x.get("app") and x.get("label") for x in boards):
+                sys.exit(f"apps.json: {b['name']} needs two boards, each with an app and a label")
+            if "app" in b:
+                sys.exit(f"apps.json: {b['name']} has boards, so it has no app of its own")
+        for u in units(b):
+            u["app"] = u["app"].replace("{module}", module)
+        if "boards" in b:
+            b["boards"] = [dict(x, app=x["app"].replace("{module}", module)) for x in b["boards"]]
         # The page shows both, and a build without them is the page
         # drifting back to one style per entry.
         for key in ("title", "hint"):
             if not b.get(key):
                 sys.exit(f"apps.json: {b['name']} has no {key}")
-        unknown = set(b.get("uses", [])) - USES
-        if unknown:
-            sys.exit(f"apps.json: {b['name']} uses unknown {sorted(unknown)}")
+        lesson = b.get("lesson", [])
+        if not isinstance(lesson, list) or not all(isinstance(x, str) and x for x in lesson):
+            sys.exit(f"apps.json: {b['name']} has a lesson that is not a list of steps")
+        for u in units(b):
+            unknown = set(u.get("uses", [])) - USES
+            if unknown:
+                sys.exit(f"apps.json: {u['name']} uses unknown {sorted(unknown)}")
     return builds
 
 
@@ -83,7 +113,7 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
     use for the buttons.
     """
     problems = []
-    for b in builds:
+    for b in (u for entry in builds for u in units(entry)):
         config = topdir / f"build-site-{b['name']}" / "zephyr" / ".config"
         if not config.exists():
             problems.append(f"{b['name']}: no {config}")
@@ -129,7 +159,7 @@ def main() -> int:
         # A third column carries any build arguments, space-separated. They
         # are only ever an upstream entry's own extra_configs: the LVGL demos
         # app picks its demo that way.
-        for b in builds:
+        for b in (u for entry in builds for u in units(entry)):
             print(f"{b['name']}\t{b['app']}\t{' '.join(b.get('args', []))}")
         return 0
 
@@ -152,7 +182,9 @@ def main() -> int:
             "built": os.environ.get("SITE_BUILT", ""),
         },
         "score": score(builds),
-        "builds": [dict(b, path=f"m/{b['name']}.wasm") for b in builds],
+        "builds": [dict(b, boards=[dict(u, path=f"m/{u['name']}.wasm") for u in units(b)])
+                   if "boards" in b else dict(b, path=f"m/{b['name']}.wasm")
+                   for b in builds],
     }
     json.dump(out, sys.stdout, indent=2)
     print()

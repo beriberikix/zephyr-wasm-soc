@@ -8,4 +8,13 @@ if BOARD_WASM_NODE
 config EMUL
 	default y if SENSOR
 
+# A ztest suite runs its tests on a thread of CONFIG_ZTEST_STACK_SIZE bytes,
+# 1024 by default and 2048 on x86. Here that overflowed on the network
+# suites: a test calling down through conn_mgr, net_if and net_mgmt to
+# k_work ran off the bottom of its stack into the data below it. With no
+# guard page nothing noticed until a corrupted function pointer trapped much
+# later (DESIGN.md D8). tests/net/ptp/transport_retry needs more than 2048.
+config ZTEST_STACK_SIZE
+	default 4096
+
 endif # BOARD_WASM_NODE

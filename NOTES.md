@@ -984,3 +984,191 @@ found none. Both scripts are dependencies now.
 
 `posix/eventfd` now links, then prints nothing after the banner, and its
 `main` is gone within six switches. Not diagnosed.
+
+
+### Tick 56 — the first lesson, and what the table was missing
+
+The roadmap had named the first lesson, the philosophers, and what it needed
+first: the thread table said `pending` and not what a thread was pending on.
+For this sample that is the whole lesson.
+
+The guest now says, in three more fields of the record it already filled
+(`DESIGN.md` D8e):
+- the wait queue;
+- the mutex's owner, when the queue is a mutex's;
+- the time left on the thread's timeout.
+
+A wait queue does not know what it belongs to, so the owner is an
+inference. The guest reads the queue as a mutex and believes the owner only
+if it is a thread holding the lock. That is honest about its limits and
+good enough for a table.
+
+The time left was the subtle part. The kernel's answer,
+`z_timeout_remaining()`, walks the timeout list, and every loop in the image
+has a safepoint. None could dispatch, since the kernel holds its lock
+there, but each one counts towards the next progress report, and a report
+moves virtual time. So asking would have changed the run being looked at.
+The safepoint pass can only skip a function it can name by export, so the
+link now exports this one and the build tells the pass to skip it. The
+records also outgrew the inspect stack they borrow the top of: 24 of them at
+12 words is more than the 1 KB it had.
+
+The first run of the new column showed something no one had asked for.
+Philosopher 0 starts at priority 3 and was running at -2, because
+Philosopher 5 was waiting for its fork. That is priority inheritance, and
+the lesson now points it out.
+
+A lesson turned out to be small: a `lesson` list on the build's `apps.json`
+entry, and a panel with Previous and Next. It has six steps: run, pause,
+step, find a waiter and its holder, why Dijkstra's ordering cannot deadlock,
+and step back. The browser check follows them with real clicks and requires
+a "held by" row naming a thread in the same table. The Node check requires
+the same of `run.mjs --threads`. Both pass, as do all 18 site builds and all
+25 kernel suites, whose case counts are unchanged.
+
+Nobody learning Zephyr has tried it. That is the next test, and the only
+one that says whether it teaches.
+
+
+### Tick 57 — mbedTLS, which needed almost nothing
+
+The loopback spike left mbedTLS as the largest single reason network suites
+did not run: 19 of 37. The question was the one picolibc answered: does the
+module build and work on wasm32 at all?
+
+It does, with two things from the port and nothing from Zephyr or mbedTLS.
+
+The first was not wasm's fault. mbedTLS builds itself with `-Werror`, and
+clang 21 added `-Wuninitialized-const-pointer`. It fires in `x509_crt.c` on a
+time that is passed by pointer and only read when `MBEDTLS_HAVE_TIME_DATE`
+is on. That option is off in Zephyr's default configuration, so the warning
+is a false positive, and it would stop the build on any target with this
+compiler. `cmake/modules_wasm.cmake` turns off that one warning for that one
+library. The one-line fix, with a ChangeLog entry, is in
+`upstream/mbedtls/`, and applies to mbedTLS's `development`.
+
+The second was the port's. The TLS suite passed DTLS handshakes and then
+trapped with a bare `unreachable`. The trap was in
+`asyncify_stop_unwind()`: Binaryen does check the buffer, after the unwind,
+and a handshake suspends from 4,160 bytes of frames, 64 more than the 4 KB
+every stack reserves. The host has always had a clear message for exactly
+this, but it looked only after `asyncify_stop_unwind()`, which trapped
+first. The host now looks first, and a build with mbedTLS gets an 8 KB
+buffer. So the old claim that an overflow is silent was half wrong: it is
+caught, but only after the damage.
+
+Results:
+- `socket/tls`: 49 of 49 pass, 4 skipped;
+- `tests/net`: 112 of 139, ten more than before, with IPv6, websockets and
+  the TLS servers among them;
+- the score: 46 to 50, from `drivers/crypto`, `psa/its`,
+  `psa/persistent_key` and `subsys/uuid`.
+
+Two suites that now build trap on an indirect call, the HTTP/3 server and
+QUIC, which makes six in `tests/net`. That is enough to be worth one
+diagnosis for all of them.
+
+
+### Tick 58 — six "signature mismatches", and only three were
+
+Six network suites trapped with `null function or function signature
+mismatch`, and the record called D8b the first suspect. It was the right
+suspect for half of them.
+
+The first obstacle was that no trap could be named. A trap said
+`wasm-function[116]`, and neither the module nor `zephyr.elf` had a name
+section. DESIGN D9 said the link called wasm-ld directly so that names
+would survive. It never did: the link goes through the clang driver, and
+the driver runs `wasm-opt` over the linked module, which drops the names
+and rewrites the code. Building with `--no-wasm-opt` kept them.
+
+With names, `conn_mgr_conn` trapped in ztest's `test_cb`, calling a
+test's function. That entry's pointer was right in the image and zero at
+the trap. So something had written to it. A copy of the module run through
+Binaryen's `--instrument-memory`, with a host that watched one address,
+caught the store: a `k_work_submit_to_queue` frame spilling its argument
+into the ztest list. The ztest thread's stack, 1 KB by default, sits just
+above that list, and the test had run off the bottom of it.
+
+No guard noticed, because there is none. There is no MPU, and wasm does not
+trap on a store inside its own memory. So an overflow shows up wherever the
+damage is next used, which here was a function pointer, which made it look
+like D8b. The board now defaults the ztest stack to 4 KB; 2 KB was not
+enough for one suite. That fixed three of the six, and three suites
+recorded with other symptoms: two PTP suites and `virtual`, whose eight
+failures were the same overflow.
+
+The other three were D8b:
+- QUIC's socket vtables fill `.close`, and `zvfs_close()` calls a socket's
+  `.close2(obj, fd)`, so every QUIC close traps. HTTP/3 runs on QUIC.
+- CAN sockets have the same bug, found by looking for the pattern.
+- The LwM2M RD client test keeps its callbacks in a `void *(*)()`.
+
+Neither kind is visible to `-Wcast-function-type-strict`: one is a function
+put in the wrong member of a union, and the other is an unprototyped
+pointer. They are patches 0007 to 0009 in `upstream/zephyr/`. With them,
+QUIC passes 81 cases and the RD client 28. HTTP/3 gets as far as a slab
+corruption, which larger network stacks do not change, and which is not
+diagnosed.
+
+`tests/net` goes from 112 to 118 of 139. The score does not move: the
+samples sweep, re-run, is unchanged.
+
+`CONFIG_STACK_SENTINEL` was the obvious tool for this, and it works here on
+a healthy sample. In the HTTP/3 suite, though, it reported an overflow on a
+thread whose test does almost nothing, which is not explained. Until it is,
+it is not a tool to rely on.
+
+
+### Tick 59 — two boards, one wire
+
+The roadmap had it as the next network item: several instances on one
+page, with a virtual L2 between them. Networking's samples need a peer, and
+until now a board had nobody to talk to but itself.
+
+The wire is a small Ethernet driver, `wasm,host-ethernet`. Each frame the
+stack sends goes to the host, and the host hands it to the other board. On
+the page that is another Worker. In Node, `run.mjs --peer` runs the second
+board in the same process. Two choices shaped it:
+- **The node is off by default.** A snippet turns it on, so none of the 139
+  network suites gains an interface it never asked for.
+- **The link is real-time.** Both boards follow the wall clock, and frames
+  arrive when they arrive. A lockstep coordinator would make a pair as
+  repeatable as one board, but it means taking the clock away from
+  `run()`. DESIGN D8k records what that would take.
+
+Three things went wrong on the way, and each was caught by something that
+already existed:
+- The driver's `get_capabilities` had an older signature. The compiler
+  refused it; on wasm it would have trapped instead.
+- The section generator lost `net_sock`'s log entry. `libsubsys__net.a`
+  holds two members named `sockets.c.obj`, the socket library's and the
+  network shell's, and `ar x` writes both to one path. The generator
+  already kept archives apart for exactly this reason, but a collision
+  inside one archive was new. It now reads the archive format itself, and
+  the link check that caught the missing entry passes. The same collision
+  was why `tests/net/pmtu`, which also builds the socket library and the
+  shell, failed to build, recorded as not diagnosed. It now passes, which
+  makes 119 of 139 network suites.
+- `echo_server` trapped at its first thread: four `void f(void)` entries
+  through `K_THREAD_DEFINE`, the D8b pattern again. `echo_service`, a
+  single-threaded server that pairs with the client as shipped, took its
+  place. Patch 0010 fixes `echo_server` upstream.
+
+With `echo_client` and `echo_service` the pair works as shipped:
+- TCP over IPv4 and IPv6, each at about 750 packets a second in Node and
+  about 160 on the page, where each frame travels from one Worker through
+  the page to the other;
+- UDP at the client's own pace of one packet every 150 ms;
+- `net ping 192.0.2.2` from the service's shell, with 1 ms replies after
+  the first, which waited for ARP.
+
+The MAC comes from the board's entropy source, because the samples set
+`CONFIG_TEST_RANDOM_GENERATOR` and two boards would otherwise share an
+address.
+
+The score is 52. Like blinky, the echo samples have no criterion twister
+can run, since `harness: net` wants a peer. So the demo's checks judge
+them: the Node check wants 1,000 echoes each way on both IP versions, and
+the browser check wants the same through the page, typed into and stopped
+by a person.

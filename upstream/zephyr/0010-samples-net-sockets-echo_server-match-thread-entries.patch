@@ -1,0 +1,121 @@
+From c2e911fe588ca5972d417123e84ec1c9668895c8 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sun, 27 Sep 2026 13:46:00 +0000
+Subject: [PATCH] samples: net: sockets: echo_server: match thread entries to
+ k_thread_entry_t
+
+process_tcp4(), process_tcp6(), process_udp4() and process_udp6() are
+declared void f(void) and passed to K_THREAD_DEFINE(), which casts them to
+k_thread_entry_t and calls them with three arguments. Calling a function
+through an incompatible function type is undefined behaviour, and it
+traps on targets that check indirect calls.
+
+Give the entries the signature k_thread_entry_t declares.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ samples/net/sockets/echo_server/src/tcp.c | 16 ++++++++++++----
+ samples/net/sockets/echo_server/src/udp.c | 16 ++++++++++++----
+ 2 files changed, 24 insertions(+), 8 deletions(-)
+
+diff --git a/samples/net/sockets/echo_server/src/tcp.c b/samples/net/sockets/echo_server/src/tcp.c
+index 45742db9629..b7e20893c6c 100644
+--- a/samples/net/sockets/echo_server/src/tcp.c
++++ b/samples/net/sockets/echo_server/src/tcp.c
+@@ -39,8 +39,8 @@ static struct k_thread tcp6_handler_thread[CONFIG_NET_SAMPLE_NUM_HANDLERS];
+ static APP_BMEM bool tcp6_handler_in_use[CONFIG_NET_SAMPLE_NUM_HANDLERS];
+ #endif
+ 
+-static void process_tcp4(void);
+-static void process_tcp6(void);
++static void process_tcp4(void *p1, void *p2, void *p3);
++static void process_tcp6(void *p1, void *p2, void *p3);
+ 
+ K_THREAD_DEFINE(tcp4_thread_id, STACK_SIZE,
+ 		process_tcp4, NULL, NULL, NULL,
+@@ -306,11 +306,15 @@ static int process_tcp(struct data *data)
+ 	return 0;
+ }
+ 
+-static void process_tcp4(void)
++static void process_tcp4(void *p1, void *p2, void *p3)
+ {
+ 	int ret;
+ 	struct sockaddr_in addr4;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr4, 0, sizeof(addr4));
+ 	addr4.sin_family = AF_INET;
+ 	addr4.sin_port = htons(MY_PORT);
+@@ -332,11 +336,15 @@ static void process_tcp4(void)
+ 	quit();
+ }
+ 
+-static void process_tcp6(void)
++static void process_tcp6(void *p1, void *p2, void *p3)
+ {
+ 	int ret;
+ 	struct sockaddr_in6 addr6;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr6, 0, sizeof(addr6));
+ 	addr6.sin6_family = AF_INET6;
+ 	addr6.sin6_port = htons(MY_PORT);
+diff --git a/samples/net/sockets/echo_server/src/udp.c b/samples/net/sockets/echo_server/src/udp.c
+index 8309920ad4d..d3b73c4070b 100644
+--- a/samples/net/sockets/echo_server/src/udp.c
++++ b/samples/net/sockets/echo_server/src/udp.c
+@@ -23,8 +23,8 @@ LOG_MODULE_DECLARE(net_echo_server_sample, LOG_LEVEL_DBG);
+ #include "common.h"
+ #include "certificate.h"
+ 
+-static void process_udp4(void);
+-static void process_udp6(void);
++static void process_udp4(void *p1, void *p2, void *p3);
++static void process_udp6(void *p1, void *p2, void *p3);
+ 
+ K_THREAD_DEFINE(udp4_thread_id, STACK_SIZE,
+ 		process_udp4, NULL, NULL, NULL,
+@@ -154,11 +154,15 @@ static int process_udp(struct data *data)
+ 	return ret;
+ }
+ 
+-static void process_udp4(void)
++static void process_udp4(void *p1, void *p2, void *p3)
+ {
+ 	int ret;
+ 	struct sockaddr_in addr4;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr4, 0, sizeof(addr4));
+ 	addr4.sin_family = AF_INET;
+ 	addr4.sin_port = htons(MY_PORT);
+@@ -178,11 +182,15 @@ static void process_udp4(void)
+ 	}
+ }
+ 
+-static void process_udp6(void)
++static void process_udp6(void *p1, void *p2, void *p3)
+ {
+ 	int ret;
+ 	struct sockaddr_in6 addr6;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr6, 0, sizeof(addr6));
+ 	addr6.sin6_family = AF_INET6;
+ 	addr6.sin6_port = htons(MY_PORT);
+-- 
+2.43.0
+

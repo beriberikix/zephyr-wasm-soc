@@ -24,7 +24,7 @@ log, including what did not work. `BRIEF.md` is the original task.
 
 * `samples/hello_world` boots and exits cleanly.
 * `samples/synchronization` alternates two threads with `k_msleep` honoured.
-* `samples/philosophers` runs, which is five threads, mutexes and sleeps.
+* `samples/philosophers` runs, which is six threads, mutexes and sleeps.
 * `samples/subsys/logging/logger` runs, hexdumps and all.
 * `samples/basic/sys_heap` runs, which is the heap.
 * `samples/basic/blinky` and `samples/basic/button` run, with the LEDs drawn
@@ -56,11 +56,16 @@ log, including what did not work. `BRIEF.md` is the original task.
   chips on upstream's emulated I2C bus, read by the real drivers. The page
   has a Tilt pad that sets what the accelerometer reads, and
   `samples/sensor/accel_polling` shows gravity move as the board is tilted.
-* Networking: Zephyr's IP stack over loopback, sockets included. 102 of the
-  139 network test suites pass, 1,144 cases: UDP, TCP, IPv4, IPv6, DHCP,
-  DNS, CoAP, MQTT, the HTTP server and more. `scripts/net_tests.json`
-  records every suite.
-* 43 upstream samples pass their own twister criterion, unmodified, out of
+* Networking: Zephyr's IP stack over loopback, sockets included. 119 of the
+  139 network test suites pass: UDP, TCP, TLS and DTLS, IPv4, IPv6, DHCP,
+  DNS, CoAP, MQTT, websockets, the HTTP server and more.
+  `scripts/net_tests.json` records every suite.
+* mbedTLS and PSA crypto, from the modules Zephyr pins, unchanged.
+* Two boards on one page, joined by a virtual Ethernet: upstream's
+  `echo_client` echoes TCP and UDP off `echo_service`, and each board has
+  the network shell, so `net ping` crosses the link. `run.mjs --peer` does
+  the same in Node.
+* 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
@@ -269,8 +274,11 @@ they do. A build that waits for a person runs on the real clock, so its
 timestamps are the ones you lived through. Choosing another build stops the
 one running and clears what it left. The
 kernel's thread table is shown underneath: who exists, who holds the CPU,
-and what the rest are waiting for. Pause stops the guest between two context
-switches and Step lets exactly one through. A server is needed because `file://`
+and what the rest are waiting for, which is a mutex and who holds it, or how
+long until they wake. Pause stops the guest between two context switches
+and Step lets exactly one through. The philosophers come with a lesson, six
+steps in a panel above the output: pause, step, find a philosopher waiting
+for a fork and the one holding it, and see why the sample never deadlocks. A server is needed because `file://`
 blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.
@@ -400,7 +408,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 46 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 52 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

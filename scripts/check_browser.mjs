@@ -326,7 +326,71 @@ if (listed.length !== manifest.builds.length) {
   console.log(`  ok    manifest  ${listed.length} builds listed`);
 }
 
+/* A two-board build, as a person would use it: both terminals and the
+ * link line shown, Run starting both boards, the first board's terminal
+ * typed into, each board printing its own expectations, frames crossing
+ * the link both ways, and Stop ending both. */
+async function checkPair(b) {
+  const [first, second] = b.boards;
+  await page.selectOption('#build', b.name);
+  const shown = await page.evaluate(() =>
+    ['term2', 'link', 'term2Label'].every((id) => !document.getElementById(id).hidden) &&
+    !document.getElementById('kernel').classList.contains('on'));
+  if (!shown) {
+    fail(b.name, 'selecting the pair did not show both terminals and the link, without the kernel panel');
+    return;
+  }
+  await page.click('#run');
+  const outputOf = (i) => page.evaluate((n) => window.zephyrOutputs()[n], i);
+  try {
+    if (first.ci_stdin) {
+      await page.waitForFunction(() => window.zephyrOutputs()[0].includes('uart:~$'), null,
+                                 { timeout: 60_000, polling: 250 });
+      await page.click('#term');
+      for (const line of first.ci_stdin.split('\n').filter(Boolean)) {
+        await page.keyboard.type(line);
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(250);
+      }
+    }
+    for (const [i, board] of [first, second].entries()) {
+      for (const want of board.expect ?? []) {
+        try {
+          await page.waitForFunction(([n, w]) => window.zephyrOutputs()[n].includes(w), [i, want],
+                                     { timeout: 60_000, polling: 250 });
+        } catch {
+          throw Object.assign(new Error(`${board.label} never printed ${JSON.stringify(want)}`),
+                              { extra: await outputOf(i) });
+        }
+      }
+    }
+    await page.waitForFunction(() => window.zephyrLink().every((n) => n >= 100), null,
+                               { timeout: 30_000, polling: 250 });
+    const shownLink = await page.evaluate(() => document.getElementById('link').textContent);
+    if (shots) {
+      await mkdir(shots, { recursive: true });
+      await page.screenshot({ path: path.join(shots, `${b.name}.png`), fullPage: true });
+    }
+    await page.click('#stop');
+    await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 });
+    /* Both boards stopped: nothing crosses the link any more. */
+    const settled = await page.evaluate(() => window.zephyrLink().join());
+    await page.waitForTimeout(1000);
+    if (await page.evaluate(() => window.zephyrLink().join()) !== settled) {
+      throw new Error('frames still crossed the link after Stop');
+    }
+    console.log(`  ok    ${b.name.padEnd(8)} ${b.title}: ${shownLink}`);
+  } catch (err) {
+    fail(b.name, err.message, err.extra);
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
+  }
+}
+
 for (const b of manifest.builds) {
+  if (b.boards) {
+    await checkPair(b);
+    continue;
+  }
   const expect = b.expect ?? [];
 
   await page.selectOption('#build', b.name);
@@ -576,6 +640,66 @@ const pageChecks = [
       .map((e) => e.disabled));
     if (!p || !s) throw new Error('Pause or Step stayed enabled after the run');
     return 'the status says Paused and Running; Pause and Step are off after the run';
+  }],
+  ['lesson', async () => {
+    /* The philosophers' lesson, followed as a person would: through its
+     * steps, then Run, Pause and Step until the table shows a philosopher
+     * waiting for a fork that another one holds. */
+    const pos = () => page.evaluate(() => document.getElementById('lessonPos').textContent);
+    await page.selectOption('#build', 'hello');
+    if (await page.isVisible('#lesson')) throw new Error('a build with no lesson showed one');
+    await page.selectOption('#build', 'philo');
+    if (!(await page.isVisible('#lesson'))) throw new Error('the philosophers showed no lesson');
+    const steps = manifest.builds.find((b) => b.name === 'philo').lesson.length;
+    if (await pos() !== `step 1 of ${steps}`) throw new Error(`the lesson opened at ${JSON.stringify(await pos())}`);
+    await page.click('#lessonNext');
+    await page.click('#lessonNext');
+    await page.click('#lessonPrev');
+    if (await pos() !== `step 2 of ${steps}`) throw new Error(`Next, Next, Previous left it at ${JSON.stringify(await pos())}`);
+    /* Looking at another build and back keeps the place. */
+    await page.selectOption('#build', 'hello');
+    await page.selectOption('#build', 'philo');
+    if (await pos() !== `step 2 of ${steps}`) throw new Error('coming back to the lesson started it over');
+    await page.click('#lessonPrev');
+
+    await page.click('#run');
+    await until('the philosophers never started', () => (window.zephyrState()?.threads ?? []).length > 1, null, 30_000);
+    await page.click('#pause');
+    await until('Pause did not say so', () => document.getElementById('status').textContent.startsWith('Paused.'));
+    /* The table as shown: a waiter names its holder, and the holder is a
+     * thread in the same table. */
+    const heldBy = () => page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#threads tr')]
+        .map((tr) => [...tr.cells].map((td) => td.textContent));
+      const names = new Set(rows.map((r) => r[0]));
+      for (const r of rows) {
+        const m = / held by (.+?)(,|$)/.exec(r[4] ?? '');
+        if (m && names.has(m[1]) && m[1] !== r[0]) return `${r[0]}: ${r[4]}`;
+      }
+      return null;
+    });
+    /* A sleeper, with when it wakes. Looked for at every step, not at the
+     * last: the paced clock decides where the steps stop, and when the
+     * sleepers' timeouts coincide they all wake on one tick, which leaves
+     * a moment with nobody asleep. */
+    const wakes = () => page.evaluate(() => [...document.querySelectorAll('#threads td.wait')]
+      .some((td) => /^wakes in \d+ ms$/.test(td.textContent)));
+    /* A few steps at least, so the column is seen to follow them. */
+    let seen = await heldBy();
+    let sleeping = await wakes();
+    let taken = 0;
+    for (; (!seen || !sleeping || taken < 3) && taken < 200; taken++) {
+      const before = await page.evaluate(() => document.getElementById('kstat').textContent);
+      await page.click('#step');
+      await until('Step changed nothing', (b) => document.getElementById('kstat').textContent !== b, before);
+      seen ??= await heldBy();
+      sleeping ||= await wakes();
+    }
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    if (!seen) throw new Error(`in ${taken} steps no philosopher was shown waiting for a fork another held`);
+    if (!sleeping) throw new Error('no sleeping philosopher was shown with when it wakes');
+    return `the lesson steps through and remembers its place; in ${taken} steps: ${seen}`;
   }],
   ['final', async () => {
     await page.selectOption('#build', 'sem');

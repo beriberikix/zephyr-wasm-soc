@@ -12,4 +12,5 @@ export const IRQ = {
   GPIO: 1,
   INPUT: 2,
   SENSOR: 3,
+  ETH: 4,
 };

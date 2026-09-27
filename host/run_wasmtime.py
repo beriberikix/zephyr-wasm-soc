@@ -37,6 +37,7 @@ IRQ_TIMER = 0
 IRQ_GPIO = 1
 IRQ_INPUT = 2
 IRQ_SENSOR = 3
+IRQ_ETH = 4
 
 # Must match DEFAULT_SEED and nextRandomByte() in host/core.mjs: a build that
 # prints random numbers has to print the same ones under both hosts, which is
@@ -213,6 +214,14 @@ class Host:
         def sensor_poll(ptr):
             return 0
 
+        # One board, so the Ethernet link has no other end: what is sent is
+        # dropped, as on a cable plugged into nothing, and nothing arrives.
+        def eth_send(ptr, length):
+            pass
+
+        def eth_recv(ptr, maxlen):
+            return 0
+
         def uart_poll_out(c):
             sys.stdout.write(chr(c & 0xFF))
             sys.stdout.flush()
@@ -240,6 +249,8 @@ class Host:
             "display_blank": (display_blank, [I32], []),
             "input_poll": (input_poll, [I32], [I32]),
             "sensor_poll": (sensor_poll, [I32], [I32]),
+            "eth_send": (eth_send, [I32, I32], []),
+            "eth_recv": (eth_recv, [I32, I32], [I32]),
         }
 
         # Imports are positional, so build the list in the order the module

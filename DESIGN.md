@@ -90,7 +90,10 @@ to the next deadline. `--realtime` opts out.
 
 ## 3. Host ABI: import module `zephyr_host`
 
-To be filled in as Milestone 1 lands. Sketch:
+Every import there is. `include/zephyr/arch/wasm/wasm_host.h` declares
+them, and `host/run_wasmtime.py` refuses a module that asks for any other.
+Only `switch_to` and `wait_for_event` suspend, and so only those two are
+in the Asyncify import list.
 
 | Import | Signature | Purpose |
 |---|---|---|
@@ -98,10 +101,23 @@ To be filled in as Milestone 1 lands. Sketch:
 | `time_now_ns` | `() -> i64` | monotonic clock |
 | `set_alarm_ns` | `(deadline: i64) -> ()` | program the next timer interrupt |
 | `wait_for_event` | `() -> ()` | idle; suspension point under Asyncify |
-| `uart_poll_out` | `(c: i32) -> ()` | one byte out |
-| `uart_poll_in` | `() -> i32` | one byte in, or -1 when none is waiting |
+| `switch_to` | `() -> ()` | context switch; suspension point (D3) |
 | `safepoint_tick` | `() -> ()` | progress report, so time moves while spinning |
 | `fatal` | `(reason: i32, arg: i32) -> ()` | unrecoverable error |
+| `entropy_get` | `(ptr: i32, len: i32) -> ()` | seeded bytes, or the platform's (D5) |
+| `uart_poll_out` | `(c: i32) -> ()` | one byte out |
+| `uart_poll_in` | `() -> i32` | one byte in, or -1 when none is waiting |
+| `gpio_out` | `(port: i32, values: i32) -> ()` | output pins changed (D8c) |
+| `gpio_in` | `(port: i32) -> i32` | input pin levels (D8c) |
+| `storage_attach` | `(ptr: i32, len: i32) -> ()` | where the flash lives (D8h) |
+| `reboot` | `(type: i32) -> ()` | a warm reboot (D8h) |
+| `display_attach` | `(ptr, w, h, fmt: i32) -> ()` | where the framebuffer lives (D8i) |
+| `display_flush` | `(x, y, w, h: i32) -> ()` | a region changed (D8i) |
+| `display_blank` | `(on: i32) -> ()` | blanking (D8i) |
+| `input_poll` | `(ev: i32) -> i32` | next touch or key event, or 0 (D8i) |
+| `sensor_poll` | `(ev: i32) -> i32` | next sensor value, or 0 (D8j) |
+| `eth_send` | `(frame: i32, len: i32) -> ()` | a frame for the other board (D8k) |
+| `eth_recv` | `(buf: i32, max: i32) -> i32` | next frame's length, 0 for none, -1 if too long (D8k) |
 
 Traps kill the instance and cannot be recovered from: a Wasm trap unwinds to
 the host with no way back into the module. Fatal errors therefore go through
@@ -242,9 +258,22 @@ the thread's own object either way.
 Sizing comes from the measurements: the buffer needs about 88 bytes plus 32
 per frame live at the moment of the yield. The reserved split will be a
 Kconfig with a conservative default, because a buffer that is too small does
-not fail cleanly. Asyncify does not bounds-check it. In the spike a 248 byte
-buffer absorbed 1112 bytes and carried on, silently overwriting whatever
-followed, and `asyncify-asserts` does not add a bounds check. The port places
+not fail cleanly. Asyncify does not bounds-check it as it writes. In the
+spike a 248 byte buffer absorbed 1112 bytes and carried on, silently
+overwriting whatever followed, and `asyncify-asserts` does not add a bounds
+check. What does exist is a check afterwards: `asyncify_stop_unwind()`
+traps if the unwind ended past the buffer's end, with a bare `unreachable`.
+The host makes the same comparison just before calling it, so an overflow
+stops the run with a message that names the buffer and the Kconfig option.
+Either way it is found after the damage, not before.
+
+The default is `CONFIG_WASM_ASYNCIFY_BUFFER_SIZE=4096`, and 8192 in a build
+with mbedTLS. A TLS handshake suspends from deeper than anything else
+measured: `tests/net/socket/tls` unwound 4,160 bytes, which overflowed the
+default and passed with the larger one. Tying the larger default to
+mbedTLS, rather than raising it for every build, keeps the cost where it is
+paid: every thread's stack carries the buffer, and every step-back snapshot
+copies it. The port places
 the buffer at the top of the stack object so an overflow runs into the next
 guard rather than into live thread state.
 
@@ -259,6 +288,28 @@ stack of 1024 bytes is smaller than the 4096-byte buffer reservation, which
 makes the split run off the bottom of the object, so `wasm_node_defconfig`
 raises the defaults. Every thread pays for a buffer whether or not it ever
 suspends deeply.
+
+The C stack below the buffer has no guard either, and it overflows more
+quietly than the buffer does. Nothing checks it: there is no MPU, and wasm
+does not trap on a store anywhere inside linear memory. A thread that runs
+off the bottom of its stack writes over whatever is linked below, and the
+damage shows only when that is next used. The network suites found it. The
+ztest thread's 1 KB, upstream's default, was too little for a test calling
+down through conn_mgr, net_if and net_mgmt into `k_work`. The overflow
+reached the ztest list itself, and five suites trapped much later on a
+function pointer that had become zero, which looked exactly like a D8b
+mismatch. The board now defaults `CONFIG_ZTEST_STACK_SIZE` to 4096;
+upstream already raises it to 2048 for x86, and one suite needed more than
+that.
+
+Finding it took a store watch. Binaryen's `--instrument-memory` routes every
+load and store through an import, so a scratch host can report the stack
+of the store that hits a given address. That turned "a null function in
+`test_cb`" into "a `k_work_submit_to_queue` frame spilling an argument into
+the ztest list". Zephyr's `CONFIG_STACK_SENTINEL` is the ordinary way to
+catch this, and it works here on a healthy sample, but in one suite it
+reported an overflow on a thread whose test does nothing. That report is
+not explained, so the sentinel is not trusted yet.
 
 The port uses the **full** Asyncify pass, not `ignore-indirect` and not an
 onlylist. Both narrowing options break the case Zephyr depends on: a yield
@@ -417,7 +468,7 @@ quietly wrong whenever a struct moved rather than failing.
 
 So the guest answers questions instead. `z_wasm_inspect_threads()` walks
 `_kernel.threads` and fills an array of `struct wasm_thread_info`, which is
-nine 32-bit fields in a fixed order and the only Zephyr shape the host
+twelve 32-bit fields in a fixed order and the only Zephyr shape the host
 knows. Adding a field costs an edit on each side, which is the usual price
 of an ABI and cheap at this size.
 
@@ -434,6 +485,43 @@ if it cannot find a name it was told to skip.
 
 It runs on a stack of its own rather than spending the headroom of whichever
 thread happens to be suspended when the host asks.
+
+**What a thread waits for.** The last three fields answer the question a
+thread table raises first: a thread is `pending`, but on what?
+- `pended_on` is the wait queue the thread is on, which is the kernel
+  object's address for every object whose wait queue comes first.
+- `held_by` is who holds it, when it is a mutex. A wait queue does not say
+  what it belongs to, and without `CONFIG_USERSPACE` nothing else records
+  that either, so the guest infers it. It reads the queue as a `k_mutex`'s
+  `wait_q` and believes the owner it finds only if that owner is a thread in
+  the kernel's list, is not the waiter, and holds the lock at least once. A
+  semaphore with a waiter has a count of zero there, and most other objects
+  hold something that is not a thread. An object that happened to keep a
+  thread pointer in that place would be misread as a mutex. That is the
+  price of not having a type tag, and the page says "held by" for this case
+  only. `CONFIG_OBJ_CORE` would give an exact answer, at the cost of a list
+  node in every kernel object of every build, which is more than a thread
+  table is worth.
+- `timeout_ms` is what is left on the thread's timeout, or -1 with none:
+  when a sleeping thread wakes, or when a waiting one gives up. The guest
+  asks the kernel, through `z_timeout_remaining()`.
+
+That call is where the "not instrumented" rule reaches past this file. The
+skip list protects the walk's own loops, which is why its helpers are
+always inlined, but not the functions it calls, and `z_timeout_remaining()`
+walks the timeout list. A safepoint there could not dispatch, since the
+kernel holds its lock, but each safepoint counts towards the next progress
+report, and a report moves virtual time: looking would change what was
+looked at. So the link exports `z_timeout_remaining` whenever inspection and
+a clock are both built in, and the build passes its name to the safepoint
+pass, which leaves it alone under the same rule: a name it is told to skip
+must be exported, or the pass refuses to run. The kernel's own callers lose
+those safepoints too. They held the lock already, so all they lose is
+counting.
+
+The records sit at the top of the inspect stack, 48 bytes for each of up to
+24 threads, so the stack grew from 1 KB to 2 KB to keep the walk's own
+headroom.
 
 ### D8f. A step is a suspension
 
@@ -601,12 +689,82 @@ The bmp581's emulator has no backend API, so its pressure cannot be set.
 The pressure samples are `build_only` upstream, and building is all they
 need to do.
 
-### D9. Link with wasm-ld directly
+### D8k. Two boards, one wire
 
-The clang driver drops the wasm name section. Nothing in the kernel needs it,
-but Binaryen does: without names an asyncify onlylist silently matches nothing
-and produces a module that never suspends. The toolchain files invoke wasm-ld
-directly so names survive and any future narrowing stays possible.
+A board with a network interface and nothing to talk to can only talk to
+itself, over loopback, and nearly all of networking's samples want a peer.
+So two boards share a wire: an Ethernet interface whose frames go to the
+host, which hands them to the other board.
+
+**The guest side** is a small driver, `wasm,host-ethernet`
+(`drivers/ethernet/eth_wasm_host.c`), with two imports:
+- `eth_send` hands the host a whole frame, which it copies before returning;
+- `eth_recv` takes the next frame from the other end.
+
+Frames arrive the way touches and sensor values do: the host queues them
+and raises `WASM_IRQ_ETH`. The ISR only schedules work, and the work
+handler feeds the stack from thread context, so buffer allocation and the
+stack's own locking stay out of interrupt context. Checksums are the
+stack's to compute. The MAC comes from the board's entropy source, which
+the host seeds per board. A MAC from `sys_rand_get()` would not do, since
+the network samples set `CONFIG_TEST_RANDOM_GENERATOR`. Two boards would
+then draw the same address, and IPv6 duplicate address detection refuses
+it.
+
+**The node is off by default.** A build turns it on with the
+`wasm-ethernet` snippet, which also sets `CONFIG_NET_L2_ETHERNET`. Without
+that, the 139 network suites, which run over loopback or interfaces they
+define themselves, would each gain an interface they never asked for.
+
+**The host side is two `Host`s and a relay.**
+- On the page, each board has a Worker, and the page passes frames
+  between them.
+- In Node, `run.mjs --peer` runs both in one process, and each board's
+  `ethSend` is the other's `pushEthernet`.
+
+A linked board idles as an interactive one does, rather than ending when
+nothing is scheduled: its peer can send it a frame at any moment. It also
+follows the wall clock while idle, and fires a deadline when the wall clock
+reaches it rather than jumping to it. Otherwise a frame arriving before the
+deadline would find a board that already lived at the deadline.
+
+**The link is real time, and that is a choice.** Nothing coordinates the
+two clocks. Each follows the wall clock, frames arrive when they arrive,
+and a run is not byte-for-byte repeatable. So the pair's checks are
+thresholds: echo 1,000 TCP packets each way, over IPv4 and over IPv6. A
+lockstep link could come later. It would need:
+- a run loop that can be stepped from outside, rather than one that owns
+  the clock;
+- a coordinator that always steps whichever board is behind;
+- frames delivered as events at their timestamps, as scripted input is
+  now;
+- quiescence decided for the pair, not per board.
+
+It would make a pair as repeatable as a single board, at the cost of the
+host's simplest property: that one `run()` owns one clock.
+
+The first pair is upstream's `echo_client` with `echo_service`, which mirror
+each other's addresses as shipped. `echo_server` would be the obvious
+server, but its thread entries are `void f(void)` and trap (D8b);
+`upstream/zephyr/0010` fixes it.
+
+### D9. The link goes through the clang driver, which runs wasm-opt
+
+The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
+That is not the same as calling wasm-ld: when the link line carries an
+optimisation level and `wasm-opt` is on the `PATH`, which it always is here
+because Asyncify needs it, the driver runs `wasm-opt` at that level over the
+linked module. That rewrites the code, so the link map, which describes
+wasm-ld's output, has 530 functions in a build where the module has 326. It
+also drops the name section.
+
+The full Asyncify pass needs no names (D8), so this costs nothing at run
+time, but it costs a lot in diagnosis: a trap says `wasm-function[116]` and
+nothing names it. For a build that has to be read, add
+`-DEXTRA_LDFLAGS=--no-wasm-opt`, which keeps wasm-ld's names in
+`zephyr.elf` with the same function indices as `zephyr.wasm`. An earlier
+version of this note said the link called wasm-ld directly so that names
+survived. It did not, and nothing noticed until a trap needed naming.
 
 ### D10. The UART is polled
 

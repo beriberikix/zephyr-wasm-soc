@@ -60,7 +60,7 @@ const QUIESCENT_ROUNDS = 2;
  * memorable. Both hosts use the same generator and the same seed, so a build
  * that prints random numbers prints the same ones under Node and under
  * wasmtime, which the two-engine check depends on. */
-const DEFAULT_SEED = 0x5eed0001;
+export const DEFAULT_SEED = 0x5eed0001;
 
 /* The most virtual time that pacing will sit through in one go.
  *
@@ -84,10 +84,14 @@ const PACE_BEHIND_MS = 250;
  * that it advances at all, so deadlines can expire. */
 const SAFEPOINT_TICK_NS = 100_000n;
 
-/* struct wasm_thread_info: nine 32-bit fields, in the order the header
+/* Frames waiting for a board that is not reading them. Enough to ride out a
+ * burst; past it the link drops, as a wire into a full receive ring does. */
+const ETH_QUEUE_MAX = 256;
+
+/* struct wasm_thread_info: twelve 32-bit fields, in the order the header
  * declares them. The guest fills it; the host only reads it, and learns no
  * Zephyr struct offsets in the process. */
-const THREAD_INFO_WORDS = 9;
+const THREAD_INFO_WORDS = 12;
 const THREAD_INFO_MAX = 24;
 
 /* _THREAD_* in kernel_structs.h, lowest bit first. A thread with no bits set
@@ -116,6 +120,9 @@ export class Host {
     this.startedAt = platform.nowNs();
     this.stepStartedAt = null;   // wall clock when the current step began
     this.switches = 0;
+    /* Frames over the link, each way, for whoever is showing it. */
+    this.ethSent = 0;
+    this.ethReceived = 0;
     this.exitCode = 0;
     this.done = false;
     /* One entry per live context, keyed by its Asyncify buffer address.
@@ -166,6 +173,18 @@ export class Host {
     /* Sensor readings waiting for the bridge's ISR: [sensor, channel,
      * millionths of the channel's SI unit]. */
     this.sensorQueue = [];
+    /* Ethernet frames from the other end of the link, waiting for the
+     * driver: whole frames, as Uint8Arrays. */
+    this.ethQueue = [];
+  }
+
+  /* A frame from the board at the other end of the link. Safe at any time,
+   * like pushInput. A board that is not reading drops what arrives once a
+   * backlog has built up, as a NIC with full buffers would. */
+  pushEthernet(frame) {
+    if (this.ethQueue.length >= ETH_QUEUE_MAX) return;
+    this.ethQueue.push(frame);
+    this.injectIrq(IRQ.ETH);
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -495,6 +514,23 @@ export class Host {
         },
 
         /* Sensors: one queued reading per call; the ISR takes them all. */
+        /* A frame for the other end of the link. The copy is the host's own:
+         * the guest reuses its buffer as soon as this returns. */
+        eth_send(ptr, len) {
+          const frame = new Uint8Array(self.mem.buffer, ptr, len).slice();
+          self.ethSent++;
+          self.platform.ethSend?.(frame);
+        },
+
+        eth_recv(ptr, max) {
+          const frame = self.ethQueue.shift();
+          if (!frame) return 0;
+          if (frame.length > max) return -1;
+          new Uint8Array(self.mem.buffer, ptr, frame.length).set(frame);
+          self.ethReceived++;
+          return frame.length;
+        },
+
         sensor_poll(ptr) {
           const r = self.sensorQueue.shift();
           if (!r) return 0;
@@ -581,6 +617,7 @@ export class Host {
     }
 
     const words = new Uint32Array(this.mem.buffer, this.infoAddr, count * THREAD_INFO_WORDS);
+    const signed = new Int32Array(this.mem.buffer, this.infoAddr, count * THREAD_INFO_WORDS);
     const bytes = new Uint8Array(this.mem.buffer);
     const rows = [];
     for (let i = 0; i < count; i++) {
@@ -599,11 +636,16 @@ export class Host {
         states: THREAD_STATE_BITS.filter((_, b) => state & (1 << b)),
         current: words[at + 2] === 1,
         name,
-        prio: new Int32Array(this.mem.buffer, this.infoAddr + (at + 4) * 4, 1)[0],
+        prio: signed[at + 4],
         stackBase: words[at + 5],
         stackSize: words[at + 6],
         sp: words[at + 7],
         asyncifyBuf: words[at + 8],
+        /* What it waits for: a wait queue, the mutex owner when the guest
+         * can tell the queue is a mutex's, and ms left on its timeout. */
+        pendedOn: words[at + 9],
+        heldBy: words[at + 10],
+        timeoutMs: signed[at + 11],
       });
     }
     return rows;
@@ -731,6 +773,7 @@ export class Host {
       alarmMs: this.alarmNs === null ? null : Number(this.alarmNs / 1_000_000n),
       pending: new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0],
       switches: this.switches,
+      eth: { sent: this.ethSent, received: this.ethReceived },
       paused: this.paused,
       canStepBack: this.history.length,
     });
@@ -958,14 +1001,16 @@ export class Host {
        * returns, so this means the guest is finished. */
       return false;
     }
-    this.ex.asyncify_stop_unwind();
-
-    if (this.pendingFatal) return false;
-
-    /* The frames have just been written, so this is where an overflow shows. */
+    /* The frames have just been written, so this is where an overflow shows.
+     * It has to be looked for before asyncify_stop_unwind(), which makes the
+     * same comparison and traps on it with a bare "unreachable" that names
+     * nothing. */
     if (this.unwoundInto !== undefined && !this.checkBuffer(this.unwoundInto, 'on suspend')) {
       return false;
     }
+    this.ex.asyncify_stop_unwind();
+
+    if (this.pendingFatal) return false;
 
     c.sp = this.currentSp;
     if (this.unwoundInto !== undefined && this.unwoundInto !== c.buf) {
@@ -986,11 +1031,27 @@ export class Host {
       }
       /* Idle: the same context resumes once something is pending. */
       const pending = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0];
-      if (this.opts.interactive) {
-        /* Let input arrive before deciding there is nothing to do. */
+      if (this.opts.interactive || this.opts.linked) {
+        /* Let input arrive before deciding there is nothing to do. A linked
+         * board waits the same way: its peer can send it a frame at any
+         * moment, so having nothing scheduled is not the end. */
         this.yieldToHost = true;
         if (pending === 0) {
-          if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
+          if (this.pace && this.opts.linked) {
+            /* Follow the wall clock, and let a deadline fire when the wall
+             * clock reaches it rather than jumping to it. A frame that
+             * arrives before then has to arrive at the time it arrived:
+             * after a jump, the board would already be living at the
+             * deadline, and would see its peer's frame as late. */
+            const byWall = this.pace.guest +
+              BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+            if (byWall > this.nowNs) this.nowNs = byWall;
+            if (this.alarmNs !== null && this.nowNs >= this.alarmNs) {
+              this.alarmNs = null;
+              this.quiescentRounds = 0;
+              this.raiseIrq(IRQ.TIMER);
+            }
+          } else if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
             /* Paced, and nothing to wake for but a person: time passes as
              * it does for them. Jumping to the next deadline would leave
              * the clock standing still until they did something, and a

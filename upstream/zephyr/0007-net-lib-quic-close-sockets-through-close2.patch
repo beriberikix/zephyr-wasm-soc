@@ -1,0 +1,75 @@
+From d2728237ebb041a58bc309e92c38538d81f66333 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sun, 27 Sep 2026 05:32:55 +0000
+Subject: [PATCH 7/9] net: lib: quic: close sockets through close2
+
+zvfs_close() calls a descriptor's close2(obj, fd) when the descriptor is
+a socket, and QUIC registers its descriptors with ZVFS_MODE_IFSOCK. Its
+vtables fill the union's close member instead, with functions that take
+one argument, so every close of a QUIC socket calls a function through
+an incompatible function type. That is undefined behaviour, and it traps
+on targets that check indirect calls.
+
+Take the descriptor argument and fill close2, as the other socket
+families do.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ subsys/net/lib/quic/quic_socket.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/subsys/net/lib/quic/quic_socket.c b/subsys/net/lib/quic/quic_socket.c
+index 62560136b05..b8376e8df02 100644
+--- a/subsys/net/lib/quic/quic_socket.c
++++ b/subsys/net/lib/quic/quic_socket.c
+@@ -517,10 +517,12 @@ static void quic_ctx_drain_incoming_streams(struct quic_context *ctx)
+ 	}
+ }
+ 
+-static int quic_ctx_close_vmeth(void *obj)
++static int quic_ctx_close_vmeth(void *obj, int fd)
+ {
+ 	struct quic_context *ctx = obj;
+ 
++	ARG_UNUSED(fd);
++
+ 	if (!PART_OF_ARRAY(contexts, ctx)) {
+ 		return -EINVAL;
+ 	}
+@@ -2097,12 +2099,14 @@ static int quic_stream_setsockopt_ctx(void *obj, int level, int optname,
+ 	return 0;
+ }
+ 
+-static int quic_stream_close_vmeth(void *obj)
++static int quic_stream_close_vmeth(void *obj, int fd)
+ {
+ 	struct quic_stream *stream = obj;
+ 	int sock = stream->sock;
+ 	int state;
+ 
++	ARG_UNUSED(fd);
++
+ 	NET_DBG("[ST:%p/%d] Closing stream id %" PRIu64 ", sock %d",
+ 		stream, quic_get_by_stream(stream), stream->id, sock);
+ 
+@@ -2231,7 +2235,7 @@ static int quic_stream_shutdown_vmeth(void *obj, int how)
+ 
+ static const struct socket_op_vtable quic_ctx_fd_op_vtable = {
+ 	.fd_vtable = {
+-		.close = quic_ctx_close_vmeth,
++		.close2 = quic_ctx_close_vmeth,
+ 		.ioctl = quic_ctx_ioctl_vmeth,
+ 	},
+ 	.accept = quic_accept_ctx,
+@@ -2243,7 +2247,7 @@ static const struct socket_op_vtable quic_stream_fd_op_vtable = {
+ 	.fd_vtable = {
+ 		.read = quic_stream_read_vmeth,
+ 		.write = quic_stream_write_vmeth,
+-		.close = quic_stream_close_vmeth,
++		.close2 = quic_stream_close_vmeth,
+ 		.ioctl = quic_stream_ioctl_vmeth,
+ 	},
+ 	.sendto = quic_stream_sendto_ctx,
+-- 
+2.43.0
+
