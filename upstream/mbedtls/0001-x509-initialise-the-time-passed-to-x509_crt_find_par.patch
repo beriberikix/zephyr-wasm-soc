@@ -1,0 +1,50 @@
+From 76a5d59d0af9ed9765be09ba7a92b2343c2df805 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sun, 27 Sep 2026 00:16:12 +0000
+Subject: [PATCH] x509: initialise the time passed to x509_crt_find_parent()
+
+x509_crt_verify_chain() passes &now to x509_crt_find_parent(), which only
+reads it when MBEDTLS_HAVE_TIME_DATE is defined, and now is only set in
+that case. Without MBEDTLS_HAVE_TIME_DATE the value is never read, but
+Clang 21 added -Wuninitialized-const-pointer, which reports passing an
+uninitialised variable through a const pointer. With
+MBEDTLS_FATAL_WARNINGS, the default, that stops the build.
+
+Zero-initialise it, which costs nothing where it is then overwritten.
+
+Found building Zephyr's TLS socket tests with Clang 21, where
+MBEDTLS_HAVE_TIME_DATE is off by default.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ ChangeLog.d/x509-now-uninitialized.txt | 4 ++++
+ library/x509_crt.c                     | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+ create mode 100644 ChangeLog.d/x509-now-uninitialized.txt
+
+diff --git a/ChangeLog.d/x509-now-uninitialized.txt b/ChangeLog.d/x509-now-uninitialized.txt
+new file mode 100644
+index 0000000..51bf2c4
+--- /dev/null
++++ b/ChangeLog.d/x509-now-uninitialized.txt
+@@ -0,0 +1,4 @@
++Bugfix
++   * Fix the build with Clang 21 or later and MBEDTLS_FATAL_WARNINGS when
++     MBEDTLS_X509_CRT_PARSE_C is enabled and MBEDTLS_HAVE_TIME_DATE is not.
++     Clang reported -Wuninitialized-const-pointer in x509_crt.c.
+diff --git a/library/x509_crt.c b/library/x509_crt.c
+index a6fcd1b..c404cf8 100644
+--- a/library/x509_crt.c
++++ b/library/x509_crt.c
+@@ -2501,7 +2501,7 @@ static int x509_crt_verify_chain(
+     int signature_is_good;
+     unsigned self_cnt;
+     mbedtls_x509_crt *cur_trust_ca = NULL;
+-    mbedtls_x509_time now;
++    mbedtls_x509_time now = { 0 };
+ 
+ #if defined(MBEDTLS_HAVE_TIME_DATE)
+     if (mbedtls_x509_time_gmtime(mbedtls_time(NULL), &now) != 0) {
+-- 
+2.43.0
+

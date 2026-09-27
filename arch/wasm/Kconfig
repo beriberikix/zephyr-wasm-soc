@@ -33,6 +33,7 @@ config WASM_ASYNCIFY
 
 config WASM_ASYNCIFY_BUFFER_SIZE
 	int "Bytes of each thread stack reserved for the Asyncify buffer"
+	default 8192 if MBEDTLS
 	default 4096
 	help
 	  Every thread stack object is split in two: the low part is the C
@@ -41,8 +42,14 @@ config WASM_ASYNCIFY_BUFFER_SIZE
 
 	  Spike C measured the buffer needing roughly 88 bytes plus 32 per
 	  frame live when the thread yields. Asyncify does not bounds-check
-	  this buffer: overflowing it corrupts whatever follows, silently and
-	  without a trap, so the default is deliberately generous.
+	  this buffer as it writes: overflowing it corrupts whatever follows.
+	  The host notices once the thread has suspended and stops the run,
+	  naming the buffer, but the damage is done by then, so the default is
+	  deliberately generous.
+
+	  A TLS handshake suspends from deeper in the stack than anything
+	  else measured: tests/net/socket/tls needed 4160 bytes. So a build
+	  with mbedTLS gets twice the usual.
 
 config WASM_SAFEPOINTS
 	bool "Check for pending interrupts at loop back-edges"

@@ -964,14 +964,16 @@ export class Host {
        * returns, so this means the guest is finished. */
       return false;
     }
-    this.ex.asyncify_stop_unwind();
-
-    if (this.pendingFatal) return false;
-
-    /* The frames have just been written, so this is where an overflow shows. */
+    /* The frames have just been written, so this is where an overflow shows.
+     * It has to be looked for before asyncify_stop_unwind(), which makes the
+     * same comparison and traps on it with a bare "unreachable" that names
+     * nothing. */
     if (this.unwoundInto !== undefined && !this.checkBuffer(this.unwoundInto, 'on suspend')) {
       return false;
     }
+    this.ex.asyncify_stop_unwind();
+
+    if (this.pendingFatal) return false;
 
     c.sp = this.currentSp;
     if (this.unwoundInto !== undefined && this.unwoundInto !== c.buf) {

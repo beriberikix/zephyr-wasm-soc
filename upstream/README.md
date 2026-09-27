@@ -63,3 +63,34 @@ A suggested split, by who maintains what:
 git -C zephyr checkout -b thread-entry-signatures origin/main
 git -C zephyr am --signoff ../zephyr-wasm/upstream/zephyr/*.patch
 ```
+
+## mbedtls/: an initialised time in `x509_crt.c`
+
+mbedTLS builds with `-Werror` by default (`MBEDTLS_FATAL_WARNINGS`), and
+clang 21 added `-Wuninitialized-const-pointer`. In `x509_crt_verify_chain()`,
+`now` is only written when `MBEDTLS_HAVE_TIME_DATE` is defined, and is
+passed by pointer either way. Nothing reads it when the option is off, so
+the warning is a false positive, but it stops the build on every target
+built with clang 21 and that option off, which is Zephyr's default.
+
+| Patch | Fixes |
+|---|---|
+| 0001 `x509: initialise the time passed to x509_crt_find_parent()` | the build with clang 21 and `MBEDTLS_HAVE_TIME_DATE` off. It zero-initialises `now`, and adds a `ChangeLog.d` entry, since this is a build fix in a supported configuration |
+
+The patch applies to Zephyr's mbedTLS fork at its pin (`098e120`) and to
+upstream `development` at `c0748be` (27 September 2026). Until it lands,
+`cmake/modules_wasm.cmake` turns that one warning off for the one target
+that has it, `mbedx509`, instead of patching the module.
+
+Mbed TLS wants its fixes sent to `Mbed-TLS/mbedtls`, where Zephyr's fork
+picks them up. Its contribution rules ask for the Developer Certificate of
+Origin, a `Signed-off-by` from the person sending the patch, and this patch
+has none for the same reason as the Zephyr ones: it is the sender's to add,
+with `git am --signoff`. It carries the same `Assisted-by` placeholder to
+fill in.
+
+```sh
+git -C mbedtls checkout -b x509-now-init origin/development
+git -C mbedtls am --signoff ../zephyr-wasm/upstream/mbedtls/*.patch
+```
+
