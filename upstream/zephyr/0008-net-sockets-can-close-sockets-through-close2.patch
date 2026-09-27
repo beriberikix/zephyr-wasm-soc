@@ -1,0 +1,50 @@
+From aa297a4ce430ee4af59391e75473229ad9e4e1a6 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sun, 27 Sep 2026 05:32:55 +0000
+Subject: [PATCH 8/9] net: sockets: can: close sockets through close2
+
+zvfs_close() calls a descriptor's close2(obj, fd) when the descriptor is
+a socket, and CAN sockets are registered with ZVFS_MODE_IFSOCK. Their
+vtable fills the union's close member instead, with a function that
+takes one argument, so closing a CAN socket calls a function through an
+incompatible function type. That is undefined behaviour, and it traps on
+targets that check indirect calls.
+
+Take the descriptor argument and fill close2, as the other socket
+families do.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ subsys/net/lib/sockets/sockets_can.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/subsys/net/lib/sockets/sockets_can.c b/subsys/net/lib/sockets/sockets_can.c
+index c8ff0f52fe7..f868ddcc6b3 100644
+--- a/subsys/net/lib/sockets/sockets_can.c
++++ b/subsys/net/lib/sockets/sockets_can.c
+@@ -445,10 +445,12 @@ static int can_close_socket(struct net_context *ctx)
+ 	return 0;
+ }
+ 
+-static int can_sock_close_vmeth(void *obj)
++static int can_sock_close_vmeth(void *obj, int fd)
+ {
+ 	int ret;
+ 
++	ARG_UNUSED(fd);
++
+ 	ret = can_close_socket(obj);
+ 	if (ret < 0) {
+ 		NET_DBG("Cannot detach net_context %p (%d)", obj, ret);
+@@ -714,7 +716,7 @@ static const struct socket_op_vtable can_sock_fd_op_vtable = {
+ 	.fd_vtable = {
+ 		.read = can_sock_read_vmeth,
+ 		.write = can_sock_write_vmeth,
+-		.close = can_sock_close_vmeth,
++		.close2 = can_sock_close_vmeth,
+ 		.ioctl = can_sock_ioctl_vmeth,
+ 	},
+ 	.bind = can_sock_bind_vmeth,
+-- 
+2.43.0
+

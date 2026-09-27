@@ -273,6 +273,28 @@ makes the split run off the bottom of the object, so `wasm_node_defconfig`
 raises the defaults. Every thread pays for a buffer whether or not it ever
 suspends deeply.
 
+The C stack below the buffer has no guard either, and it overflows more
+quietly than the buffer does. Nothing checks it: there is no MPU, and wasm
+does not trap on a store anywhere inside linear memory. A thread that runs
+off the bottom of its stack writes over whatever is linked below, and the
+damage shows only when that is next used. The network suites found it. The
+ztest thread's 1 KB, upstream's default, was too little for a test calling
+down through conn_mgr, net_if and net_mgmt into `k_work`. The overflow
+reached the ztest list itself, and five suites trapped much later on a
+function pointer that had become zero, which looked exactly like a D8b
+mismatch. The board now defaults `CONFIG_ZTEST_STACK_SIZE` to 4096;
+upstream already raises it to 2048 for x86, and one suite needed more than
+that.
+
+Finding it took a store watch. Binaryen's `--instrument-memory` routes every
+load and store through an import, so a scratch host can report the stack
+of the store that hits a given address. That turned "a null function in
+`test_cb`" into "a `k_work_submit_to_queue` frame spilling an argument into
+the ztest list". Zephyr's `CONFIG_STACK_SENTINEL` is the ordinary way to
+catch this, and it works here on a healthy sample, but in one suite it
+reported an overflow on a thread whose test does nothing. That report is
+not explained, so the sentinel is not trusted yet.
+
 The port uses the **full** Asyncify pass, not `ignore-indirect` and not an
 onlylist. Both narrowing options break the case Zephyr depends on: a yield
 reached through an indirect call, which is how thread entries, init handlers
@@ -651,12 +673,23 @@ The bmp581's emulator has no backend API, so its pressure cannot be set.
 The pressure samples are `build_only` upstream, and building is all they
 need to do.
 
-### D9. Link with wasm-ld directly
+### D9. The link goes through the clang driver, which runs wasm-opt
 
-The clang driver drops the wasm name section. Nothing in the kernel needs it,
-but Binaryen does: without names an asyncify onlylist silently matches nothing
-and produces a module that never suspends. The toolchain files invoke wasm-ld
-directly so names survive and any future narrowing stays possible.
+The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
+That is not the same as calling wasm-ld: when the link line carries an
+optimisation level and `wasm-opt` is on the `PATH`, which it always is here
+because Asyncify needs it, the driver runs `wasm-opt` at that level over the
+linked module. That rewrites the code, so the link map, which describes
+wasm-ld's output, has 530 functions in a build where the module has 326. It
+also drops the name section.
+
+The full Asyncify pass needs no names (D8), so this costs nothing at run
+time, but it costs a lot in diagnosis: a trap says `wasm-function[116]` and
+nothing names it. For a build that has to be read, add
+`-DEXTRA_LDFLAGS=--no-wasm-opt`, which keeps wasm-ld's names in
+`zephyr.elf` with the same function indices as `zephyr.wasm`. An earlier
+version of this note said the link called wasm-ld directly so that names
+survived. It did not, and nothing noticed until a trap needed naming.
 
 ### D10. The UART is polled
 

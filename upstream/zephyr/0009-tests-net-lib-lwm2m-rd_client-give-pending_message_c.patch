@@ -1,0 +1,35 @@
+From 608a3ee7cf00d15df428f9d77cc772947f827a9c Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Sun, 27 Sep 2026 05:32:55 +0000
+Subject: [PATCH 9/9] tests: net: lib: lwm2m: rd_client: give
+ pending_message_cb its type
+
+The stub keeps the test's reply callback in a void *(*)() and calls it
+with one argument. The callbacks are void f(struct lwm2m_message *), so
+the call goes through an incompatible function type, and returns a value
+the callee never produces. That is undefined behaviour, and it traps on
+targets that check indirect calls.
+
+Declare the pointer with the callbacks' own type.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ tests/net/lib/lwm2m/lwm2m_rd_client/src/stubs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/net/lib/lwm2m/lwm2m_rd_client/src/stubs.c b/tests/net/lib/lwm2m/lwm2m_rd_client/src/stubs.c
+index e2fe2eea304..98fccf08efa 100644
+--- a/tests/net/lib/lwm2m/lwm2m_rd_client/src/stubs.c
++++ b/tests/net/lib/lwm2m/lwm2m_rd_client/src/stubs.c
+@@ -147,7 +147,7 @@ int lwm2m_engine_call_at(k_work_handler_t work, int64_t timestamp)
+ 
+ uint16_t counter = RD_CLIENT_MAX_SERVICE_ITERATIONS;
+ struct lwm2m_message *pending_message;
+-void *(*pending_message_cb)();
++void (*pending_message_cb)(struct lwm2m_message *msg);
+ static bool running;
+ K_SEM_DEFINE(srv_sem, 0, 1);
+ 
+-- 
+2.43.0
+
