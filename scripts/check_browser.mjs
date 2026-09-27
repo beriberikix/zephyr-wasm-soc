@@ -614,17 +614,23 @@ const pageChecks = [
       }
       return null;
     });
+    /* A sleeper, with when it wakes. Looked for at every step, not at the
+     * last: the paced clock decides where the steps stop, and when the
+     * sleepers' timeouts coincide they all wake on one tick, which leaves
+     * a moment with nobody asleep. */
+    const wakes = () => page.evaluate(() => [...document.querySelectorAll('#threads td.wait')]
+      .some((td) => /^wakes in \d+ ms$/.test(td.textContent)));
     /* A few steps at least, so the column is seen to follow them. */
     let seen = await heldBy();
+    let sleeping = await wakes();
     let taken = 0;
-    for (; (!seen || taken < 3) && taken < 200; taken++) {
+    for (; (!seen || !sleeping || taken < 3) && taken < 200; taken++) {
       const before = await page.evaluate(() => document.getElementById('kstat').textContent);
       await page.click('#step');
       await until('Step changed nothing', (b) => document.getElementById('kstat').textContent !== b, before);
       seen ??= await heldBy();
+      sleeping ||= await wakes();
     }
-    const sleeping = await page.evaluate(() => [...document.querySelectorAll('#threads td.wait')]
-      .some((td) => /^wakes in \d+ ms$/.test(td.textContent)));
     await page.click('#stop');
     await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
     if (!seen) throw new Error(`in ${taken} steps no philosopher was shown waiting for a fork another held`);
