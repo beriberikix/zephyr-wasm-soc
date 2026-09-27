@@ -1172,3 +1172,58 @@ can run, since `harness: net` wants a peer. So the demo's checks judge
 them: the Node check wants 1,000 echoes each way on both IP versions, and
 the browser check wants the same through the page, typed into and stopped
 by a person.
+
+
+### Tick 60 — seven more pairs, and what "unmodified" means for them
+
+The echo pair worked because `echo_client` happens to be set up for a
+Zephyr server. Nothing else in `samples/net` is. Every other client is set
+up for a Linux host at `192.0.2.2`, and every server claims `.1` itself.
+Put two of them on one link and both boards take the same address. IPv6
+duplicate address detection then refuses one of them, and an IPv4 client
+talks to itself. No upstream overlay, test entry or bsim test sets any of
+them up to face each other.
+
+So the measure had to say what a pair may change, and the user decided:
+- unmodified source;
+- build arguments limited to the link, addresses, ports, and switching
+  off an IP version the other side does not speak;
+- each entry says in words what it set.
+
+`apps.py` enforces the list and refuses anything else. Both refusals were
+tried: a buffer count on the HTTP client, and a CoAP entry with its
+sentence removed. This is looser than twister's criterion, and ROADMAP's
+"The measure" says so, with a count: six of the 61 depend on it.
+
+What came of it:
+- **Three more echo servers, as shipped.** 4,000 TCP echoes each way in
+  10 s. `echo` serves one connection at a time, so only IPv6 gets through.
+- **CoAP, three ways, against one server.** `coap_client` walks every
+  method, a 2 KB blockwise GET and an observed counter. `coap_upload` and
+  `coap_download` move 2 KB in 64-byte blocks. The server speaks only
+  IPv6, so the upload and download clients have IPv4 off. Otherwise each
+  of their IPv4 attempts waits out a minute and a half of CoAP
+  retransmits first.
+- **HTTP.** GET and POST, over both IP versions. The server listens on the
+  client's built-in port, 8000.
+
+Two samples send once and give up, so the host gained a way to plug a
+client in two seconds after its server. It is `start_after_ms` on the
+page and `--peer-delay` in `run.mjs`. Until then frames towards the
+client are dropped.
+
+Three things did not make it:
+- `dns_resolve` with `mdns_responder`: the network shell wants
+  `strcasecmp`, which the minimal libc lacks.
+- `zperf`: it needs both boards typed into.
+- `echo_server`: it needs patch 0010.
+
+One thing is upstream's and harmless. The CoAP upload and download
+samples cancel their client right after the last callback, and the
+library reports `-ECANCELED` for the request that has just finished. So
+each prints an error after "done".
+
+A detour on the way: building the clients through `xargs` stripped the
+quotes from string options, and Kconfig refused the malformed values.
+`stage_site.sh` passes arguments by plain word splitting, which keeps
+them, and so the check runs use that path.

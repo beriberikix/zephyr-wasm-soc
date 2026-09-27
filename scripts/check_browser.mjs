@@ -364,7 +364,10 @@ async function checkPair(b) {
         }
       }
     }
-    await page.waitForFunction(() => window.zephyrLink().every((n) => n >= 100), null,
+    /* Frames both ways. A CoAP exchange is a few dozen frames, not
+     * thousands, so the entry says how many is enough. */
+    await page.waitForFunction((least) => window.zephyrLink().every((n) => n >= least),
+                               b.ci_link_frames_at_least ?? 100,
                                { timeout: 30_000, polling: 250 });
     const shownLink = await page.evaluate(() => document.getElementById('link').textContent);
     if (shots) {

@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **52**. 47 pass upstream's own criterion, and five more are counted
+today: **61**. 47 pass upstream's own criterion, and 14 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -22,11 +22,31 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the two
-halves of the echo pair, `net/sockets/echo_client` and `echo_service`.
-Upstream gives those no criterion twister can run, because it has no way to
-watch an LED, press a button or a screen, or give a board a peer, so the
-demo's own checks judge them.
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
+eleven network samples the two-board pairs run: the echo client and four
+echo servers, the CoAP server and three CoAP clients, and HTTP's client and
+server. Upstream gives those no criterion twister can run, because it has no
+way to watch an LED, press a button or a screen, or give a board a peer, so
+the demo's own checks judge them.
+
+**What "unmodified" means for a pair.** The source is never touched. A single
+board is built only as upstream's own test entry builds it. A pair's boards
+may also be given build arguments that put two boards on one network, and
+nothing else:
+- the link itself (`-DSNIPPET=wasm-ethernet`);
+- addresses (`NET_CONFIG_MY_*` and `PEER_*`);
+- sample-specific peers, ports and resource names;
+- switching off an IP version the other board does not speak.
+
+The rule is needed because nearly every upstream network client is set up
+to talk to a Linux host at `192.0.2.2`, not to a second Zephyr board, and no
+upstream file sets them up to talk to each other. `scripts/apps.py` enforces
+the list (`PAIR_ARG`) and refuses anything else, a buffer size for
+instance. Each entry that uses it says in words what was set, and the page
+shows that under the entry's hint. This is looser than twister's own
+criterion, which is why it is spelled out: of the 61, six count only
+because of it, the CoAP server with its three clients and HTTP's client and
+server. The five echo samples pair as shipped.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -148,10 +168,11 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **More pairs.** Two boards and a wire now exist (Phase 6), with echo as
-   the first pair. CoAP, HTTP, zperf and mDNS pairs each need only their
-   client's addresses swapped, and QUIC's needs patch 0007 as well.
-   Lockstep time would make a pair as repeatable as a single board.
+3. **Per-board input, then zperf.** Eight pairs run now (Phase 6).
+   `zperf` needs both boards typed into, and the host types into only one
+   of them. QUIC's pair waits on patch 0007, and mDNS's on the minimal
+   libc's `strcasecmp`. Lockstep time would make a pair as repeatable as a
+   single board.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -166,7 +187,8 @@ waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
 four. So is diagnosing the network suites' indirect-call traps, most of
 which were a stack overflow in the port. Between them, 118 of 139 network
 suites now pass (Phase 6). And so is the virtual L2: two boards on the
-page, echoing over Ethernet, which raised the score to 52.
+page, echoing over Ethernet, which raised the score to 52, and seven more
+pairs, which took it to 61.
 
 ## Phase 0 — foundations
 
@@ -580,6 +602,40 @@ What happened to each:
       suites pass. The driver's first `get_capabilities` had an older
       signature, and the compiler caught that, where wasm would have trapped
       at run time.
+- [x] **Seven more pairs**, which raised the score from 52 to 61. They sit
+      under "Two boards" in the page's menu.
+      - **Echo, as shipped:** `echo_client` against `echo_async`,
+        `echo_async_select` and the one-at-a-time `echo`. TCP only.
+      - **CoAP**, with the client's addresses set (see "The measure"):
+        `coap_server` with `coap_client`, with `coap_upload` and with
+        `coap_download`. The first runs GET, PUT, POST, DELETE, a 2 KB
+        blockwise GET and an observed counter; the other two move 2 KB in
+        64-byte blocks.
+      - **HTTP:** `http_client` against `http_server`, which listens on the
+        port the client has built in. GET and POST, over IPv4 and IPv6.
+
+      Two things the pairs needed from the host:
+      - A client powered on two seconds after its server
+        (`start_after_ms`). `coap_client` and `http_client` send once and
+        give up, so they have to find the server already listening. Until
+        then, frames sent towards the client are dropped, as on a cable
+        plugged into nothing.
+      - One status line, "Built with: ...", under the hint for each pair set
+        up differently from how upstream ships it.
+
+      Left out, each for a reason:
+      - `dns_resolve` with `mdns_responder`: the network shell calls
+        `strcasecmp`, which the minimal libc lacks. Fixing that means
+        choosing a libc, which is more than an address.
+      - `zperf`: both boards are driven from their shells, and the host
+        can type into only one of them. Per-board input comes first.
+      - `echo_server`: needs patch 0010.
+
+      Upstream's CoAP client library reports `-ECANCELED` for a request
+      that has already finished, when the sample cancels right after its
+      last callback. The upload and download samples print it as an error
+      after "done". It does not affect the transfer. The race is
+      upstream's, and it is recorded here rather than chased.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`

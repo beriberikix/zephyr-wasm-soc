@@ -61,10 +61,11 @@ log, including what did not work. `BRIEF.md` is the original task.
   DNS, CoAP, MQTT, websockets, the HTTP server and more.
   `scripts/net_tests.json` records every suite.
 * mbedTLS and PSA crypto, from the modules Zephyr pins, unchanged.
-* Two boards on one page, joined by a virtual Ethernet: upstream's
-  `echo_client` echoes TCP and UDP off `echo_service`, and each board has
-  the network shell, so `net ping` crosses the link. `run.mjs --peer` does
-  the same in Node.
+* Two boards on one page, joined by a virtual Ethernet, in eight pairs of
+  upstream samples: `echo_client` against four echo servers, CoAP's server
+  against its three clients, and HTTP's client and server. The echo pairs
+  run as shipped; the others have only their addresses and ports set, and
+  the page says which. `run.mjs --peer` does the same in Node.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
@@ -408,7 +409,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 52 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 61 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

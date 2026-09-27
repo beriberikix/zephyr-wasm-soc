@@ -743,6 +743,16 @@ lockstep link could come later. It would need:
 It would make a pair as repeatable as a single board, at the cost of the
 host's simplest property: that one `run()` owns one clock.
 
+**A board can be powered on late.** A pair entry's `start_after_ms` starts
+its second board that long after the first: `run.mjs --peer-delay`, or a
+timer on the page. Until then, frames sent towards it are dropped, as on a
+cable plugged into nothing. It is there because `coap_client` and
+`http_client` send their first request once, with no retry: a client that
+boots alongside its server loses that race and gives up. Plugging the
+client in second is what a person would do, and it changes nothing in
+either sample. The first board is always the one that starts first,
+because it is the one `run.mjs` writes to stdout.
+
 The first pair is upstream's `echo_client` with `echo_service`, which mirror
 each other's addresses as shipped. `echo_server` would be the obvious
 server, but its thread entries are `void f(void)` and trap (D8b);
