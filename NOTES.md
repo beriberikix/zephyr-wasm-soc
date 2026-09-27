@@ -1028,3 +1028,42 @@ the same of `run.mjs --threads`. Both pass, as do all 18 site builds and all
 
 Nobody learning Zephyr has tried it. That is the next test, and the only
 one that says whether it teaches.
+
+
+### Tick 57 — mbedTLS, which needed almost nothing
+
+The loopback spike left mbedTLS as the largest single reason network suites
+did not run: 19 of 37. The question was the one picolibc answered: does the
+module build and work on wasm32 at all?
+
+It does, with two things from the port and nothing from Zephyr or mbedTLS.
+
+The first was not wasm's fault. mbedTLS builds itself with `-Werror`, and
+clang 21 added `-Wuninitialized-const-pointer`. It fires in `x509_crt.c` on a
+time that is passed by pointer and only read when `MBEDTLS_HAVE_TIME_DATE`
+is on. That option is off in Zephyr's default configuration, so the warning
+is a false positive, and it would stop the build on any target with this
+compiler. `cmake/modules_wasm.cmake` turns off that one warning for that one
+library. The one-line fix, with a ChangeLog entry, is in
+`upstream/mbedtls/`, and applies to mbedTLS's `development`.
+
+The second was the port's. The TLS suite passed DTLS handshakes and then
+trapped with a bare `unreachable`. The trap was in
+`asyncify_stop_unwind()`: Binaryen does check the buffer, after the unwind,
+and a handshake suspends from 4,160 bytes of frames, 64 more than the 4 KB
+every stack reserves. The host has always had a clear message for exactly
+this, but it looked only after `asyncify_stop_unwind()`, which trapped
+first. The host now looks first, and a build with mbedTLS gets an 8 KB
+buffer. So the old claim that an overflow is silent was half wrong: it is
+caught, but only after the damage.
+
+Results:
+- `socket/tls`: 49 of 49 pass, 4 skipped;
+- `tests/net`: 112 of 139, ten more than before, with IPv6, websockets and
+  the TLS servers among them;
+- the score: 46 to 50, from `drivers/crypto`, `psa/its`,
+  `psa/persistent_key` and `subsys/uuid`.
+
+Two suites that now build trap on an indirect call, the HTTP/3 server and
+QUIC, which makes six in `tests/net`. That is enough to be worth one
+diagnosis for all of them.

@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **46**. 43 pass upstream's own criterion, and three more are counted
+today: **50**. 47 pass upstream's own criterion, and three more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -31,14 +31,14 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 66 | |
-| **Runnable: what twister itself would run here** | **164** | **102** |
-| Pass upstream's own criterion | 66 | 43 |
+| Filtered out by upstream's own twister filter | 68 | |
+| **Runnable: what twister itself would run here** | **162** | **102** |
+| Pass upstream's own criterion | 70 | 47 |
 | Build, but upstream only builds them | 12 | |
 | Run, with no criterion upstream | 4 | |
 | Run and fail their criterion | 3 | |
 | Do not finish | 24 | |
-| Do not build | 55 | |
+| Do not build | 49 | |
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -132,7 +132,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 46. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 50. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -144,8 +144,9 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **mbedTLS**, now that the loopback spike shows the IP stack works: TLS,
-   DTLS and the IPv6 suite wait on it.
+3. **Two boards and a wire between them**, Phase 6's virtual L2. The stack
+   works, TLS included, and what keeps networking's samples off the score
+   now is that nearly all of them need a peer.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -156,7 +157,8 @@ What comes next, in order, and why:
 The C library spike that was first on this list is done: picolibc builds,
 three more samples pass, and C++ constructors run (below, "Two levers"). So
 is the first lesson, with the thread table's answer to what each thread is
-waiting for (below, "Lessons").
+waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
+four and the network suites to 112 of 139 (Phase 6).
 
 ## Phase 0 — foundations
 
@@ -481,8 +483,39 @@ What happened to each:
       - 1 tests native_sim's offloaded sockets, which exist only there.
       - The last 6 do not finish or do not build for reasons not yet looked
         at. Each has a note in the record.
-- [ ] **mbedTLS.** Importing it, as picolibc was imported, is the next lever:
-      TLS, DTLS and the IPv6 suite all wait on it.
+- [x] **mbedTLS.** Imported as picolibc was: two modules, `mbedtls` and
+      `tf-psa-crypto`, at the revisions Zephyr pins. **112 of 139 network
+      suites now pass**, ten more than before, among them:
+      - TLS sockets, with DTLS handshakes (`socket/tls`, 49 cases);
+      - IPv6 (61 cases), whose privacy extensions select PSA;
+      - websockets;
+      - the CoAP server, the HTTP TLS server, the LwM2M engine and the SSH
+        server.
+
+      Four samples pass too, which is the score going from 46 to 50:
+      `drivers/crypto`, `psa/its`, `psa/persistent_key` and `subsys/uuid`,
+      whose version 5 UUIDs are hashed through PSA.
+
+      The port needed two things, and Zephyr and mbedTLS needed nothing:
+      - A TLS handshake suspends from 4,160 bytes of wasm frames, just
+        over the 4 KB Asyncify buffer every stack reserves. A build with
+        mbedTLS gets 8 KB (`DESIGN.md` D8).
+      - mbedTLS builds itself with `-Werror`, and clang 21's
+        `-Wuninitialized-const-pointer` fires on a false positive in
+        `x509_crt.c`, as it would on any target. The port turns that one
+        warning off for that one library, and `upstream/mbedtls/` has the
+        fix for mbedTLS.
+
+      Of the 19 suites that waited on mbedTLS, the 9 that still do not pass
+      each have another cause:
+      - the HTTP/3 server and QUIC trap on an indirect call;
+      - LwM2M interop is driven by pytest against a server;
+      - OCPP panics, and upstream only builds it;
+      - `all` needs an 802.15.4 radio in the devicetree;
+      - WireGuard needs an errno picolibc lacks;
+      - `wifi/configs` needs the hostap module;
+      - one TLS configuration wants an mbedTLS option Zephyr leaves off;
+      - one credentials backend has a compile error not yet looked at.
 - [ ] **Several instances in one page, with a virtual L2 between them.**
       The spike says the stack above the link layer works, so this is now
       the host's job: an Ethernet or IEEE 802.15.4 driver whose frames go to
@@ -570,7 +603,7 @@ and the two largest groups are not in any phase.
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 46. Nothing yet answers the second. The page runs samples; it does not
+to 50. Nothing yet answers the second. The page runs samples; it does not
 teach with them, and nobody learning Zephyr has tried it.
 
 - [x] **Which thread is waiting on what** (Phase 2's open item) came first,
@@ -636,7 +669,7 @@ could have been mis-grouped.
 
 **Every subsystem added is more Zephyr code through the section shim.** This is
 the issue's own first risk, and so far it has held up better than feared:
-after four phases, 46 samples, three file systems and LVGL there are still
+after four phases, 50 samples, three file systems, LVGL and mbedTLS there are still
 seven patches to Zephyr, and one to picolibc. Its real failures were archive members whose names collided
 and sections in the wrong order, both fixed and both now checked at every
 link. Two of its failure modes

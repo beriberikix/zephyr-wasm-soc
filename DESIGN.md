@@ -242,9 +242,22 @@ the thread's own object either way.
 Sizing comes from the measurements: the buffer needs about 88 bytes plus 32
 per frame live at the moment of the yield. The reserved split will be a
 Kconfig with a conservative default, because a buffer that is too small does
-not fail cleanly. Asyncify does not bounds-check it. In the spike a 248 byte
-buffer absorbed 1112 bytes and carried on, silently overwriting whatever
-followed, and `asyncify-asserts` does not add a bounds check. The port places
+not fail cleanly. Asyncify does not bounds-check it as it writes. In the
+spike a 248 byte buffer absorbed 1112 bytes and carried on, silently
+overwriting whatever followed, and `asyncify-asserts` does not add a bounds
+check. What does exist is a check afterwards: `asyncify_stop_unwind()`
+traps if the unwind ended past the buffer's end, with a bare `unreachable`.
+The host makes the same comparison just before calling it, so an overflow
+stops the run with a message that names the buffer and the Kconfig option.
+Either way it is found after the damage, not before.
+
+The default is `CONFIG_WASM_ASYNCIFY_BUFFER_SIZE=4096`, and 8192 in a build
+with mbedTLS. A TLS handshake suspends from deeper than anything else
+measured: `tests/net/socket/tls` unwound 4,160 bytes, which overflowed the
+default and passed with the larger one. Tying the larger default to
+mbedTLS, rather than raising it for every build, keeps the cost where it is
+paid: every thread's stack carries the buffer, and every step-back snapshot
+copies it. The port places
 the buffer at the top of the stack object so an overflow runs into the next
 guard rather than into live thread state.
 

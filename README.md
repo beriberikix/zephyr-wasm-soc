@@ -56,11 +56,12 @@ log, including what did not work. `BRIEF.md` is the original task.
   chips on upstream's emulated I2C bus, read by the real drivers. The page
   has a Tilt pad that sets what the accelerometer reads, and
   `samples/sensor/accel_polling` shows gravity move as the board is tilted.
-* Networking: Zephyr's IP stack over loopback, sockets included. 102 of the
-  139 network test suites pass, 1,144 cases: UDP, TCP, IPv4, IPv6, DHCP,
-  DNS, CoAP, MQTT, the HTTP server and more. `scripts/net_tests.json`
-  records every suite.
-* 43 upstream samples pass their own twister criterion, unmodified, out of
+* Networking: Zephyr's IP stack over loopback, sockets included. 112 of the
+  139 network test suites pass: UDP, TCP, TLS and DTLS, IPv4, IPv6, DHCP,
+  DNS, CoAP, MQTT, websockets, the HTTP server and more.
+  `scripts/net_tests.json` records every suite.
+* mbedTLS and PSA crypto, from the modules Zephyr pins, unchanged.
+* 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
   samples, both CMSIS-RTOS v2 samples and the hierarchical state machine,
@@ -403,7 +404,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 46 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 50 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback
