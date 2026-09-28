@@ -167,18 +167,18 @@
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
       "entry": "sample.cpp.synchronization",
+      "note": "D8b: coop_thread_entry is declared void f(void) and cast to k_thread_entry_t. Until picolibc, the link stopped earlier on __zephyr_init_array_start; the port now runs C++ constructors, and 'Create semaphore' prints before the trap. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b: coop_thread_entry is declared void f(void) and cast to k_thread_entry_t. Until picolibc, the link stopped earlier on __zephyr_init_array_start; the port now runs C++ constructors, and 'Create semaphore' prints before the trap. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/cpp/cpp_synchronization",
       "entry": "sample.cpp.synchronization.picolibc",
+      "note": "D8b, as sample.cpp.synchronization: the same thread entry, now built against picolibc. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it.",
       "status": "does-not-finish",
       "cause": "d8b",
-      "detail": "RuntimeError: null function or function signature mismatch",
-      "note": "D8b, as sample.cpp.synchronization: the same thread entry, now built against picolibc. Passes with the fix in upstream/zephyr/ applied (scripts/try_upstream.sh); counts once Zephyr takes it."
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/cpp/hello_world",
@@ -317,9 +317,9 @@
     {
       "path": "zephyr/samples/drivers/ethernet/eth_ivshmem",
       "entry": "sample.drivers.ethernet.eth_ivshmem",
+      "note": "Builds now that the section generator defines _net_if_list_start/_end; upstream only builds it.",
       "status": "builds",
-      "cause": "build_only upstream",
-      "note": "Builds now that the section generator defines _net_if_list_start/_end; upstream only builds it."
+      "cause": "build_only upstream"
     },
     {
       "path": "zephyr/samples/drivers/firmware/scmi",
