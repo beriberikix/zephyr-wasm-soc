@@ -1,0 +1,59 @@
+From f544a6cb3881da060ff9735594d327746f8565c4 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Mon, 28 Sep 2026 22:34:54 +0000
+Subject: [PATCH] libc: minimal: add strcasecmp
+
+The minimal libc has strncasecmp but not strcasecmp, and code built
+with it calls both. The network shell's connection manager commands
+(subsys/net/lib/shell/cm.c) use strcasecmp, so any application with
+CONFIG_NET_SHELL and CONFIG_NET_CONNECTION_MANAGER fails to link on a
+board that selects the minimal libc; samples/net/dns_resolve is one.
+
+Add strcasecmp as strncasecmp with no length limit, and declare it in
+<strings.h> beside strncasecmp.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ lib/libc/minimal/include/strings.h           | 1 +
+ lib/libc/minimal/source/string/strncasecmp.c | 8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/lib/libc/minimal/include/strings.h b/lib/libc/minimal/include/strings.h
+index 5c930194003..679cc97ae7f 100644
+--- a/lib/libc/minimal/include/strings.h
++++ b/lib/libc/minimal/include/strings.h
+@@ -15,6 +15,7 @@
+ extern "C" {
+ #endif
+ 
++extern int strcasecmp(const char *s1, const char *s2);
+ extern int strncasecmp(const char *s1, const char *s2, size_t n);
+ 
+ #ifdef __cplusplus
+diff --git a/lib/libc/minimal/source/string/strncasecmp.c b/lib/libc/minimal/source/string/strncasecmp.c
+index 17a44bb724e..f4a5fb32e9f 100644
+--- a/lib/libc/minimal/source/string/strncasecmp.c
++++ b/lib/libc/minimal/source/string/strncasecmp.c
+@@ -5,7 +5,9 @@
+  */
+ 
+ #include <stdlib.h>
++#include <stdint.h>
+ #include <ctype.h>
++#include <strings.h>
+ 
+ int
+ strncasecmp(const char *s1, const char *s2, size_t n)
+@@ -26,3 +28,9 @@ strncasecmp(const char *s1, const char *s2, size_t n)
+ 
+ 	return 0;
+ }
++
++int
++strcasecmp(const char *s1, const char *s2)
++{
++	return strncasecmp(s1, s2, SIZE_MAX);
++}
+-- 
+2.43.0
+

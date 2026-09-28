@@ -25,8 +25,8 @@ set(COMPILER wasm-clang)
 set(LINKER   wasm-ld)
 set(BINTOOLS wasm)
 
-# The minimal libc is the only option here: there is no wasm32 picolibc or
-# newlib in this toolchain.
+# No libc comes with this toolchain for wasm32. Picolibc is built from
+# Zephyr's module instead (DESIGN.md D11), which needs neither of these.
 set(TOOLCHAIN_HAS_NEWLIB   OFF CACHE BOOL "True if toolchain supports newlib")
 set(TOOLCHAIN_HAS_PICOLIBC OFF CACHE BOOL "True if toolchain supports picolibc")
 set(TOOLCHAIN_HAS_LIBCXX   OFF CACHE BOOL "True if toolchain supports libc++")

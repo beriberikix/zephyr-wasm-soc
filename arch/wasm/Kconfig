@@ -101,8 +101,8 @@ config WASM_IRQ_LINES
 
 # Picolibc's default is a malloc arena from the linker symbol _end to the end
 # of RAM, and wasm-ld has no linker script to define _end. This is native_sim's
-# answer to the same problem: a fixed arena in BSS. The minimal libc keeps its
-# own default of none. Sourced before lib/libc, so this default is seen first.
+# answer to the same problem: a fixed arena in BSS. A build that chooses the
+# minimal libc keeps its own default of none. Sourced before lib/libc, so this default is seen first.
 config COMMON_LIBC_MALLOC_ARENA_SIZE
 	default 16384 if !MINIMAL_LIBC
 
