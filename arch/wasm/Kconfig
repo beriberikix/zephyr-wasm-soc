@@ -33,7 +33,7 @@ config WASM_ASYNCIFY
 
 config WASM_ASYNCIFY_BUFFER_SIZE
 	int "Bytes of each thread stack reserved for the Asyncify buffer"
-	default 8192 if MBEDTLS
+	default 8192 if MBEDTLS || NET_ZPERF
 	default 4096
 	help
 	  Every thread stack object is split in two: the low part is the C
@@ -49,7 +49,9 @@ config WASM_ASYNCIFY_BUFFER_SIZE
 
 	  A TLS handshake suspends from deeper in the stack than anything
 	  else measured: tests/net/socket/tls needed 4160 bytes. So a build
-	  with mbedTLS gets twice the usual.
+	  with mbedTLS gets twice the usual, and so does one with zperf, whose
+	  upload suspends from the shell thread, below a command handler, the
+	  shell and the socket layer: a UDP upload needed 4240.
 
 config WASM_SAFEPOINTS
 	bool "Check for pending interrupts at loop back-edges"

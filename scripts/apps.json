@@ -62,7 +62,9 @@
     "boards: two boards joined by an Ethernet link, in place of app. Each",
     "  has an app, a label, and what a build has: args (with",
     "  -DSNIPPET=wasm-ethernet, which gives it the link), uses, ci_stdin and",
-    "  expect, which is checked against that board's own output. They are",
+    "  expect, which is checked against that board's own output. ci_stdin is",
+    "  typed into that board's own shell: stdin for the first, run.mjs",
+    "  --peer-stdin for the second, and its own terminal on the page. They are",
     "  built as <name>-0 and <name>-1. The page runs them side by side; the",
     "  Node check runs them with run.mjs --peer. The link is real-time, so a",
     "  pair is paced and its expectations are thresholds.",
@@ -750,6 +752,58 @@
           ],
           "uses": [
             "terminal"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "zperf",
+      "kind": "sample",
+      "title": "zperf throughput (two boards)",
+      "hint": "Two copies of zperf, Zephyr's network throughput tool, one at each end of the link. Type `zperf udp download` on the server, then `zperf udp upload 192.0.2.1 5001 5 1K 100K` on the client; `zperf tcp download` and `zperf tcp upload 192.0.2.1 5001 5 1K` for TCP. The rates are those of two paced virtual boards in one browser tab, not of a real link.",
+      "overrides": "The client's addresses are swapped to 192.0.2.2 and 2001:db8::2, with the server as its peer.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 20000,
+      "boards": [
+        {
+          "label": "Server",
+          "app": "zephyr/samples/net/zperf",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "ci_stdin": "zperf udp download\nzperf tcp download\n",
+          "expect": [
+            "UDP server started on port 5001",
+            "TCP server started on port 5001",
+            "End of session!",
+            "TCP session ended"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/zperf",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV4_ADDR=\"192.0.2.2\"",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV4_ADDR=\"192.0.2.1\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV6_ADDR=\"2001:db8::1\""
+          ],
+          "uses": [
+            "terminal"
+          ],
+          "ci_stdin": "zperf udp upload 192.0.2.1 5001 2 256 50K\nzperf tcp upload 192.0.2.1 5001 2 256\n",
+          "expect": [
+            "Upload completed!",
+            "Rate:"
           ]
         }
       ]
