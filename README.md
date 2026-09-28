@@ -66,8 +66,9 @@ log, including what did not work. `BRIEF.md` is the original task.
   against its three clients, HTTP's client and server, and zperf against
   itself, typed into on both boards. The echo pairs run as shipped; the
   others have only their addresses and ports set, and the page says which.
-  `run.mjs --peer` does the same in Node, and `--peer-stdin` types into the
-  second board.
+  The two boards run on one clock, so a pair gives the same output every
+  run. `run.mjs --peer` does the same in Node, and `--peer-stdin` types
+  into the second board.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus

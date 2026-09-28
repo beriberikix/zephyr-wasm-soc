@@ -16,6 +16,7 @@
 /* Flat in the staged site: scripts/stage_site.sh copies core.mjs next to
  * this file, so local and published layouts are the same thing. */
 import { Host } from './core.mjs';
+import { Pair } from './pair.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let sensorReadings = null; // the page's latest tilt, for a host not yet made
@@ -23,6 +24,9 @@ let interrupt = null;
 let cancelWait = null;
 let stopRequested = false;
 let host = null;           // the running Host, so buttons can reach it
+/* A two-board pair: both boards in this one Worker, on one clock
+ * (pair.mjs). host is the first of them. */
+let pair = null;
 
 const browserPlatform = {
   async loadModule(url) {
@@ -78,13 +82,6 @@ const browserPlatform = {
     const timer = setTimeout(finish, ms);
     cancelWait = finish;
   }),
-
-  /* A frame for the board at the other end of the link. The page relays
-   * it to the other Worker. The core handed over a copy of its own, so the
-   * buffer can be transferred rather than copied again. */
-  ethSend(frame) {
-    self.postMessage({ type: 'eth', frame }, [frame.buffer]);
-  },
 
   /* An output pin moved. The page draws it. */
   gpioOut(port, values) {
@@ -145,6 +142,7 @@ self.onmessage = async (event) => {
      * away, so the slider feels immediate without anything being
      * interrupted. */
     if (host) host.opts.timeScale = msg.timeScale;
+    if (pair) pair.opts.timeScale = msg.timeScale;
     return;
   }
 
@@ -172,19 +170,16 @@ self.onmessage = async (event) => {
     return;
   }
 
-  if (msg.type === 'eth-in') {
-    /* A frame from the other board. Queued like a touch, and the paced wait
-     * is cut short so it is taken now rather than at the next deadline. */
-    host?.pushEthernet(msg.frame);
-    cancelWait?.();
-    return;
-  }
-
   if (msg.type === 'input') {
     /* Every byte goes to the guest, Ctrl-C included: the page has a Stop
      * button, so Ctrl-C can be what it is on a board's serial console,
      * which the shell uses to abandon the line. Only run.mjs, in a terminal
-     * with nothing else to stop it, takes Ctrl-C for itself. */
+     * with nothing else to stop it, takes Ctrl-C for itself. In a pair,
+     * each terminal types into its own board's UART. */
+    if (pair) {
+      pair.boards[msg.board ?? 0].input.push(...msg.bytes);
+      return;
+    }
     for (const b of msg.bytes) {
       if (pushInput) pushInput(b);
     }
@@ -194,11 +189,13 @@ self.onmessage = async (event) => {
   if (msg.type === 'stop') {
     stopRequested = true;
     if (host) host.done = true;
+    pair?.stop();
     if (interrupt) interrupt();
     cancelWait?.();
     return;
   }
 
+  if (msg.type === 'run-pair') { runPair(msg); return; }
   if (msg.type !== 'run') return;
 
   stopRequested = false;
@@ -211,9 +208,6 @@ self.onmessage = async (event) => {
     timeScale: msg.timeScale ?? 1,
     wasm: msg.url,
     flashImage: msg.flashImage ?? null,
-    /* One board of a pair: it idles waiting for frames rather than ending,
-     * and has its own seed, so its MAC differs from its peer's. */
-    linked: !!msg.linked,
     seed: msg.seed,
   };
   lastFlash = msg.flashImage ?? null;
@@ -248,3 +242,55 @@ self.onmessage = async (event) => {
     host = null;
   }
 };
+
+/* A pair: two Hosts, each with a platform whose output is marked with its
+ * board, on one clock. The second board is powered on epochMs into the
+ * first's run, in guest time, and the page is told when, so it can say
+ * so. Each has its own seed, so their MACs differ. */
+async function runPair(msg) {
+  stopRequested = false;
+  const platformFor = (board) => ({
+    ...browserPlatform,
+    writeOut(bytes) {
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      self.postMessage({ type: 'out', board, buf }, [buf]);
+    },
+    writeErr(text) { self.postMessage({ type: 'err', board, text }); },
+    onState(state) { self.postMessage({ type: 'state', board, state }); },
+    startInput: undefined,
+    stopInput: undefined,
+    flashChanged: undefined,
+  });
+  const tick = setInterval(() => {
+    if (stopRequested) pair?.stop();
+  }, 50);
+  try {
+    const hosts = msg.boards.map((b, i) => new Host(platformFor(i), {
+      realtime: false,
+      traceSwitches: false,
+      maxTimeMs: msg.maxTimeMs ?? 10_000,
+      interactive: false,
+      clock: msg.clock ?? 'virtual',
+      timeScale: 1,
+      wasm: b.url,
+      flashImage: null,
+      seed: b.seed,
+    }));
+    host = hosts[0];
+    pair = new Pair(hosts, {
+      delayNs: BigInt(Math.round((msg.boards[1].epochMs ?? 0) * 1e6)),
+      paced: msg.clock === 'paced',
+      timeScale: msg.timeScale ?? 1,
+      poweredOn: (board) => self.postMessage({ type: 'power', board }),
+    });
+    const code = await pair.run();
+    self.postMessage({ type: 'done', code });
+  } catch (err) {
+    self.postMessage({ type: 'err', text: `\n*** harness error: ${err.message} ***\n` });
+    self.postMessage({ type: 'done', code: 1 });
+  } finally {
+    clearInterval(tick);
+    host = null;
+    pair = null;
+  }
+}

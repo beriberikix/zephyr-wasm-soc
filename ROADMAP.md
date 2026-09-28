@@ -168,10 +168,9 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **Lockstep time, and the last pairs.** Nine pairs run now (Phase 6),
-   zperf the latest, now that either board can be typed into. Lockstep
-   time would make a pair as repeatable as a single board. QUIC's pair
-   waits on patch 0007, and mDNS's on the minimal libc's `strcasecmp`.
+3. **The last pairs.** Nine pairs run, on one clock now, so each is as
+   repeatable as a single board (Phase 6). QUIC's pair waits on patch
+   0007, and mDNS's on the minimal libc's `strcasecmp`.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -188,7 +187,8 @@ which were a stack overflow in the port. Between them, 119 of 139 network
 suites now pass (Phase 6). And so is the virtual L2: two boards on the
 page, echoing over Ethernet, which raised the score to 52, seven more
 pairs, which took it to 61, and zperf, typed into on both boards, which
-took it to 62.
+took it to 62. The pairs now run on one clock, so each is as repeatable
+as a single board.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -631,9 +631,9 @@ What happened to each:
         both IP versions. The browser check does the same through the page,
         typing into the server's terminal, and requires Stop to end both
         boards.
-      - The link is real-time: each board follows the wall clock, and a run
-        is not byte-for-byte repeatable. That was a choice, recorded in D8k
-        with what lockstep time would need.
+      - The link was real-time at first: each board followed the wall
+        clock, and a run was not byte-for-byte repeatable. Lockstep time,
+        below, replaced it.
       - `echo_server`, the obvious server, traps on D8b. Patch 0010 in
         `upstream/zephyr/` fixes it.
 
@@ -706,6 +706,25 @@ What happened to each:
       process, and of TCP especially it says nothing about a real link:
       tens of megabits a second, because the stack's copying takes no
       guest time.
+- [x] **Lockstep time.** The two boards of a pair now run on one clock
+      (`host/pair.mjs`, `DESIGN.md` D8k):
+      - frames carry the time they arrive, 100 µs after they were sent;
+      - the board that is behind runs, as far as the other could still
+        reach it;
+      - the second board powers on at a stated guest time.
+
+      A pair is now as repeatable as a single board, and `check_site`
+      runs every pair twice and requires both boards' output to match.
+      It was also faster: the echo pair did 32,000 exchanges in the
+      guest time the wall-clock link managed 10,000, and all nine pairs
+      check in about a minute. On the page both boards run in one Worker,
+      paced together.
+
+      The first version stalled every exchange by about 10 ms. The limit
+      a running board was given assumed the other board would sleep until
+      its own next event, but a frame the running board sent could wake it
+      sooner. Sending a frame now pulls the sender's limit in to that
+      frame's arrival.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`

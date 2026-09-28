@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import process from 'node:process';
 
 import { Host, DEFAULT_SEED } from './core.mjs';
+import { Pair } from './pair.mjs';
 import { describeWait, threadState } from './threads.mjs';
 
 function parseArgs(argv) {
@@ -152,15 +153,15 @@ function usage() {
                      from a given guest time, the board's accelerometer
                      reads this, in m/s^2. Repeatable
   --peer <wasm>      run a second board, linked to this one by Ethernet
-                     (a build with the wasm-ethernet snippet). Both run
-                     paced, since their clocks follow the wall clock and
-                     frames arrive when they arrive; each gets its own
-                     entropy seed, so their MACs differ
+                     (a build with the wasm-ethernet snippet). The two
+                     share one clock, so a pair is as repeatable as a
+                     single board; each gets its own entropy seed, so
+                     their MACs differ. --paced paces the pair
   --peer-out <file>  write the second board's output here. Without it the
                      output is dropped
   --peer-delay <ms>  power the second board on this long after the first,
-                     as a person plugging in a client after its server.
-                     Wall-clock milliseconds, since the pair is paced
+                     in guest time, as a person plugging in a client after
+                     its server
   --peer-stdin <file>
                      what is typed into the second board's UART, as
                      stdin is into the first's under --interactive`);
@@ -264,13 +265,9 @@ if (opts.flashFile) {
 }
 
 /* --peer: a second board in this process, on the other end of an Ethernet
- * link. Each board's eth_send hands the frame straight to the other's
- * queue. Nothing coordinates the two clocks: both follow the wall clock,
- * which is why a linked pair is always paced. */
+ * link, on one clock with the first (host/pair.mjs). */
 let peer = null;
 if (opts.peer) {
-  opts.clock = 'paced';
-  opts.linked = true;
   const peerOut = opts.peerOut ? fs.openSync(opts.peerOut, 'w') : null;
   const peerPlatform = {
     ...nodePlatform,
@@ -287,28 +284,27 @@ if (opts.peer) {
     seed: ((opts.seed ?? DEFAULT_SEED) + 1) >>> 0,
   });
   /* Typed into the second board: queued where its UART reads from, where
-   * the bytes wait for the shell as piped stdin does on the first. The
-   * peer needs no --interactive for that; being linked already keeps it
-   * running, and yielding while idle. */
+   * the bytes wait for its shell. */
   if (opts.peerStdin) peer.input.push(...fs.readFileSync(opts.peerStdin));
 }
 
 const host = new Host(nodePlatform, opts);
 if (peer) {
-  /* Until the second board is powered on, what the first sends is lost,
-   * as on a cable with nothing at the other end. */
-  let peerOn = !(opts.peerDelayMs > 0);
-  nodePlatform.ethSend = (frame) => { if (peerOn) peer.pushEthernet(frame); };
-  peer.platform.ethSend = (frame) => host.pushEthernet(frame);
-  const peerStart = peerOn
-    ? Promise.resolve()
-    : new Promise((resolve) => setTimeout(resolve, opts.peerDelayMs));
-  /* The pair ends together: when either board stops, so does the other. */
-  const [a, b] = [host.run(),
-                  peerStart.then(() => { peerOn = true; return host.done ? 0 : peer.run(); })];
-  process.exitCode = await Promise.race([a, b]);
-  host.done = peer.done = true;
-  await Promise.allSettled([a, b]);
+  /* Piped input to the first board is read whole and queued, as the
+   * second board's is. Arriving through the event loop, it would land at
+   * whatever guest time the pair had reached by then, and a pair run
+   * unpaced gets a long way in a moment. From a terminal, keys still
+   * arrive as they are typed. */
+  if (opts.interactive && !process.stdin.isTTY) {
+    host.input.push(...fs.readFileSync(0));
+    host.opts.interactive = false;
+  }
+  const pair = new Pair([host, peer], {
+    delayNs: BigInt(Math.round((opts.peerDelayMs ?? 0) * 1e6)),
+    paced: opts.clock === 'paced',
+    timeScale: opts.timeScale,
+  });
+  process.exitCode = await pair.run();
 } else {
   process.exitCode = await host.run();
 }

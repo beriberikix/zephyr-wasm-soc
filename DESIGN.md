@@ -774,25 +774,59 @@ follows the wall clock while idle, and fires a deadline when the wall clock
 reaches it rather than jumping to it. Otherwise a frame arriving before the
 deadline would find a board that already lived at the deadline.
 
-**The link is real time, and that is a choice.** Nothing coordinates the
-two clocks. Each follows the wall clock, frames arrive when they arrive,
-and a run is not byte-for-byte repeatable. So the pair's checks are
-thresholds: echo 1,000 TCP packets each way, over IPv4 and over IPv6. A
-lockstep link could come later. It would need:
-- a run loop that can be stepped from outside, rather than one that owns
-  the clock;
-- a coordinator that always steps whichever board is behind;
-- frames delivered as events at their timestamps, as scripted input is
-  now;
-- quiescence decided for the pair, not per board.
+**Both boards run on one clock** (`host/pair.mjs`), so a pair is as
+repeatable as a single board. The link used to run in real time: each board
+followed the wall clock, frames arrived when they arrived, and a pair's
+checks could only be thresholds. Now:
 
-It would make a pair as repeatable as a single board, at the cost of the
-host's simplest property: that one `run()` owns one clock.
+- **One timeline.** Each board keeps its own clock, which starts at zero
+  when it powers on, as uptime does. The pair puts both on one timeline:
+  a board's time is its epoch, when it was powered on, plus its own clock.
+  A reboot moves the epoch on, so the timeline never runs backwards.
+- **Frames carry the time they arrive.** `eth_send` stamps a frame with the
+  sender's time plus a fixed 100 µs of wire. The receiver keeps its queue in
+  that order. A frame is a deadline like a scripted button press: the board
+  jumps to it when idle, `IRQ.ETH` is raised once it is due, and `eth_recv`
+  hands over only frames that are.
+- **The board that is behind runs, as far as the other could still reach
+  it.** Nothing the other board sends can arrive sooner than its own time
+  plus the wire's latency, so that is the limit. An idle board can send
+  nothing before its own next event, so its limit is that event plus the
+  latency. A board with nothing to wake it at all sets no limit. A frame
+  the running board sends can wake the other sooner than its limit
+  assumed, so sending one pulls the sender's limit in to that frame's
+  arrival plus the latency. The first version missed this. The other board
+  then answered about 10 ms late on every exchange, and echo managed a
+  tenth of what it does now. This is conservative synchronisation. Which
+  board runs, and how far, depends only on the two clocks.
+- **Overshoot is harmless.** A step cannot be interrupted, so a busy board
+  can pass its limit by up to a step. A frame then sent to the other board
+  may be due before the receiver's clock. It is taken at once, a little
+  late, and the same every run, since the order things run in is.
+- **Idle and quiescence belong to the pair.** `Host.runUntil(limit)` steps
+  one board and says whether it went idle and until when. When both boards
+  have nothing to wake them, an unpaced pair is over. A paced one lets its
+  time follow the wall clock while it waits for a person, as a single paced
+  board does.
+- **Pacing is the pair's.** Unpaced, in Node, a pair runs as fast as it
+  can. On the page, the pair's time, the earlier of its busy boards, is
+  held to the wall clock with the single board's anchor logic. That
+  changes when things are shown, never what they are.
+- **One Worker for both boards on the page.** The site cannot use
+  `SharedArrayBuffer`, since GitHub Pages sets no isolation headers, and
+  two Workers could only meet by message. So a pair is two `Host`s in one
+  Worker, as `run.mjs --peer` already had in Node. Output, state and
+  typing are marked with their board.
+
+`check_site` runs every pair twice, and both boards' output must match
+exactly. The first run of the echo pair on one clock did 32,000 exchanges
+in the time the wall-clock link managed 10,000, and all nine pairs now
+check in about a minute.
 
 **A board can be powered on late.** A pair entry's `start_after_ms` starts
-its second board that long after the first: `run.mjs --peer-delay`, or a
-timer on the page. Until then, frames sent towards it are dropped, as on a
-cable plugged into nothing. It is there because `coap_client` and
+its second board that long after the first, in guest time: its epoch.
+`run.mjs --peer-delay` sets it in Node. Until then, frames sent towards it
+are dropped, as on a cable plugged into nothing. It is there because `coap_client` and
 `http_client` send their first request once, with no retry: a client that
 boots alongside its server loses that race and gives up. Plugging the
 client in second is what a person would do, and it changes nothing in
@@ -803,9 +837,10 @@ because it is the one `run.mjs` writes to stdout.
 the host's input queue, interactive or not; `--interactive` only decides
 whether stdin feeds the queue. So the second board's scripted input,
 `run.mjs --peer-stdin <file>`, goes straight into its queue when it is
-made, and waits there for its shell as piped stdin waits for the first
-board's. Being linked already keeps the peer running and yielding while
-idle, which is the rest of what `--interactive` would have given it. On
+made, and waits there for its shell. For a pair, piped stdin to the first
+board is read whole and queued the same way. Arriving through the event
+loop, it would land at whatever guest time an unpaced pair had reached by
+then. On
 the page each terminal already sent its keys to its own board; the browser
 check now types a pair's second `ci_stdin` into the second terminal. zperf
 is the pair that needed it: one board runs `zperf udp download`, the other
