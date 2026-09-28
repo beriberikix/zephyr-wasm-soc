@@ -52,7 +52,22 @@ the same undefined behaviour in C, but wasm checks value types, and every
 pointer is an `i32`, so it does not trap here. It would be a separate
 change.
 
-### Sending them
+## zephyr/: an address buffer too small for IPv6
+
+0011 is a different kind of bug, found by the two-board pairs rather than by
+a trap. The echo servers print each client's address, and the address came
+out empty in the browser and as a stray byte in Node, for IPv6 clients only.
+
+| Patch | Fixes | Here, unlocks |
+|---|---|---|
+| 0011 `samples: net: sockets: echo` | `echo`, `echo_async` and `echo_async_select` convert the address into `char addr_str[32]`; `inet_ntop()` needs `INET6_ADDRSTRLEN`, 46, for IPv6, and returns NULL without writing when given less | nothing counted: the pairs already pass, but `echo-one`'s expectation can then name the client (`"Connection #0 from 2001:db8::2"`) |
+
+`dumb_http_server` has the same 32-byte buffer, but it only accepts IPv4,
+which fits, so 0011 leaves it alone. The patch applies to the pin and to
+upstream `main` at `1ee3b93`; checkpatch reports only the missing
+`Signed-off-by`.
+
+## zephyr/: sending them
 
 Zephyr's contribution guidelines have a section on AI-assisted changes
 (`doc/contribute/guidelines.rst`, "Contributions using AI tools"). It says
@@ -74,7 +89,8 @@ A suggested split, by who maintains what:
    socket families;
 5. 0009 on its own, for the LwM2M maintainers;
 6. 0010 with 0002 to 0004, the samples, or on its own for the networking
-   samples' maintainers.
+   samples' maintainers;
+7. 0011 on its own, for the networking samples' maintainers, or with 0010.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main

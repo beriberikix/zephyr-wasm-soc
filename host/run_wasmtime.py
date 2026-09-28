@@ -281,6 +281,12 @@ class Host:
     def raise_irq(self, line: int):
         self.set_u32(self.irq_addr, self.u32(self.irq_addr) | (1 << line))
 
+    def deliverable_irqs(self) -> int:
+        """As deliverableIrqs() in host/core.mjs: pending, enabled, unmasked."""
+        if self.u32(self.masked_addr) != 0:
+            return 0
+        return self.u32(self.irq_addr) & self.u32(self.enabled_addr)
+
     def advance(self) -> bool:
         if self.alarm_ns is None:
             return False
@@ -321,7 +327,7 @@ class Host:
         self.contexts[c["buf"]] = c
 
         if self.resume_same:
-            if self.u32(self.irq_addr) == 0 and not self.advance():
+            if self.deliverable_irqs() == 0 and not self.advance():
                 return False
             return True
 
@@ -352,6 +358,8 @@ class Host:
     def enter_boot(self):
         self.block_addr = self.call("z_wasm_switch_block_addr")
         self.irq_addr = self.call("z_wasm_irq_pending_addr")
+        self.masked_addr = self.call("z_wasm_irq_masked_addr")
+        self.enabled_addr = self.call("z_wasm_irq_enabled_addr")
         self.scratch = self.call("z_wasm_boot_scratch_addr")
         self.current = {"entry": "z_wasm_boot", "arg": 0, "buf": self.scratch,
                         "sp": None, "fresh": True}

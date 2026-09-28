@@ -15,6 +15,16 @@ export function threadName(row) {
   return row.name || `thread ${hex(row.thread)}`;
 }
 
+/* A row's state, in words. On one CPU the running thread stays in the
+ * ready queue, so the kernel's own bits call it "queued" like every other
+ * ready thread: the state column would never say which one has the CPU.
+ * Being in the queue is what ready means, so that bit is left out. */
+export function threadState(row) {
+  const states = row.states.filter((s) => s !== 'queued');
+  if (states.length > 0) return states.join(', ');
+  return row.current ? 'running' : 'ready';
+}
+
 /* "" for a thread that is waiting for nothing, which is a ready or running
  * one: every wait the kernel has is a wait queue, a timeout, or both. A
  * timeout on a wait is when the thread gives up; on its own it is when the

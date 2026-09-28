@@ -16,6 +16,10 @@
       --term-bg: #0f1115; --accent: #7aa2f7;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #16181c; --fg: #e6e6e6; --muted: #9aa0a6; --line: #30343a;
+    --term-bg: #0f1115; --accent: #7aa2f7;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
@@ -277,7 +281,7 @@
 import { Terminal } from './vendor/xterm.mjs';
 import { FitAddon } from './vendor/addon-fit.mjs';
 import { IRQ } from './irq_lines.mjs';
-import { describeWait } from './threads.mjs';
+import { describeWait, threadState } from './threads.mjs';
 import { DEFAULT_SEED } from './core.mjs';
 
 /*
@@ -385,6 +389,9 @@ async function loadManifest() {
       (b.boards ? pairs : buildEl).append(opt);
     }
     if (pairs.children.length) buildEl.append(pairs);
+    /* The build last chosen, if this site still has it. */
+    const last = remembered.get('build');
+    if (builds.some((b) => b.name === last)) buildEl.value = last;
     buildEl.disabled = false;
     runEl.disabled = false;
     showSelected();
@@ -443,20 +450,29 @@ function makeTerminal(el, target) {
   const fitAddon = new FitAddon();
   xterm.loadAddon(fitAddon);
   xterm.open(el);
-  /* As many rows as fit, and as many columns, but never fewer than 80: the
-   * shell does not know the width and assumes 80, so a narrower screen would
-   * wrap its line editor somewhere it did not expect. */
+  /* As many rows as fit, and as many columns. A build that reads the
+   * keyboard gets never fewer than 80: the shell does not know the width
+   * and assumes 80, so a narrower screen would wrap its line editor
+   * somewhere it did not expect, and the box scrolls sideways instead. One
+   * that only prints wraps to the screen, which on a phone is narrower. */
+  let minCols = 80;
   function fitTerm() {
     const dims = fitAddon.proposeDimensions();
     if (!dims || !dims.cols || !dims.rows) return;
-    const cols = Math.max(80, dims.cols);
+    const cols = Math.max(minCols, dims.cols);
     if (cols !== xterm.cols || dims.rows !== xterm.rows) xterm.resize(cols, dims.rows);
+  }
+  function setMinCols(n) {
+    if (n !== minCols) { minCols = n; fitTerm(); }
   }
   fitTerm();
   new ResizeObserver(fitTerm).observe(el);
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    xterm.options.theme = termTheme();
-  });
+  /* The colours follow the page's: the system's light or dark, or a
+   * data-theme set on the page, which the media query does not see. */
+  const retheme = () => { xterm.options.theme = termTheme(); };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
+  new MutationObserver(retheme).observe(document.documentElement,
+    { attributes: true, attributeFilter: ['data-theme'] });
 
   /* Everything the guest has printed, as text, for the checks. It is the
    * stream with escape sequences dropped, carriage returns and backspaces
@@ -500,16 +516,55 @@ function makeTerminal(el, target) {
     clear() { this.lines = ['']; this.col = 0; this.pending = ''; },
   };
 
+  /* What has been shown, kept so that a step back can take back what the
+   * undone steps printed: a terminal can only be written to, so it is
+   * cleared and written again up to that point. The host counts the guest's
+   * bytes as well, and a state that arrives with a smaller count than this
+   * one is a step back. Bounded, like the scrollback; a rewind past what was
+   * kept shows what was kept. */
+  const shown = { chunks: [], size: 0, guest: 0 };
+  const SHOWN_MAX = 1 << 20;
+  function show(bytes, guest) {
+    xterm.write(bytes);
+    log.write(bytes);
+    shown.chunks.push({ bytes, guest });
+    shown.size += bytes.length;
+    if (guest) shown.guest += bytes.length;
+    while (shown.size > SHOWN_MAX && shown.chunks.length > 1) {
+      shown.size -= shown.chunks.shift().bytes.length;
+    }
+  }
+
   /* Guest output goes to both. */
   const term = {
-    write(bytes) { xterm.write(bytes); log.write(bytes); },
+    write(bytes) { show(bytes, true); },
     /* Host messages, which use bare newlines. */
-    note(text) { this.write(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n'))); },
+    note(text) { show(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n')), false); },
     /* A new run starts on a fresh terminal. */
-    reset() { xterm.reset(); log.clear(); },
+    reset() {
+      xterm.reset(); log.clear();
+      shown.chunks = []; shown.size = 0; shown.guest = 0;
+    },
     /* The Clear button: everything but the line the cursor is on, which in a
-     * shell is its prompt. */
-    clear() { xterm.clear(); log.clear(); },
+     * shell is its prompt. What was cleared stays cleared after a step back. */
+    clear() { xterm.clear(); log.clear(); shown.chunks = []; shown.size = 0; },
+    /* The guest has printed `outBytes` bytes in all, which is fewer than
+     * were shown: take back the rest, and any host note written after it. */
+    rewind(outBytes) {
+      if (outBytes >= shown.guest) return;
+      let over = shown.guest - outBytes;
+      while (over > 0 && shown.chunks.length > 0) {
+        const c = shown.chunks[shown.chunks.length - 1];
+        const cut = c.guest ? Math.min(over, c.bytes.length) : c.bytes.length;
+        if (c.guest) over -= cut;
+        shown.size -= cut;
+        if (cut === c.bytes.length) shown.chunks.pop();
+        else c.bytes = c.bytes.subarray(0, c.bytes.length - cut);
+      }
+      shown.guest = outBytes;
+      xterm.reset(); log.clear();
+      for (const c of shown.chunks) { xterm.write(c.bytes); log.write(c.bytes); }
+    },
   };
 
   /* Keystrokes go to the guest's UART as the bytes a VT100 sends: DEL for
@@ -521,7 +576,7 @@ function makeTerminal(el, target) {
     if (!running || !w || xterm.options.disableStdin) return;
     w.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
   });
-  return { xterm, log, term, fitTerm };
+  return { xterm, log, term, fitTerm, setMinCols };
 }
 const main = makeTerminal(termEl, () => worker);
 const { xterm, log, term } = main;
@@ -752,7 +807,7 @@ function showKernel(state) {
     /* What it waits for is the guest's answer too: which wait queue, who
      * owns it when it is a mutex, and how long its timeout has left. */
     const cells = [t.name || '(unnamed)', String(t.prio),
-                   t.states.join(', ') || 'ready', `0x${t.sp.toString(16)}`,
+                   threadState(t), `0x${t.sp.toString(16)}`,
                    describeWait(t, state.threads)];
     cells.forEach((text, i) => {
       const td = document.createElement('td');
@@ -822,8 +877,10 @@ function resetBoard() {
  * once, for a new selection; the worker still stops cleanly, so a build
  * with flash gets its last image saved. */
 function stopRun({ detach = false } = {}) {
-  if (!worker || !running) return;
+  if (!running) return;
   stopping = true;
+  /* Still loading its flash: start() sees `stopping` and goes no further. */
+  if (!worker) { setRunning(false); return; }
   worker.postMessage({ type: 'stop' });
   peerWorker?.postMessage({ type: 'stop' });
   if (detach) {
@@ -833,9 +890,21 @@ function stopRun({ detach = false } = {}) {
   }
 }
 
+/* What the page remembers between visits, in this browser only. Storage
+ * can be missing or refuse (a private window, blocked site data), and then
+ * the page simply forgets, as it did before. */
+const remembered = {
+  get(key) {
+    try { return JSON.parse(localStorage.getItem(`zephyr-wasm.${key}`)); } catch { return null; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(`zephyr-wasm.${key}`, JSON.stringify(value)); } catch { /* forget */ }
+  },
+};
+
 /* The speed each paced build was last run at: a sample slowed down to be
- * followed stays slowed down when it is run again. */
-const speeds = new Map();
+ * followed stays slowed down when it is run again, after a reload too. */
+const speeds = new Map(Object.entries(remembered.get('speeds') ?? {}));
 
 /* Show what the selected build needs, before it runs as well as while: the
  * controls appearing only after Run moved everything under the pointer. */
@@ -859,6 +928,9 @@ function showSelected() {
    * No kernel panel, which describes one board, and no pausing or stepping
    * one board while its peer's clock runs on. */
   const pair = build.boards ?? null;
+  const reads = (b) => (b?.uses ?? []).includes('terminal') ? 80 : 0;
+  main.setMinCols(reads(pair ? pair[0] : build));
+  peer.setMinCols(reads(pair?.[1]));
   termsEl.classList.toggle('pair', !!pair);
   peerTermEl.hidden = term2LabelEl.hidden = termLabelEl.hidden = linkEl.hidden = !pair;
   if (pair) {
@@ -989,7 +1061,10 @@ function startPeer(build, board) {
       if (running) stopRun();
     }
   };
-  w.onerror = (e) => peer.term.note(`\n*** worker error: ${e.message} ***\n`);
+  w.onerror = (e) => {
+    if (peerWorker !== w) return;
+    peer.term.note(`\n*** worker error: ${e.message} ***\n`);
+  };
   const run = () => {
     if (peerWorker !== w) return;
     peerOn = true;
@@ -1023,6 +1098,12 @@ async function start() {
   resetBoard();
   setRunning(true);
   const flashImage = await loadFlash(build.name);
+  /* The menu stays live while the flash loads. Another choice, or Stop, in
+   * that moment means this run is no longer wanted. */
+  if (buildEl.value !== build.name || stopping) {
+    setRunning(false);
+    return;
+  }
   const interactive = !!build.interactive;
   /* A two-board build runs its first board here, as a single build runs,
    * and its second in a Worker of its own, with the page as the wire. */
@@ -1049,7 +1130,10 @@ async function start() {
       return;
     }
     if (data.type === 'eth') relay(0, data.frame);
-    else if (data.type === 'state') { if (!second) showKernel(data.state); }
+    else if (data.type === 'state') {
+      if (data.state.outBytes !== undefined) term.rewind(data.state.outBytes);
+      if (!second) showKernel(data.state);
+    }
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') term.note(data.text);
@@ -1073,6 +1157,7 @@ async function start() {
     }
   };
   w.onerror = (e) => {
+    if (worker !== w) return;
     term.note(`\n*** worker error: ${e.message} ***\n`);
     setRunning(false);
   };
@@ -1109,6 +1194,7 @@ loadManifest();
 /* A new selection stops what is running and clears what it left behind,
  * so the page never shows one build's output under another's name. */
 buildEl.onchange = () => {
+  remembered.set('build', buildEl.value);
   stopRun({ detach: true });
   resetBoard();
   showSelected();
@@ -1136,6 +1222,7 @@ stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
 backEl.onclick = () => worker?.postMessage({ type: 'back' });
 speedEl.onchange = () => {
   speeds.set(buildEl.value, speedEl.value);
+  remembered.set('speeds', Object.fromEntries(speeds));
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 };
 

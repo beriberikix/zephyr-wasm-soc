@@ -582,12 +582,56 @@ if (stepper) {
       if (after.sw !== before.sw || after.now !== before.now || after.cur !== before.cur) {
         fail('back', 'stepping back did not restore the kernel: ' +
              `${JSON.stringify(before)} then ${JSON.stringify(after)}`);
+      } else if (await page.evaluate(() => {
+        const st = window.zephyrState().threads.find((t) => t.current);
+        const cell = document.querySelector('#threads tr.cur td:nth-child(3)');
+        return st && st.states.every((x) => x === 'queued') && cell?.textContent !== 'running';
+      })) {
+        fail('threads', 'the thread holding the CPU is not shown as running');
       } else {
         const names = await page.evaluate(() =>
           window.zephyrState().threads.map((t) => t.name).filter(Boolean));
         console.log(`  ok    kernel    ${names.length} threads listed, pause holds, ` +
                     `${before.sw} -> ${stepped} -> back to ${after.sw} switches ` +
                     `at ${after.now} ms on ${after.cur}`);
+      }
+    }
+
+    /* A step back takes back what the undone steps printed, so stepping
+     * forward again prints it once, not twice. Step until something is
+     * printed, back as far, then forward as far again. */
+    const output = () => page.evaluate(() => window.zephyrOutput());
+    const start = await output();
+    let steps = 0;
+    while (steps < 40 && await output() === start) {
+      await page.click('#step');
+      await page.waitForTimeout(250);
+      steps++;
+    }
+    const printed = await output();
+    if (printed === start) {
+      fail('rewind', `nothing was printed in ${steps} steps`);
+    } else {
+      for (let i = 0; i < steps; i++) {
+        await page.click('#back');
+        await page.waitForTimeout(250);
+      }
+      const undone = await output();
+      for (let i = 0; i < steps; i++) {
+        await page.click('#step');
+        await page.waitForTimeout(250);
+      }
+      const redone = await output();
+      if (undone !== start) {
+        fail('rewind', 'stepping back left the undone steps\' output on screen',
+             undone.slice(start.length));
+      } else if (redone !== printed) {
+        fail('rewind', 'stepping forward again printed something else',
+             `first: ${JSON.stringify(printed.slice(start.length))}\n` +
+             `again: ${JSON.stringify(redone.slice(start.length))}`);
+      } else {
+        console.log(`  ok    rewind    ${steps} steps back take back ` +
+                    `${printed.length - start.length} characters, and forward prints them once`);
       }
     }
     await page.click('#stop', { timeout: 1000 }).catch(() => {});
@@ -601,6 +645,21 @@ if (stepper) {
  * the numbers left up after a run are the run's last ones. */
 const statusText = () => page.evaluate(() => document.getElementById('status').textContent);
 const pageChecks = [
+  ['tilt', async () => {
+    /* The page levels the board with a reading as it starts, before the
+     * guest has booted and before its driver enables the interrupt. That
+     * once held the clock back for eight seconds. */
+    await page.selectOption('#build', 'accel');
+    const t0 = Date.now();
+    await page.click('#run');
+    await until('the accelerometer build never booted',
+                () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 30_000);
+    const ms = Date.now() - t0;
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    if (ms > 3000) throw new Error(`the accelerometer build took ${ms} ms to boot`);
+    return `the accelerometer build boots in ${ms} ms, with a reading already waiting`;
+  }],
   ['stop', async () => {
     await page.selectOption('#build', 'blinky');
     await page.click('#run');

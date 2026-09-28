@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import process from 'node:process';
 
 import { Host, DEFAULT_SEED } from './core.mjs';
-import { describeWait } from './threads.mjs';
+import { describeWait, threadState } from './threads.mjs';
 
 function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
@@ -219,7 +219,7 @@ function threadTable(state) {
   const rows = state.threads.map((t) =>
     `  ${t.current ? '*' : ' '} ${(t.name || '(unnamed)').padEnd(18)} ` +
     `prio ${String(t.prio).padStart(3)}  ` +
-    `${(t.states.join(',') || 'ready').padEnd(18)} ` +
+    `${threadState(t).padEnd(18)} ` +
     `sp 0x${t.sp.toString(16).padEnd(6)}  ${describeWait(t, state.threads)}`.trimEnd());
   return `[threads] at ${state.nowMs} ms, ${state.switches} switches, ` +
          `pending 0x${state.pending.toString(16)}` +

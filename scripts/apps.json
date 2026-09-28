@@ -49,6 +49,8 @@
     "  run.mjs --accel for the Node check. The browser check drags the Tilt",
     "  pad instead, which cannot land on exact values, so what the script",
     "  should produce goes in ci_expect, which only the Node check reads.",
+    "  A reading at 0 ms arrives before the guest has booted, as the page's",
+    "  first one does, before the driver has enabled its interrupt.",
     "args: build arguments, only ever the upstream entry's own extra_configs",
     "  (the LVGL demos app chooses its demo that way).",
     "lesson: a guided lesson, as a list of steps the page shows one at a",
@@ -181,10 +183,10 @@
       "endless": true,
       "max_time_ms": 600000,
       "ci_max_time_ms": 3000,
-      "ci_accel": ["1500:1.5,-9.81,0.25"],
+      "ci_accel": ["0:0,0,9.81", "1500:1.5,-9.81,0.25"],
       "expect": ["bmi160@68 [m/s^2]:"],
       "ci_expect": [
-        "bmi160@68 [m/s^2]:    (    0.000000,     0.000000,     0.000000)",
+        "bmi160@68 [m/s^2]:    (    0.000000,     0.000000,     9.809792)",
         "bmi160@68 [m/s^2]:    (    1.499990,    -9.809792,     0.250197)"
       ],
       "deterministic": true
@@ -224,7 +226,7 @@
         "wakes in"
       ],
       "lesson": [
-        "Press Run. Six philosophers share six forks, and each philosopher is a thread. The table under the output is the kernel's own list of threads: watch each one think, wait for a fork, and eat.",
+        "Press Run if it is not running yet. Six philosophers share six forks, and each philosopher is a thread. The table under the output is the kernel's own list of threads: watch each one think, wait for a fork, and eat.",
         "Press Pause. Nothing runs now, and nothing is lost: every thread keeps its state and its stack. The table is the kernel's answer, asked of the guest between two context switches, not a guess.",
         "Press Step. The kernel runs to its next stop: a context switch, or waking from idle. The arrow marks the thread that holds the CPU. Philosophers 0 to 5 start at priorities 3, 2, 1, 0, -1 and -2, which the output shows as `P:` for preemptible and `C:` for cooperative. The lower number runs first, and a cooperative thread, once running, keeps the CPU until it waits for something.",
         "Find a philosopher whose state is `pending`. The waiting-for column says which fork, a mutex, it is waiting for, and which philosopher holds it. Compare the holder's priority with the one it started at. A mutex lends its owner the priority of the most urgent thread waiting for it, so that the owner finishes and lets go sooner. That is priority inheritance.",
@@ -425,6 +427,7 @@
         {
           "label": "Client",
           "app": "zephyr/samples/net/sockets/echo_client",
+          "start_after_ms": 2000,
           "args": [
             "-DSNIPPET=wasm-ethernet"
           ],
@@ -703,7 +706,7 @@
       "name": "http",
       "kind": "sample",
       "title": "HTTP client and server (two boards)",
-      "hint": "http_client makes GET and POST requests of http_server over IPv4 and IPv6. The server also has a shell: try `net iface` there.",
+      "hint": "http_client makes GET and POST requests of http_server over IPv4 and IPv6. The GETs succeed; the POSTs come back 404 or 405, because the client was written for a test server on a Linux host and its paths are fixed in its source. The server also has a shell: try `net iface` there.",
       "overrides": "The server listens on port 8000, which the client has built in, rather than 80; and the client's addresses are swapped to 192.0.2.2 and 2001:db8::2, with the server as its peer.",
       "upstream": true,
       "clock": "paced",

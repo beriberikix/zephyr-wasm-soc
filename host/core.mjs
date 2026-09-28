@@ -145,6 +145,10 @@ export class Host {
      * of the loop rather than written straight into guest memory, because a
      * message handler can run before the module is even instantiated. */
     this.externalIrqs = 0;
+    /* How many bytes the guest has printed. A step back puts it back with
+     * everything else, and the page uses it to take back what the undone
+     * steps printed. Not reset by a reboot: the terminal is not either. */
+    this.outBytes = 0;
     /* xorshift32, seeded. Not a good generator and not meant to be one: it
      * has to be cheap, identical in both hosts, and repeatable, because CI
      * requires two runs of a build to be byte-identical. --true-random opts
@@ -283,6 +287,7 @@ export class Host {
       exitCode: this.exitCode,
       randState: this.randState,
       externalIrqs: this.externalIrqs,
+      outBytes: this.outBytes,
       input: this.input.slice(),
       gpio: this.gpio.map((g) => ({ ...g })),
       contexts,
@@ -304,6 +309,7 @@ export class Host {
     this.exitCode = snap.exitCode;
     this.randState = snap.randState;
     this.externalIrqs = snap.externalIrqs;
+    this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
     this.gpio = snap.gpio.map((g) => ({ ...g }));
     this.contexts = new Map();
@@ -375,12 +381,14 @@ export class Host {
           /* A copy, not a view: the platform may hand these bytes to
            * something that outlives this call, and the view is into live
            * guest memory. */
+          self.outBytes += len;
           self.platform.writeOut(new Uint8Array(self.mem.buffer, ptr, len).slice());
         },
 
         time_now_ns() { return self.timeNs; },
 
         uart_poll_out(c) {
+          self.outBytes++;
           self.platform.writeOut(new Uint8Array([c & 0xff]));
         },
 
@@ -677,9 +685,16 @@ export class Host {
      * limit above ends it. Timing the whole run instead gave up on the LVGL
      * accelerometer chart, which is slower than real time here (it redraws
      * the whole screen fifty times a second, and a pixel fill pays for a
-     * safepoint per pixel), as if it had hung. */
+     * safepoint per pixel), as if it had hung.
+     *
+     * And never less than a minute. The LVGL demo spends 8 to 13 s of wall
+     * time in one step at boot, drawing its first screen before anything
+     * suspends, and how long depends on how busy the machine is. Against a
+     * five-second run's fifteen, that failed now and then for no reason
+     * but load. */
     const since = this.stepStartedAt ?? this.startedAt;
-    if (Number(this.platform.nowNs() - since) / 1e6 > this.opts.maxTimeMs * 3) {
+    const limitMs = Math.max(this.opts.maxTimeMs * 3, 60_000);
+    if (Number(this.platform.nowNs() - since) / 1e6 > limitMs) {
       throw new GaveUp('gave up: the guest ran without suspending');
     }
     return true;
@@ -711,6 +726,24 @@ export class Host {
   raiseIrq(line) {
     const w = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1);
     w[0] |= (1 << line);
+  }
+
+  /* The lines the guest has enabled. An image without the export is taken
+   * to have them all enabled, which is how it behaved before. */
+  enabledLines() {
+    if (!this.enabledAddr) return 0xffffffff;
+    return new Uint32Array(this.mem.buffer, this.enabledAddr, 1)[0];
+  }
+
+  /* Pending interrupts the guest could take now: raised, on an enabled
+   * line, and not masked. Only these are a reason not to let time pass.
+   * One that is pending on a disabled line waits for its driver, as it
+   * would in an interrupt controller, and a busy-wait with interrupts
+   * locked still has to reach its deadline. */
+  deliverableIrqs() {
+    const w = new Uint32Array(this.mem.buffer);
+    if (this.maskedAddr && w[this.maskedAddr >> 2] !== 0) return 0;
+    return w[this.irqPendingAddr >> 2] & this.enabledLines();
   }
 
   /* Virtual time: nothing happens until the kernel idles, then jump to the
@@ -776,6 +809,7 @@ export class Host {
       eth: { sent: this.ethSent, received: this.ethReceived },
       paused: this.paused,
       canStepBack: this.history.length,
+      outBytes: this.outBytes,
     });
   }
 
@@ -909,12 +943,17 @@ export class Host {
         this.checkDeadline();
         this.stepStartedAt = this.platform.nowNs();
         /* Anything raised from outside since the last step. The guest is
-         * fully unwound here, so writing the pending word is safe. */
+         * fully unwound here, so writing the pending word is safe. A line
+         * whose driver has not enabled it yet stays latched here until it
+         * does, as a pending bit in an interrupt controller would: a page
+         * that sends a reading before the guest has booted must not leave
+         * a bit in the pending word that nothing can take. */
         if (this.externalIrqs !== 0) {
+          const ready = this.externalIrqs & this.enabledLines();
           for (let line = 0; line < 32; line++) {
-            if (this.externalIrqs & (1 << line)) this.raiseIrq(line);
+            if (ready & (1 << line)) this.raiseIrq(line);
           }
-          this.externalIrqs = 0;
+          this.externalIrqs = (this.externalIrqs & ~ready) >>> 0;
         }
         if (!this.step()) break;
       } catch (err) {
@@ -1029,8 +1068,9 @@ export class Host {
           `masked=${w[this.maskedAddr >> 2]} enabled=0x${w[this.enabledAddr >> 2].toString(16)} ` +
           `alarm=${this.alarmNs} now=${this.nowNs}` + '\n');
       }
-      /* Idle: the same context resumes once something is pending. */
-      const pending = new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0];
+      /* Idle: the same context resumes once something it can take is
+       * pending. */
+      const pending = this.deliverableIrqs();
       if (this.opts.interactive || this.opts.linked) {
         /* Let input arrive before deciding there is nothing to do. A linked
          * board waits the same way: its peer can send it a frame at any
@@ -1065,7 +1105,8 @@ export class Host {
         }
         return true;
       }
-      if (pending === 0 && this.externalIrqs === 0 && !this.advanceToNextDeadline()) {
+      if (pending === 0 && (this.externalIrqs & this.enabledLines()) === 0 &&
+          !this.advanceToNextDeadline()) {
         /* Every thread is idle and no timer is armed, so nothing can ever
          * happen again. For a sample that has finished its work that is the
          * normal end of the run, not a failure. */

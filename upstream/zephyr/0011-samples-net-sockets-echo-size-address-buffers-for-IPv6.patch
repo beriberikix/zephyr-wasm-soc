@@ -1,0 +1,62 @@
+From db526f1b22a2b41a1814e37e9ddac27b1fb02201 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Mon, 28 Sep 2026 02:48:30 +0000
+Subject: [PATCH] samples: net: sockets: echo: size address buffers for IPv6
+
+echo, echo_async and echo_async_select print each client's address from
+a 32-byte buffer. inet_ntop() needs INET6_ADDRSTRLEN, 46 bytes, for an
+IPv6 address and returns NULL without writing anything when the buffer
+is smaller, so every IPv6 client was printed as whatever the stack held.
+IPv4 addresses fit, which is why it only shows for IPv6.
+
+Size the buffers with INET6_ADDRSTRLEN.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ samples/net/sockets/echo/src/socket_echo.c                     | 2 +-
+ samples/net/sockets/echo_async/src/socket_echo.c               | 2 +-
+ samples/net/sockets/echo_async_select/src/socket_echo_select.c | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/samples/net/sockets/echo/src/socket_echo.c b/samples/net/sockets/echo/src/socket_echo.c
+index 967042f0470..349066afd95 100644
+--- a/samples/net/sockets/echo/src/socket_echo.c
++++ b/samples/net/sockets/echo/src/socket_echo.c
+@@ -80,7 +80,7 @@ int main(void)
+ 	while (1) {
+ 		struct sockaddr_in6 client_addr;
+ 		socklen_t client_addr_len = sizeof(client_addr);
+-		char addr_str[32];
++		char addr_str[INET6_ADDRSTRLEN];
+ 		int client = accept(serv, (struct sockaddr *)&client_addr,
+ 				    &client_addr_len);
+ 
+diff --git a/samples/net/sockets/echo_async/src/socket_echo.c b/samples/net/sockets/echo_async/src/socket_echo.c
+index 66cb4706072..ae87965e1dc 100644
+--- a/samples/net/sockets/echo_async/src/socket_echo.c
++++ b/samples/net/sockets/echo_async/src/socket_echo.c
+@@ -190,7 +190,7 @@ int main(void)
+ 	while (1) {
+ 		struct sockaddr_storage client_addr;
+ 		socklen_t client_addr_len = sizeof(client_addr);
+-		char addr_str[32];
++		char addr_str[INET6_ADDRSTRLEN];
+ 
+ 		res = poll(pollfds, pollnum, -1);
+ 		if (res == -1) {
+diff --git a/samples/net/sockets/echo_async_select/src/socket_echo_select.c b/samples/net/sockets/echo_async_select/src/socket_echo_select.c
+index 24b07e60c1f..4fb5c88ebd5 100644
+--- a/samples/net/sockets/echo_async_select/src/socket_echo_select.c
++++ b/samples/net/sockets/echo_async_select/src/socket_echo_select.c
+@@ -165,7 +165,7 @@ int main(void)
+ 	while (1) {
+ 		struct sockaddr_storage client_addr;
+ 		socklen_t client_addr_len = sizeof(client_addr);
+-		char addr_str[32];
++		char addr_str[INET6_ADDRSTRLEN];
+ 
+ 		/* As select overwrites passed fd_set, we run it against
+ 		 * temporary fd_set, by first copying a real fd_set into it.
+-- 
+2.43.0
+
