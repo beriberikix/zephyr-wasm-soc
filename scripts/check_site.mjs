@@ -11,6 +11,9 @@
 // What each build must print lives in scripts/apps.json, beside the build
 // itself, so adding a build brings its acceptance criterion with it.
 //
+// A two-board pair is run twice, and both boards' output must be the same
+// both times.
+//
 // Usage: node scripts/check_site.mjs [_site] [--only name,name]
 
 import { spawn } from 'node:child_process';
@@ -117,6 +120,16 @@ for (const b of manifest.builds) {
   const peerOut = peer ? await readFile(peer.out, 'utf8').catch(() => '') : '';
 
   const problems = [];
+  /* A pair runs on one clock (host/pair.mjs), so it is as repeatable as a
+   * single board: run it again, and both boards must say exactly the same.
+   * This is what lets a pair's expectations be more than thresholds. */
+  if (second) {
+    const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
+                            !!b.threads_expect, peer);
+    const peerAgain = await readFile(peer.out, 'utf8').catch(() => '');
+    if (again.out !== out) problems.push(`the ${first.label}'s output differed on a second run`);
+    if (peerAgain !== peerOut) problems.push(`the ${second.label}'s output differed on a second run`);
+  }
   /* A build that never finishes ends at --max-time, which is exit 2 and is
    * the expected end of its run rather than a failure. */
   const allowed = b.endless || b.interactive ? [0, 2] : [0];

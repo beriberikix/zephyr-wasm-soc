@@ -1340,3 +1340,37 @@ hand over its last image first. A paced run also yields at least every
 - Run straight after Stop;
 - switching away from LVGL mid-boot;
 - stopping a pair.
+
+### Tick 64 — two boards, one clock
+
+A pair used to be two run loops, each following the wall clock, with
+frames arriving whenever the relay got to them. That worked, but no two
+runs matched, so a pair's checks could only be thresholds.
+
+Now `host/pair.mjs` keeps both boards on one timeline:
+- **Power-on.** Each board's clock starts at zero when it powers on. The
+  second board powers on `start_after_ms` into the first's run, in guest
+  time.
+- **Frames.** Each is stamped with its arrival: the send time plus 100 µs
+  of wire. The receiver takes it when its clock gets there, as it takes a
+  scripted button press.
+- **Scheduling.** The board that is behind runs, as far as the other could
+  still reach it.
+- **The Host.** It gained `start()` and `runUntil(limit)` beside `run()`.
+  A single board goes through exactly the same steps as before:
+  determinism, the two engines and blinky's 150 toggles all still match.
+
+The first version was repeatable but slow: every echo exchange took about
+10 ms of guest time instead of 0.2 ms. The trace showed the server running
+10 ms past the client's send. The running board's limit had been fixed
+before it ran, from when the idle board expected to wake next, but the
+frame the running board sent woke it sooner. Sending a frame now pulls the
+sender's limit in to that frame's arrival plus the wire's latency.
+
+After that, the echo pair did 32,000 exchanges in the guest time the
+wall-clock link managed 10,000. Two runs were byte-identical on both
+boards. `check_site` now runs every pair twice and requires that, and all
+nine pairs, run twice, take about a minute. On the page both boards run
+in one Worker, since two Workers could only meet by message and the site
+can't use `SharedArrayBuffer`. The pair is paced there as one. zperf's
+rates are now the same every run.

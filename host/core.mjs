@@ -95,6 +95,12 @@ const SAFEPOINT_TICK_NS = 100_000n;
  * burst; past it the link drops, as a wire into a full receive ring does. */
 const ETH_QUEUE_MAX = 256;
 
+/* How long a frame takes on the wire between two boards of a pair. Fixed,
+ * so a pair is repeatable; and more than zero, which is what lets one board
+ * run ahead of the other by that much without a frame arriving in its past
+ * (host/pair.mjs). */
+export const LINK_LATENCY_NS = 100_000n;
+
 /* struct wasm_thread_info: twelve 32-bit fields, in the order the header
  * declares them. The guest fills it; the host only reads it, and learns no
  * Zephyr struct offsets in the process. */
@@ -123,6 +129,10 @@ export class Host {
     this.platform = platform;
     this.opts = opts;
     this.nowNs = 0n;             // virtual time; only advances when idle
+    /* Where this board's clock sits on a pair's shared timeline: the board
+     * powered on at epochNs, and its own clock started from zero then, as
+     * uptime does. Zero for a board on its own. */
+    this.epochNs = opts.epochNs ?? 0n;
     this.alarmNs = null;         // next timer deadline, or null for none
     this.startedAt = platform.nowNs();
     this.stepStartedAt = null;   // wall clock when the current step began
@@ -185,17 +195,30 @@ export class Host {
      * millionths of the channel's SI unit]. */
     this.sensorQueue = [];
     /* Ethernet frames from the other end of the link, waiting for the
-     * driver: whole frames, as Uint8Arrays. */
+     * driver, in the order they are due: { atNs, frame }, where atNs is on
+     * the pair's shared timeline (host/pair.mjs). */
     this.ethQueue = [];
   }
 
-  /* A frame from the board at the other end of the link. Safe at any time,
-   * like pushInput. A board that is not reading drops what arrives once a
-   * backlog has built up, as a NIC with full buffers would. */
-  pushEthernet(frame) {
+  /* A frame from the board at the other end of the link, due at atNs on
+   * the pair's timeline. It is a deadline like a scripted event: the board
+   * sees it when its clock reaches that time, and not before. One that is
+   * already due -- sent while this board was ahead -- is seen at once. A
+   * board that is not reading drops what arrives once a backlog has built
+   * up, as a NIC with full buffers would. */
+  pushEthernet(frame, atNs = this.globalNs) {
     if (this.ethQueue.length >= ETH_QUEUE_MAX) return;
-    this.ethQueue.push(frame);
-    this.injectIrq(IRQ.ETH);
+    let i = this.ethQueue.length;
+    while (i > 0 && this.ethQueue[i - 1].atNs > atNs) i--;
+    this.ethQueue.splice(i, 0, { atNs, frame });
+  }
+
+  /* This board's time on the pair's shared timeline. */
+  get globalNs() { return this.epochNs + this.nowNs; }
+
+  /* The next frame, on this board's own clock, or null. */
+  nextFrameNs() {
+    return this.ethQueue.length > 0 ? this.ethQueue[0].atNs - this.epochNs : null;
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -534,12 +557,17 @@ export class Host {
         eth_send(ptr, len) {
           const frame = new Uint8Array(self.mem.buffer, ptr, len).slice();
           self.ethSent++;
-          self.platform.ethSend?.(frame);
+          /* Stamped with when it will arrive: now, on the pair's timeline,
+           * plus the wire's latency. */
+          self.platform.ethSend?.(frame, self.globalNs + LINK_LATENCY_NS);
         },
 
         eth_recv(ptr, max) {
-          const frame = self.ethQueue.shift();
-          if (!frame) return 0;
+          /* Only a frame that is due: one still on the wire is not here. */
+          const head = self.ethQueue[0];
+          if (!head || head.atNs > self.globalNs) return 0;
+          self.ethQueue.shift();
+          const frame = head.frame;
           if (frame.length > max) return -1;
           new Uint8Array(self.mem.buffer, ptr, frame.length).set(frame);
           self.ethReceived++;
@@ -760,13 +788,33 @@ export class Host {
    * sample which waits for a button be run unattended and still produce the
    * same output every time: the press happens at a stated guest time rather
    * than whenever a person got round to it. */
-  advanceToNextDeadline() {
+  advanceToNextDeadline(limitNs = null) {
     /* The next scripted event, of either kind: a pin moving or input
      * arriving. Scripted input counts as a deadline for the same reason a
      * scripted button press does. */
     const pin = this.opts.gpio?.[0];
     const input = this.opts.inputScript?.[0];
     const next = pin && (!input || pin.atNs <= input.atNs) ? pin : input;
+    /* A frame from the other board of a pair is one too. Ties go to a
+     * scripted event, then a frame, then the alarm, so the order is fixed. */
+    const frameAt = this.nextFrameNs();
+    let at = next ? next.atNs : null;
+    if (frameAt !== null && (at === null || frameAt < at)) at = frameAt;
+    if (this.alarmNs !== null && (at === null || this.alarmNs < at)) at = this.alarmNs;
+    /* In a pair, a board may only go as far as the other lets it
+     * (host/pair.mjs). Short of its next event it idles up to the limit,
+     * which is time passing with nothing to do, and says where it stopped. */
+    if (limitNs !== null && at !== null && at > limitNs) {
+      if (limitNs > this.nowNs) this.nowNs = limitNs;
+      this.idleUntil = at;
+      return true;
+    }
+    if (at !== null && at === frameAt && (next === undefined || next.atNs !== at)) {
+      if (frameAt > this.nowNs) this.nowNs = frameAt;
+      this.quiescentRounds = 0;
+      this.injectIrq(IRQ.ETH);
+      return true;
+    }
     if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
       if (next.atNs > this.nowNs) this.nowNs = next.atNs;
       this.quiescentRounds = 0;
@@ -875,6 +923,8 @@ export class Host {
   resetForReboot() {
     const used = this.timeNs;
     this.deadlineNs -= used;
+    /* Uptime starts again; the pair's timeline does not. */
+    this.epochNs += this.nowNs;
     this.nowNs = 0n;
     this.startedAt = this.platform.nowNs();
     this.alarmNs = null;
@@ -889,11 +939,97 @@ export class Host {
     this.gpio[0].out = 0;
   }
 
-  async run() {
+  /* Boot, and be ready to step. run() does this itself; a pair calls it
+   * for each board, when that board is powered on. */
+  async start() {
     await this.boot();
     this.startInput();
-
     this.deadlineNs = BigInt(this.opts.maxTimeMs) * 1_000_000n;
+  }
+
+  /* One step of the driver loop: whatever has been raised from outside,
+   * then the guest until it suspends. Returns false when the run is over,
+   * for any reason. */
+  async runStep() {
+    try {
+      this.checkDeadline();
+      this.stepStartedAt = this.platform.nowNs();
+      /* A frame from the other board of a pair that is due now. */
+      if (this.ethQueue.length > 0 && this.ethQueue[0].atNs <= this.globalNs) {
+        this.injectIrq(IRQ.ETH);
+      }
+      /* Anything raised from outside since the last step. The guest is
+       * fully unwound here, so writing the pending word is safe. A line
+       * whose driver has not enabled it yet stays latched here until it
+       * does, as a pending bit in an interrupt controller would: a page
+       * that sends a reading before the guest has booted must not leave
+       * a bit in the pending word that nothing can take. */
+      if (this.externalIrqs !== 0) {
+        const ready = this.externalIrqs & this.enabledLines();
+        for (let line = 0; line < 32; line++) {
+          if (ready & (1 << line)) this.raiseIrq(line);
+        }
+        this.externalIrqs = (this.externalIrqs & ~ready) >>> 0;
+      }
+      if (!this.step()) return false;
+    } catch (err) {
+      if (err instanceof Reboot) {
+        /* Keep the flash, as a reset does, and hand it to the platform to
+         * save before booting again. */
+        this.storageImage = this.flashImage();
+        this.platform.flashChanged?.(this.storageImage, 'reboot');
+        if (++this.reboots > this.maxReboots) {
+          this.platform.writeErr(`\n*** gave up after ${this.maxReboots} reboots ***\n`);
+          this.exitCode = 2;
+          return false;
+        }
+        this.resetForReboot();
+        await this.boot();
+        return true;
+      }
+      if (!(err instanceof GaveUp)) throw err;
+      this.platform.writeErr(`\n*** ${err.message} ***\n`);
+      this.exitCode = 2;
+      return false;
+    }
+    this.report();
+    return true;
+  }
+
+  /* Run as one board of a pair: step until this board's clock passes
+   * limitNs on the pair's timeline (null for no limit), it idles with
+   * nothing to do before the limit, or the run ends. At most maxSteps
+   * steps, so the pair gets control back now and then. Says why it
+   * stopped, and for an idle board what it is waiting for: nextNs on the
+   * pair's timeline, or null for nothing at all. */
+  async runUntil(limitNs, maxSteps = 256) {
+    this.stepLimitNs = limitNs === null ? null : limitNs - this.epochNs;
+    for (let n = 0; n < maxSteps; n++) {
+      if (this.done) return { reason: 'done' };
+      if (this.stepLimitNs !== null && this.nowNs >= this.stepLimitNs) {
+        return { reason: 'limit' };
+      }
+      this.idleUntil = undefined;
+      if (!(await this.runStep())) {
+        this.done = true;
+        return { reason: 'done' };
+      }
+      if (this.idleUntil !== undefined) {
+        return { reason: 'idle',
+                 nextNs: this.idleUntil === null ? null : this.idleUntil + this.epochNs };
+      }
+    }
+    return { reason: 'budget' };
+  }
+
+  /* Stopped as one board of a pair: what run() does at its end. */
+  finish() {
+    this.stopInput();
+    if (this.ex) this.report(true);
+  }
+
+  async run() {
+    await this.start();
 
     /* Pacing: make virtual time pass at something like the rate it claims.
      *
@@ -947,44 +1083,10 @@ export class Host {
         this.stepsLeft--;
       }
 
-      try {
-        this.checkDeadline();
-        this.stepStartedAt = this.platform.nowNs();
-        /* Anything raised from outside since the last step. The guest is
-         * fully unwound here, so writing the pending word is safe. A line
-         * whose driver has not enabled it yet stays latched here until it
-         * does, as a pending bit in an interrupt controller would: a page
-         * that sends a reading before the guest has booted must not leave
-         * a bit in the pending word that nothing can take. */
-        if (this.externalIrqs !== 0) {
-          const ready = this.externalIrqs & this.enabledLines();
-          for (let line = 0; line < 32; line++) {
-            if (ready & (1 << line)) this.raiseIrq(line);
-          }
-          this.externalIrqs = (this.externalIrqs & ~ready) >>> 0;
-        }
-        if (!this.step()) break;
-      } catch (err) {
-        if (err instanceof Reboot) {
-          /* Keep the flash, as a reset does, and hand it to the platform to
-           * save before booting again. */
-          this.storageImage = this.flashImage();
-          this.platform.flashChanged?.(this.storageImage, 'reboot');
-          if (++this.reboots > this.maxReboots) {
-            this.platform.writeErr(`\n*** gave up after ${this.maxReboots} reboots ***\n`);
-            this.exitCode = 2;
-            break;
-          }
-          this.resetForReboot();
-          await this.boot();
-          continue;
-        }
-        if (!(err instanceof GaveUp)) throw err;
-        this.platform.writeErr(`\n*** ${err.message} ***\n`);
-        this.exitCode = 2;
-        break;
-      }
-      this.report();
+      const reboots = this.reboots;
+      if (!(await this.runStep())) break;
+      /* A reboot is a new instance: start the loop again before pacing. */
+      if (this.reboots !== reboots) continue;
 
       if (paced) {
         const scale = this.opts.timeScale || 1;
@@ -1017,8 +1119,7 @@ export class Host {
         lastYield = this.platform.nowNs();
       }
     }
-    this.stopInput();
-    if (this.ex) this.report(true);
+    this.finish();
     return this.exitCode;
   }
 
@@ -1082,27 +1183,22 @@ export class Host {
       /* Idle: the same context resumes once something it can take is
        * pending. */
       const pending = this.deliverableIrqs();
-      if (this.opts.interactive || this.opts.linked) {
-        /* Let input arrive before deciding there is nothing to do. A linked
-         * board waits the same way: its peer can send it a frame at any
-         * moment, so having nothing scheduled is not the end. */
+      if (this.opts.pair) {
+        /* One board of a pair: the pair's clock decides how far it may go
+         * (host/pair.mjs). Jump to the next event if that is within the
+         * limit; otherwise idle up to the limit and say what comes next, or
+         * that nothing does. */
+        if (pending === 0 && (this.externalIrqs & this.enabledLines()) === 0 &&
+            !this.advanceToNextDeadline(this.stepLimitNs)) {
+          this.idleUntil = null;
+        }
+        return true;
+      }
+      if (this.opts.interactive) {
+        /* Let input arrive before deciding there is nothing to do. */
         this.yieldToHost = true;
         if (pending === 0) {
-          if (this.pace && this.opts.linked) {
-            /* Follow the wall clock, and let a deadline fire when the wall
-             * clock reaches it rather than jumping to it. A frame that
-             * arrives before then has to arrive at the time it arrived:
-             * after a jump, the board would already be living at the
-             * deadline, and would see its peer's frame as late. */
-            const byWall = this.pace.guest +
-              BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
-            if (byWall > this.nowNs) this.nowNs = byWall;
-            if (this.alarmNs !== null && this.nowNs >= this.alarmNs) {
-              this.alarmNs = null;
-              this.quiescentRounds = 0;
-              this.raiseIrq(IRQ.TIMER);
-            }
-          } else if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
+          if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
             /* Paced, and nothing to wake for but a person: time passes as
              * it does for them. Jumping to the next deadline would leave
              * the clock standing still until they did something, and a

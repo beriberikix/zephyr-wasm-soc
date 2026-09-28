@@ -331,8 +331,6 @@ const backEl = document.getElementById('back');
 
 let worker = null;
 /* The second board of a two-board build, and the frames between them. */
-let peerWorker = null;
-let peerOn = false;
 let linkCounts = [0, 0];
 let running = false;
 let builds = [];
@@ -433,7 +431,7 @@ function termTheme() {
 /* One terminal: an xterm in `el`, the log of what it printed, and where
  * its keystrokes go. The page has one per board: a two-board build shows
  * both, and the second is otherwise hidden. */
-function makeTerminal(el, target) {
+function makeTerminal(el, target, board = 0) {
   const xterm = new Terminal({
     cursorBlink: true,
     /* The guest sends CRLF itself, and the shell uses a bare LF to mean
@@ -574,7 +572,7 @@ function makeTerminal(el, target) {
   xterm.onData((data) => {
     const w = target();
     if (!running || !w || xterm.options.disableStdin) return;
-    w.postMessage({ type: 'input', bytes: Array.from(new TextEncoder().encode(data)) });
+    w.postMessage({ type: 'input', board, bytes: Array.from(new TextEncoder().encode(data)) });
   });
   return { xterm, log, term, fitTerm, setMinCols };
 }
@@ -585,7 +583,9 @@ const termsEl = document.getElementById('terms');
 const termLabelEl = document.getElementById('termLabel');
 const term2LabelEl = document.getElementById('term2Label');
 const linkEl = document.getElementById('link');
-const peer = makeTerminal(peerTermEl, () => peerWorker);
+/* The second board of a pair runs in the same Worker as the first, on one
+ * clock with it; its terminal types into it by board number. */
+const peer = makeTerminal(peerTermEl, () => worker, 1);
 
 /* The virtual board.
  *
@@ -895,10 +895,7 @@ function endRun(status) {
  * yield for seconds, burning a core while the next run boots. */
 function endWorkers() {
   worker?.terminate();
-  peerWorker?.terminate();
   worker = null;
-  peerWorker = null;
-  peerOn = false;
 }
 
 /* Stop the run: end its Workers at once. A build that keeps flash is asked
@@ -1051,15 +1048,13 @@ const saveFlash = (name, image) => {
 };
 const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
 
-/* The wire between the two boards of a pair: a frame from one Worker is
- * handed to the other, and counted. Transferred, not copied: the sender
- * made the buffer for this and has no further use for it. */
-function relay(from, frame) {
-  const to = from === 0 ? peerWorker : worker;
-  if (!to || (from === 0 && !peerOn)) return;
-  linkCounts[from]++;
-  to.postMessage({ type: 'eth-in', frame }, [frame.buffer]);
-  /* Thousands of frames a second: redraw the count once a frame. */
+/* The wire between the two boards of a pair is inside their Worker now
+ * (pair.mjs); the page only shows how much has crossed it, from each
+ * board's own count of frames it has taken off the wire. */
+function countLink(board, eth) {
+  if (!eth) return;
+  linkCounts[1 - board] = eth.received;
+  /* A state arrives every tenth of a second or so: redraw once a frame. */
   if (!linkDrawPending) {
     linkDrawPending = true;
     requestAnimationFrame(() => { linkDrawPending = false; showLink(); });
@@ -1074,59 +1069,6 @@ function showLink() {
   const n = (x) => x.toLocaleString('en');
   linkEl.textContent = `Link: ${n(linkCounts[0])} frames ${a} \u2192 ${b}, ` +
     `${n(linkCounts[1])} ${b} \u2192 ${a}`;
-}
-
-/* The second board of a pair. Its own seed, so its MAC is not its peer's:
- * two boards with one address would each refuse the other's as a
- * duplicate. */
-function startPeer(build, board) {
-  peerWorker?.terminate();
-  const w = new Worker('./worker.js', { type: 'module' });
-  peerWorker = w;
-  const terminal = (board.uses ?? []).includes('terminal');
-  peer.xterm.options.disableStdin = !terminal;
-  peer.xterm.write(terminal ? '\x1b[?25h' : '\x1b[?25l');
-  w.onmessage = ({ data }) => {
-    if (peerWorker !== w) {
-      if (data.type === 'done') w.terminate();
-      return;
-    }
-    if (data.type === 'eth') relay(1, data.frame);
-    else if (data.type === 'out') peer.term.write(new Uint8Array(data.buf));
-    else if (data.type === 'err') peer.term.note(data.text);
-    else if (data.type === 'done') {
-      /* The pair ends together. */
-      if (running) stopRun();
-      else endWorkers();
-    }
-  };
-  w.onerror = (e) => {
-    if (peerWorker !== w) return;
-    peer.term.note(`\n*** worker error: ${e.message} ***\n`);
-  };
-  const run = () => {
-    if (peerWorker !== w) return;
-    peerOn = true;
-    w.postMessage({
-      type: 'run',
-      url: `./${board.path}`,
-      interactive: !!build.interactive,
-      maxTimeMs: build.max_time_ms ?? 60_000,
-      clock: build.clock ?? 'virtual',
-      timeScale: 1,
-      linked: true,
-      seed: (DEFAULT_SEED + 1) >>> 0,
-    });
-  };
-  /* A client plugged in after its server, as a person would: until then,
-   * what the first board sends goes nowhere. */
-  peerOn = false;
-  if (board.start_after_ms) {
-    peer.term.note(`(powered on ${board.start_after_ms / 1000} s after the ${build.boards[0].label.toLowerCase()})\n`);
-    setTimeout(run, board.start_after_ms);
-  } else {
-    run();
-  }
 }
 
 async function start() {
@@ -1172,14 +1114,22 @@ async function start() {
       if (data.type === 'done') w.terminate();
       return;
     }
-    if (data.type === 'eth') relay(0, data.frame);
-    else if (data.type === 'state') {
-      if (data.state.outBytes !== undefined) term.rewind(data.state.outBytes);
-      if (!second) showKernel(data.state);
+    /* In a pair, the second board's output is marked as board 1. */
+    const t = data.board === 1 ? peer.term : term;
+    if (data.type === 'state') {
+      if (data.state.outBytes !== undefined) t.rewind(data.state.outBytes);
+      if (second) countLink(data.board ?? 0, data.state.eth);
+      else showKernel(data.state);
     }
     else if (data.type === 'gpio') showLeds(data.values);
-    else if (data.type === 'out') term.write(new Uint8Array(data.buf));
-    else if (data.type === 'err') term.note(data.text);
+    else if (data.type === 'out') t.write(new Uint8Array(data.buf));
+    else if (data.type === 'err') t.note(data.text);
+    else if (data.type === 'power' && data.board === 1) {
+      /* A client plugged in after its server, as a person would, at a
+       * stated time into the server's run. */
+      peer.term.note(`(powered on ${second.start_after_ms / 1000} s after the ` +
+                     `${first.label.toLowerCase()})\n`);
+    }
     else if (data.type === 'flash') saveFlash(build.name, data.image);
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
@@ -1206,17 +1156,35 @@ async function start() {
    * reached, and an interactive one goes at the pace of the person. */
   const paced = build.clock === 'paced' && !interactive;
 
-  w.postMessage({
-    type: 'run',
-    url: `./${first.path}`,
-    interactive,
-    maxTimeMs: build.max_time_ms ?? 60_000,
-    clock: build.clock ?? 'virtual',
-    timeScale: paced ? Number(speedEl.value) : 1,
-    flashImage,
-    linked: !!second,
-  });
-  if (second) startPeer(build, second);
+  if (second) {
+    /* Both boards in this Worker, on one clock. Each has its own seed, so
+     * its MAC is not its peer's: two boards with one address would each
+     * refuse the other's as a duplicate. */
+    const terminal2 = (second.uses ?? []).includes('terminal');
+    peer.xterm.options.disableStdin = !terminal2;
+    peer.xterm.write(terminal2 ? '\x1b[?25h' : '\x1b[?25l');
+    w.postMessage({
+      type: 'run-pair',
+      maxTimeMs: build.max_time_ms ?? 60_000,
+      clock: build.clock ?? 'virtual',
+      timeScale: 1,
+      boards: [
+        { url: `./${first.path}`, seed: DEFAULT_SEED },
+        { url: `./${second.path}`, seed: (DEFAULT_SEED + 1) >>> 0,
+          epochMs: second.start_after_ms ?? 0 },
+      ],
+    });
+  } else {
+    w.postMessage({
+      type: 'run',
+      url: `./${first.path}`,
+      interactive,
+      maxTimeMs: build.max_time_ms ?? 60_000,
+      clock: build.clock ?? 'virtual',
+      timeScale: paced ? Number(speedEl.value) : 1,
+      flashImage,
+    });
+  }
   /* The board starts as the tilt pad has it: level, unless someone tilted
    * it. An emulated chip that nobody set would read no gravity at all. */
   tiltSent = null;
