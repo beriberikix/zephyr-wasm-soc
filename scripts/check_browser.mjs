@@ -695,6 +695,64 @@ const pageChecks = [
     if (out) throw new Error('output from the stopped run reached the new selection');
     return 'choosing another build mid-run stops it';
   }],
+  /* Stop ends the run's Worker outright, so a Run straight after it boots
+   * as fast as the first. It used to wait on the old Worker noticing. */
+  ['restart', async () => {
+    await page.selectOption('#build', 'accel');
+    await page.click('#run');
+    await until('the accelerometer build never booted',
+                () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 30_000);
+    await page.click('#stop');
+    const t0 = Date.now();
+    await page.click('#run', { timeout: 2000 });
+    await until('the second run never booted',
+                () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 30_000);
+    const ms = Date.now() - t0;
+    await page.click('#stop');
+    if (ms > 1000) throw new Error(`Run straight after Stop took ${ms} ms to boot`);
+    return `Run straight after Stop boots in ${ms} ms`;
+  }],
+  /* A change of build ends the old run's Worker even in the middle of a long
+   * step: LVGL draws its first screen in one, for seconds, and a Worker left
+   * to notice on its own kept a core busy through the next run's boot. */
+  ['switch-busy', async () => {
+    await page.selectOption('#build', 'lvgl');
+    await page.click('#run');
+    await page.waitForTimeout(300);
+    await page.selectOption('#build', 'accel');
+    const t0 = Date.now();
+    await page.click('#run', { timeout: 2000 });
+    await until('the accelerometer build never booted',
+                () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 30_000);
+    const ms = Date.now() - t0;
+    const out = await page.evaluate(() => window.zephyrOutput());
+    await page.click('#stop');
+    if (/lvgl|LVGL/.test(out)) throw new Error('output from the LVGL run reached the next one');
+    if (ms > 1000) throw new Error(`with LVGL just switched away from, accel took ${ms} ms to boot`);
+    return `switching away from LVGL mid-boot, the next build boots in ${ms} ms`;
+  }],
+  /* Stopping a pair ends both boards: nothing either was still sending
+   * reaches the terminals afterwards, and the next run is left alone. */
+  ['pair-stop', async () => {
+    await page.selectOption('#build', 'echo');
+    await page.click('#run');
+    await until('the echo server never started',
+                () => window.zephyrOutputs()[0].includes('uart:~$'), null, 30_000);
+    await page.click('#stop');
+    await page.click('#clear');
+    await page.waitForTimeout(1500);
+    const left = await page.evaluate(() => window.zephyrOutputs().map((o) => o.trim()));
+    if (left.some((o) => o && o !== 'uart:~$')) {
+      throw new Error(`output arrived after Stop and Clear: ${JSON.stringify(left)}`);
+    }
+    await page.selectOption('#build', 'hello');
+    await page.click('#run');
+    await until('hello never finished after the pair',
+                () => document.getElementById('status').textContent.startsWith('Finished'), null, 30_000);
+    const out = await page.evaluate(() => window.zephyrOutput());
+    if (!out.includes('Hello World!')) throw new Error('the run after the pair did not print its greeting');
+    return 'Stop ends both boards of a pair; nothing arrives after Clear, and the next run is untouched';
+  }],
   ['pause', async () => {
     await page.selectOption('#build', 'philo');
     await page.click('#run');

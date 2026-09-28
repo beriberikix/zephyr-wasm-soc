@@ -226,6 +226,13 @@ Smaller ones, fixed with them:
 
 The other two partial results came from mistakes in the test plan.
 
+A second run, after those fixes and the zperf pair, passed everything. It
+checked all ten fixes, the new pair over IPv4 and IPv6, and every other
+build. It found one rough edge. Stop, or a change of build, left the old
+run's Worker going until it noticed, which could be seconds, so a quick Run
+booted slowly beside it. The page now ends the Worker at once
+(`DESIGN.md` D8h).
+
 ## Phase 0 — foundations
 
 The issue starts at Phase 1. It lists "the kernel evidence is one test suite"

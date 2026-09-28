@@ -1313,3 +1313,30 @@ That is a board default, not an argument to the sample, and it stays
 within what a pair may set.
 
 The score is 62.
+
+### Tick 63 — Stop means stopped
+
+The second browser run passed everything, including the zperf pair over
+IPv4 and IPv6. It found one rough edge. Stop, then Run, within a second or
+two could make the next boot take 4 to 15 s instead of about 150 ms.
+
+The page never ended a Worker itself. It asked the Worker to stop and
+waited for `done`. A Worker hears the request only when its driver loop
+yields, which leaves several ways to keep a core busy:
+- **A change of build.** This detached the old Workers without ending
+  them, and enabled Run at once.
+- **A long step.** LVGL's first screen is a single step of seconds.
+- **A paced guest behind the wall clock.** It never waited, so it never
+  yielded.
+- **Pairs.**
+  - The first board's `done` re-enabled Run while the second was still
+    running.
+  - The old peer's `done` could then stop the run just started.
+
+Now Stop, a change of build and a new Run terminate both Workers
+outright. The one exception is a build that keeps flash: it gets 500 ms to
+hand over its last image first. A paced run also yields at least every
+50 ms. Three browser checks cover it:
+- Run straight after Stop;
+- switching away from LVGL mid-boot;
+- stopping a pair.
