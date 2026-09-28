@@ -421,6 +421,26 @@ That means an external interrupt is delivered no sooner than the next time
 the guest idles or reaches a safepoint, which is the same bound everything
 else on this port has.
 
+**A line nobody has enabled yet keeps its interrupt.** The host holds a
+raised line back until the guest's `irq_enabled_mask` has it, as the pending
+register of an interrupt controller does, and only then writes it into the
+pending word. And both sides decide whether there is work on the interrupts
+the guest could actually take: pending, enabled, and not masked. Idle
+compares against those, and so does the host when it decides whether to let
+time pass.
+
+Both halves come from one bug. The page levels the Tilt pad with a reading
+as the run starts, so `WASM_IRQ_SENSOR` was raised before the sensor bridge
+had enabled its line, and the bit sat in the pending word where nothing
+could take it. The host saw a pending interrupt, so it never moved the
+clock to the next deadline. The bmi160 driver's boot-time busy-waits, about
+59 ms, then crept forward one safepoint tick at a time. Each tick was an
+Asyncify round trip, about 12 million of them, and the terminal stayed
+blank for eight seconds of CPU time. The guest had the same flaw in its own
+idle, which returned at once, and forever, for a bit it could not take.
+CI never saw it, because its scripted reading came 1.5 s in. The
+accelerometer entry now sends one at 0 ms as well.
+
 ### D5b. Pacing: waiting afterwards, not deciding beforehand
 
 A sample that blinks once a second is correct under virtual time and
@@ -558,6 +578,16 @@ steps, where its state is `NORMAL`.
 Snapshots are taken only while paused, and bounded. Copying 128 KB on every
 suspension would be thousands of copies a second in service of nothing;
 copying it when a person asks for a step is free.
+
+**What was printed goes back too.** A terminal can only be written to, so
+the undone steps' output stayed on the screen, and stepping forward again
+printed it a second time. The host counts the bytes the guest has printed,
+the count is part of the snapshot, and every state it reports carries it.
+The page keeps what it has shown, up to a megabyte. When a state arrives
+with a smaller count than it has shown, the page cuts its record back to
+that point, resets the terminal and writes the record again. Output and
+state come down the same ordered channel from the worker, so the two counts
+always refer to the same moment.
 
 ### D8h. Flash lives in linear memory, and the host keeps it
 

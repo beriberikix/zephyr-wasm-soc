@@ -1227,3 +1227,49 @@ A detour on the way: building the clients through `xargs` stripped the
 quotes from string options, and Kconfig refused the malformed values.
 `stage_site.sh` passes arguments by plain word splitting, which keeps
 them, and so the check runs use that path.
+
+### Tick 61 — a browser agent tries the site
+
+A browser agent ran all 26 builds on the live site from a written test
+plan. It watched for console errors from the page and its workers, found
+none, and marked six builds partly right. Three read-only investigations
+then sorted real bugs from mistakes in the plan.
+
+- **The accelerometer's blank eight seconds.** The page levels the Tilt
+  pad with a reading as the run starts, before the guest has booted. The
+  interrupt bit landed on a line the sensor bridge had not enabled yet.
+  The host treated any pending bit as work, so it never jumped to the next
+  deadline. So bmi160's 59 ms of boot-time busy-waits moved forward one
+  safepoint tick at a time, about 12 million Asyncify round trips. The fix
+  has three parts:
+  - the host holds a line back until it is enabled;
+  - both hosts judge idleness on pending, enabled and unmasked lines;
+  - the guest's idle does the same.
+
+  The banner now arrives in under 0.1 s, against 11 s before. With a
+  reading at 0 ms there are 10 idle suspensions, not 12 million. CI never
+  saw it because its scripted reading came at 1.5 s. The check now also
+  sends one at 0 ms.
+- **Back left the output behind.** The kernel came back exactly, but the
+  terminal did not, so a re-step printed the same lines twice. The host
+  now counts output bytes in the snapshot. The page rewrites its terminal
+  when a state reports fewer bytes than it has shown.
+- **The timer set its alarm early.** It counted the kernel's ticks from
+  the last announcement rather than from now, so a `k_busy_wait` before a
+  sleep brought the alarm forward by the busy-wait's length. The kernel
+  reprogrammed it, so nothing went wrong but the status line.
+- **Upstream's, written up rather than worked around.**
+  - The echo servers print an IPv6 client's address from a 32-byte buffer,
+    so `inet_ntop` refuses and they print stack garbage. Patch 0011.
+  - `http_client`'s POST paths are for net-tools' Python server, not
+    `http_server`, so the POSTs get 404 and 405. The hint says so now.
+- **Mistakes in the test plan.** It asked for `kernel threads`, which is
+  `kernel thread list` in this Zephyr. It also expected the echo server to
+  print "(Ethernet)" unprompted, where CI types `net iface` first.
+
+The rest were page polish:
+- "running" in the thread table;
+- the speed and the last build kept across a reload;
+- a terminal that follows `data-theme`;
+- output-only builds wrapping at phone width;
+- two guards against a stale worker.

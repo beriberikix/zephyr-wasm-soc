@@ -67,7 +67,16 @@ void sys_clock_set_timeout(uint32_t ticks, bool idle)
 		ticks = 1U;
 	}
 
-	wasm_host_set_alarm_ns(last_announced_ns + (int64_t)ticks * NSEC_PER_TICK);
+	/* The kernel counts ticks from now, and now can be past the last
+	 * announcement: a busy-wait moves the clock without the kernel
+	 * hearing of it. Counting from the announcement instead set the alarm
+	 * early by however long that was. Stay on a tick boundary all the
+	 * same, so what is announced is always whole ticks.
+	 */
+	int64_t at = last_announced_ns +
+		     ((int64_t)sys_clock_elapsed() + (int64_t)ticks) * NSEC_PER_TICK;
+
+	wasm_host_set_alarm_ns(at);
 }
 
 uint32_t sys_clock_elapsed(void)

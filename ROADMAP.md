@@ -161,9 +161,9 @@ What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
    `upstream/zephyr/`: ten applications, `basic/threads` among them, two
    kernel suites and two network suites. With them go the QUIC and CAN
-   socket fixes, and one for mbedTLS in `upstream/mbedtls/`. Sending them
-   is a person's job, since Zephyr needs the submitter's own
-   `Signed-off-by`.
+   socket fixes, 0011 for the echo servers' IPv6 address buffers, and one
+   for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
+   since Zephyr needs the submitter's own `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
@@ -189,6 +189,42 @@ which were a stack overflow in the port. Between them, 118 of 139 network
 suites now pass (Phase 6). And so is the virtual L2: two boards on the
 page, echoing over Ethernet, which raised the score to 52, and seven more
 pairs, which took it to 61.
+
+**A browser test, 28 September.** A browser agent ran every build on the
+live site as a person would, from a written test plan, and read the output
+the way the checks do. It found no console errors and no build that
+failed outright, and six that were only partly right. Four of those were
+real:
+- **The accelerometer's terminal stayed blank for eight seconds.** The
+  page's first reading raised an interrupt before its driver had enabled
+  the line, and time stood still until the driver did. Both the host and
+  the guest's idle now look only at interrupts the guest can take, and the
+  host holds a line back until it is enabled (`DESIGN.md` D8d). The
+  accelerometer check now sends a reading at 0 ms, as the page does.
+- **Stepping back left the undone steps' output on the screen**, so
+  stepping forward again printed it twice. The terminal now goes back with
+  the kernel (`DESIGN.md` D8g), and the browser check steps until
+  something is printed, back as far, and forward again.
+- **The echo servers printed an empty address for IPv6 clients.** That is
+  upstream's: a 32-byte buffer for a 46-byte address. Patch 0011.
+- **The HTTP client's POSTs come back 404 and 405.** Also upstream's: the
+  client was written for a test server on a Linux host, and its paths are
+  fixed in its source. The hint says so now.
+
+Smaller ones, fixed with them:
+- the thread holding the CPU was shown as "queued", and is now "running";
+- the timer driver set its alarm early by however long a busy-wait had
+  run, so the status line showed a deadline that had already passed;
+- the speed and the last build chosen are now kept across a reload, as the
+  help text said they were;
+- the terminal now follows a page theme set with `data-theme`;
+- builds that only print now wrap to a phone's width;
+- the first lesson step no longer says to press Run when the build is
+  already running;
+- an error from a run the page had already let go of could reach the next
+  one's terminal.
+
+The other two partial results came from mistakes in the test plan.
 
 ## Phase 0 — foundations
 
@@ -342,8 +378,8 @@ Done.
       snapshot is a copy of that plus the host's own bookkeeping, and a
       restore is a write. Stepping forward three switches and back three
       returns the clock, the switch counter and the thread holding the CPU
-      to exactly where they were, which the browser check asserts.
-      `DESIGN.md` D8g.
+      to exactly where they were, which the browser check asserts. What
+      the undone steps printed is taken back as well. `DESIGN.md` D8g.
 - [x] **Which thread is waiting on what.** A "waiting for" column: the
       mutex a thread waits on and which thread holds it, the address of any
       other kernel object, and how long is left before a sleeping thread
@@ -605,7 +641,10 @@ What happened to each:
 - [x] **Seven more pairs**, which raised the score from 52 to 61. They sit
       under "Two boards" in the page's menu.
       - **Echo, as shipped:** `echo_client` against `echo_async`,
-        `echo_async_select` and the one-at-a-time `echo`. TCP only.
+        `echo_async_select` and the one-at-a-time `echo`. TCP only. Each
+        server prints an empty address for its IPv6 client, from a buffer
+        too small for one; patch 0011 fixes that, after which `echo-one`
+        can expect the client's address.
       - **CoAP**, with the client's addresses set (see "The measure"):
         `coap_server` with `coap_client`, with `coap_upload` and with
         `coap_download`. The first runs GET, PUT, POST, DELETE, a 2 KB
@@ -613,6 +652,10 @@ What happened to each:
         64-byte blocks.
       - **HTTP:** `http_client` against `http_server`, which listens on the
         port the client has built in. GET and POST, over IPv4 and IPv6.
+        The GETs succeed. The POSTs come back 404 or 405, since the client
+        was written for a test server on a Linux host (net-tools'
+        `http-server.py`) and its paths are fixed in its source, so no
+        address can fix it.
 
       Two things the pairs needed from the host:
       - A client powered on two seconds after its server

@@ -85,6 +85,16 @@ int z_wasm_irq_is_enabled(unsigned int irq)
 	return (irq < CONFIG_WASM_IRQ_LINES) && ((irq_enabled_mask & BIT(irq)) != 0U);
 }
 
+/* The pending interrupts the dispatcher would take, masking aside. Idle
+ * tests this rather than the pending word: a bit on a line no driver has
+ * enabled yet can be taken by nothing, and treating it as work would make
+ * idle return at once, forever, without ever waiting for the host.
+ */
+uint32_t z_wasm_irq_active(void)
+{
+	return z_wasm_irq_pending & irq_enabled_mask;
+}
+
 /*
  * Run every pending, enabled handler. Called from safepoints, never from the
  * host directly: the host only sets the word.
