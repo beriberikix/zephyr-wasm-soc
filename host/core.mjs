@@ -685,9 +685,16 @@ export class Host {
      * limit above ends it. Timing the whole run instead gave up on the LVGL
      * accelerometer chart, which is slower than real time here (it redraws
      * the whole screen fifty times a second, and a pixel fill pays for a
-     * safepoint per pixel), as if it had hung. */
+     * safepoint per pixel), as if it had hung.
+     *
+     * And never less than a minute. The LVGL demo spends 8 to 13 s of wall
+     * time in one step at boot, drawing its first screen before anything
+     * suspends, and how long depends on how busy the machine is. Against a
+     * five-second run's fifteen, that failed now and then for no reason
+     * but load. */
     const since = this.stepStartedAt ?? this.startedAt;
-    if (Number(this.platform.nowNs() - since) / 1e6 > this.opts.maxTimeMs * 3) {
+    const limitMs = Math.max(this.opts.maxTimeMs * 3, 60_000);
+    if (Number(this.platform.nowNs() - since) / 1e6 > limitMs) {
       throw new GaveUp('gave up: the guest ran without suspending');
     }
     return true;
