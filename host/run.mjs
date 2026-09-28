@@ -39,6 +39,7 @@ function parseArgs(argv) {
     else if (a === '--peer') opts.peer = argv[++i];
     else if (a === '--peer-out') opts.peerOut = argv[++i];
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
+    else if (a === '--peer-stdin') opts.peerStdin = argv[++i];
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -159,7 +160,10 @@ function usage() {
                      output is dropped
   --peer-delay <ms>  power the second board on this long after the first,
                      as a person plugging in a client after its server.
-                     Wall-clock milliseconds, since the pair is paced`);
+                     Wall-clock milliseconds, since the pair is paced
+  --peer-stdin <file>
+                     what is typed into the second board's UART, as
+                     stdin is into the first's under --interactive`);
 }
 
 const nodePlatform = {
@@ -282,6 +286,11 @@ if (opts.peer) {
     gpio: [], inputScript: [], flashImage: undefined,
     seed: ((opts.seed ?? DEFAULT_SEED) + 1) >>> 0,
   });
+  /* Typed into the second board: queued where its UART reads from, where
+   * the bytes wait for the shell as piped stdin does on the first. The
+   * peer needs no --interactive for that; being linked already keeps it
+   * running, and yielding while idle. */
+  if (opts.peerStdin) peer.input.push(...fs.readFileSync(opts.peerStdin));
 }
 
 const host = new Host(nodePlatform, opts);

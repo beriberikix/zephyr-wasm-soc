@@ -268,10 +268,12 @@ stops the run with a message that names the buffer and the Kconfig option.
 Either way it is found after the damage, not before.
 
 The default is `CONFIG_WASM_ASYNCIFY_BUFFER_SIZE=4096`, and 8192 in a build
-with mbedTLS. A TLS handshake suspends from deeper than anything else
-measured: `tests/net/socket/tls` unwound 4,160 bytes, which overflowed the
-default and passed with the larger one. Tying the larger default to
-mbedTLS, rather than raising it for every build, keeps the cost where it is
+with mbedTLS or zperf. A TLS handshake suspends from deeper than anything
+else measured: `tests/net/socket/tls` unwound 4,160 bytes, which overflowed
+the default and passed with the larger one. A zperf upload runs in the
+shell thread, below the command handler, the shell and the socket layer,
+and unwound 4,240. Tying the larger default to what needs it, rather
+than raising it for every build, keeps the cost where it is
 paid: every thread's stack carries the buffer, and every step-back snapshot
 copies it. The port places
 the buffer at the top of the stack object so an overflow runs into the next
@@ -782,6 +784,19 @@ boots alongside its server loses that race and gives up. Plugging the
 client in second is what a person would do, and it changes nothing in
 either sample. The first board is always the one that starts first,
 because it is the one `run.mjs` writes to stdout.
+
+**Either board can be typed into.** A board's UART reads whatever is in
+the host's input queue, interactive or not; `--interactive` only decides
+whether stdin feeds the queue. So the second board's scripted input,
+`run.mjs --peer-stdin <file>`, goes straight into its queue when it is
+made, and waits there for its shell as piped stdin waits for the first
+board's. Being linked already keeps the peer running and yielding while
+idle, which is the rest of what `--interactive` would have given it. On
+the page each terminal already sent its keys to its own board; the browser
+check now types a pair's second `ci_stdin` into the second terminal. zperf
+is the pair that needed it: one board runs `zperf udp download`, the other
+`zperf udp upload`, and each command waits for the one before it, since an
+upload holds the shell until it is done.
 
 The first pair is upstream's `echo_client` with `echo_service`, which mirror
 each other's addresses as shipped. `echo_server` would be the obvious

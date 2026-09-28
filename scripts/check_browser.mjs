@@ -342,17 +342,24 @@ async function checkPair(b) {
   }
   await page.click('#run');
   const outputOf = (i) => page.evaluate((n) => window.zephyrOutputs()[n], i);
-  try {
-    if (first.ci_stdin) {
-      await page.waitForFunction(() => window.zephyrOutputs()[0].includes('uart:~$'), null,
-                                 { timeout: 60_000, polling: 250 });
-      await page.click('#term');
-      for (const line of first.ci_stdin.split('\n').filter(Boolean)) {
-        await page.keyboard.type(line);
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(250);
-      }
+  /* Typed into a board's own terminal once its shell is up. The second
+   * board's prompt appears only once it is powered on, so waiting for it
+   * covers start_after_ms as well. A line typed while the shell is busy,
+   * as it is through a zperf upload, waits for it, as it would for a
+   * person. */
+  const typeInto = async (i, selector, text) => {
+    await page.waitForFunction((n) => window.zephyrOutputs()[n].includes('uart:~$'), i,
+                               { timeout: 60_000, polling: 250 });
+    await page.click(selector);
+    for (const line of text.split('\n').filter(Boolean)) {
+      await page.keyboard.type(line);
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(250);
     }
+  };
+  try {
+    if (first.ci_stdin) await typeInto(0, '#term', first.ci_stdin);
+    if (second.ci_stdin) await typeInto(1, '#term2', second.ci_stdin);
     for (const [i, board] of [first, second].entries()) {
       for (const want of board.expect ?? []) {
         try {

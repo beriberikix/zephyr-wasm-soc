@@ -15,7 +15,7 @@
 
 import { spawn } from 'node:child_process';
 import os from 'node:os';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,7 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
   if (peer) {
     argv.push('--peer', peer.wasm, '--peer-out', peer.out);
     if (peer.delayMs) argv.push('--peer-delay', String(peer.delayMs));
+    if (peer.stdin) argv.push('--peer-stdin', peer.stdin);
   }
   argv.push(wasm);
   return new Promise((resolve) => {
@@ -98,6 +99,12 @@ for (const b of manifest.builds) {
   const peer = second &&
     { wasm: path.join(site, second.path), out: path.join(os.tmpdir(), `check-site-${second.name}.out`),
       delayMs: second.start_after_ms ?? 0 };
+  /* What is typed into the second board goes through a file, since stdin
+   * is the first board's. */
+  if (second?.ci_stdin) {
+    peer.stdin = path.join(os.tmpdir(), `check-site-${second.name}.in`);
+    await writeFile(peer.stdin, second.ci_stdin);
+  }
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
   const stdin = first.ci_stdin;

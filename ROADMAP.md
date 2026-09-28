@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **61**. 47 pass upstream's own criterion, and 14 more are counted
+today: **62**. 47 pass upstream's own criterion, and 15 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -23,9 +23,9 @@ if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
 adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
-eleven network samples the two-board pairs run: the echo client and four
-echo servers, the CoAP server and three CoAP clients, and HTTP's client and
-server. Upstream gives those no criterion twister can run, because it has no
+twelve network samples the two-board pairs run: the echo client and four
+echo servers, the CoAP server and three CoAP clients, HTTP's client and
+server, and zperf, which is both ends of its own pair. Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
 
@@ -44,9 +44,9 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 61, six count only
-because of it, the CoAP server with its three clients and HTTP's client and
-server. The five echo samples pair as shipped.
+criterion, which is why it is spelled out: of the 62, seven count only
+because of it: the CoAP server with its three clients, HTTP's client and
+server, and zperf. The five echo samples pair as shipped.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -168,11 +168,10 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **Per-board input, then zperf.** Eight pairs run now (Phase 6).
-   `zperf` needs both boards typed into, and the host types into only one
-   of them. QUIC's pair waits on patch 0007, and mDNS's on the minimal
-   libc's `strcasecmp`. Lockstep time would make a pair as repeatable as a
-   single board.
+3. **Lockstep time, and the last pairs.** Nine pairs run now (Phase 6),
+   zperf the latest, now that either board can be typed into. Lockstep
+   time would make a pair as repeatable as a single board. QUIC's pair
+   waits on patch 0007, and mDNS's on the minimal libc's `strcasecmp`.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -187,8 +186,9 @@ waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
 four. So is diagnosing the network suites' indirect-call traps, most of
 which were a stack overflow in the port. Between them, 118 of 139 network
 suites now pass (Phase 6). And so is the virtual L2: two boards on the
-page, echoing over Ethernet, which raised the score to 52, and seven more
-pairs, which took it to 61.
+page, echoing over Ethernet, which raised the score to 52, seven more
+pairs, which took it to 61, and zperf, typed into on both boards, which
+took it to 62.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -673,8 +673,6 @@ What happened to each:
       - `dns_resolve` with `mdns_responder`: the network shell calls
         `strcasecmp`, which the minimal libc lacks. Fixing that means
         choosing a libc, which is more than an address.
-      - `zperf`: both boards are driven from their shells, and the host
-        can type into only one of them. Per-board input comes first.
       - `echo_server`: needs patch 0010.
 
       Upstream's CoAP client library reports `-ECANCELED` for a request
@@ -682,6 +680,25 @@ What happened to each:
       last callback. The upload and download samples print it as an error
       after "done". It does not affect the transfer. The race is
       upstream's, and it is recorded here rather than chased.
+- [x] **Per-board input, and zperf.** Scripted input now reaches either
+      board of a pair: `ci_stdin` on the second board goes through
+      `run.mjs --peer-stdin` in Node and is typed into its own terminal in
+      the browser check. That was all zperf needed. Its two ends are the
+      same sample, the client with its addresses swapped. The server's
+      shell starts UDP and TCP receivers, and the client's uploads for two
+      seconds each way: 52 UDP packets at 50 kbit/s with none lost, and a
+      TCP stream. The score went from 61 to 62.
+
+      zperf's upload suspends from deep in the shell thread, below a
+      command handler, the shell and the socket layer. That is 4,240 bytes
+      of unwound frames, more than the default Asyncify buffer holds, so a
+      build with zperf gets the larger buffer mbedTLS already gets
+      (`DESIGN.md` D8).
+
+      The throughput it reports is that of two paced virtual boards in one
+      process, and of TCP especially it says nothing about a real link:
+      tens of megabits a second, because the stack's copying takes no
+      guest time.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`

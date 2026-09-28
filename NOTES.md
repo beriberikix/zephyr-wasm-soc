@@ -1284,3 +1284,32 @@ Two things turned up while checking the fixes, neither caused by them:
   up on a refused connection, and in one browser run it connected 0.35 s
   in, before the server listened. It now powers on two seconds after its
   server, as the CoAP and HTTP clients already did.
+
+### Tick 62 — typing into the second board, and zperf
+
+Per-board input turned out to be almost nothing. A board's UART reads
+from the host's input queue whether or not it is interactive, and
+`--interactive` only decides whether stdin fills that queue. So
+`run.mjs --peer-stdin <file>` pushes the file into the second board's
+queue when the board is made, where the bytes wait for its shell. The
+page's second terminal already sent keys to its own board, so the browser
+check only had to type into it.
+
+zperf is its own peer. The client is the same sample with its addresses
+swapped, and nothing else set:
+- the server's shell runs `zperf udp download` and `zperf tcp download`;
+- the client's runs a two-second UDP upload at 50 kbit/s, then a TCP one.
+
+UDP moved 52 packets with none lost or out of order. TCP reports tens of
+megabits a second, which only says the stack's copying costs no guest
+time.
+
+The first run stopped the client with an Asyncify buffer overflow: 4,240
+bytes of unwound frames against a 4,096-byte buffer. The upload suspends
+from the shell thread, below the command handler, the shell and the
+socket layer. The port already gives mbedTLS builds 8 KB for the same
+reason (a TLS handshake needed 4,160), so zperf builds get the same.
+That is a board default, not an argument to the sample, and it stays
+within what a pair may set.
+
+The score is 62.
