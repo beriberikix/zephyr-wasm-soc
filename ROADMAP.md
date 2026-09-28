@@ -154,7 +154,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 50. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 62. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -184,7 +184,7 @@ three more samples pass, and C++ constructors run (below, "Two levers"). So
 is the first lesson, with the thread table's answer to what each thread is
 waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
 four. So is diagnosing the network suites' indirect-call traps, most of
-which were a stack overflow in the port. Between them, 118 of 139 network
+which were a stack overflow in the port. Between them, 119 of 139 network
 suites now pass (Phase 6). And so is the virtual L2: two boards on the
 page, echoing over Ethernet, which raised the score to 52, seven more
 pairs, which took it to 61, and zperf, typed into on both boards, which
@@ -783,15 +783,16 @@ and the two largest groups are not in any phase.
 
       `scripts/try_upstream.sh` applies it for one run. All 23 entries pass,
       so all ten applications, and both kernel suites finish and pass. With
-      the series the score would be 54. It stays 44 until Zephyr takes the
-      patches and the pin moves, because "unmodified" means upstream's tree.
+      the series the score would be ten higher, 72. It stays 62 until Zephyr
+      takes the patches and the pin moves, because "unmodified" means
+      upstream's tree.
 
 ## Lessons
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 50. Nothing yet answers the second. The page runs samples; it does not
-teach with them, and nobody learning Zephyr has tried it.
+to 62. Nothing yet answers the second. The page now teaches with one
+sample, and nobody learning Zephyr has tried it yet.
 
 - [x] **Which thread is waiting on what** (Phase 2's open item) came first,
       because "waiting for a fork that Philosopher 2 holds" is the lesson.
