@@ -78,6 +78,13 @@ const PACE_MAX_NS = 5_000_000_000n;
  * time and there is nothing to catch up to. */
 const PACE_BEHIND_MS = 250;
 
+/* The longest a paced run goes without letting its host's event loop have
+ * a turn. A guest that keeps up waits between steps anyway; one that has
+ * fallen behind never waits, and would otherwise not hear Stop, a change
+ * of speed or a frame from its peer until it caught up, which it may
+ * never do. */
+const PACE_YIELD_NS = 50_000_000n;
+
 /* Virtual time charged per safepoint progress report. With the default of
  * 20000 safepoints between reports this makes a spinning thread advance the
  * clock at a plausible rate rather than a meaningful one; what matters is
@@ -914,6 +921,7 @@ export class Host {
      */
     const paced = this.opts.clock === 'paced';
     let lastNow = this.nowNs;
+    let lastYield = this.platform.nowNs();
     const reanchor = () => {
       this.pace = { guest: this.nowNs, wall: this.platform.nowNs(),
                     scale: this.opts.timeScale || 1 };
@@ -994,9 +1002,11 @@ export class Host {
         if (aheadMs >= 1) {
           this.yieldToHost = false;
           await this.platform.wait(aheadMs);
+          lastYield = this.platform.nowNs();
           continue;
         }
         if (aheadMs < -PACE_BEHIND_MS) reanchor();
+        if (this.platform.nowNs() - lastYield > PACE_YIELD_NS) this.yieldToHost = true;
       }
       if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a
@@ -1004,6 +1014,7 @@ export class Host {
          * the guest is idle, which is exactly when input can matter. */
         this.yieldToHost = false;
         await this.platform.yieldToEventLoop(this.input.length > 0);
+        lastYield = this.platform.nowNs();
       }
     }
     this.stopInput();

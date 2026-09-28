@@ -876,18 +876,57 @@ function resetBoard() {
 /* Stop the run, if there is one. With `detach`, the page lets go of it at
  * once, for a new selection; the worker still stops cleanly, so a build
  * with flash gets its last image saved. */
+/* What a run leaves when it ends, however it ends: the board off, LEDs
+ * dark, the display dimmed, no cursor since nothing reads the keyboard,
+ * and the kernel panel as the run left it. */
+function endRun(status) {
+  setRunning(false);
+  showLeds(0);
+  xterm.write('\x1b[?25l');
+  peer.xterm.write('\x1b[?25l');
+  screenEl.classList.add('off');
+  if (lastState) showKernel(lastState);
+  if (status) statusEl.textContent = status;
+}
+
+/* End both boards' Workers outright. Asking a Worker to stop is not
+ * enough: it only hears the request when its driver loop next yields, and
+ * a guest in one long step -- LVGL drawing its first screen -- does not
+ * yield for seconds, burning a core while the next run boots. */
+function endWorkers() {
+  worker?.terminate();
+  peerWorker?.terminate();
+  worker = null;
+  peerWorker = null;
+  peerOn = false;
+}
+
+/* Stop the run: end its Workers at once. A build that keeps flash is asked
+ * first, and given half a second to hand over its last image, since its
+ * writes since the last save would otherwise be lost; then it is ended
+ * whether it answered or not. `detach` is a change of build, which shows
+ * its own status. */
 function stopRun({ detach = false } = {}) {
   if (!running) return;
   stopping = true;
-  /* Still loading its flash: start() sees `stopping` and goes no further. */
-  if (!worker) { setRunning(false); return; }
-  worker.postMessage({ type: 'stop' });
-  peerWorker?.postMessage({ type: 'stop' });
-  if (detach) {
-    worker = null;
-    peerWorker = null;
-    setRunning(false);
+  const w = worker;
+  const keepsFlash = (currentBuild?.uses ?? []).includes('flash');
+  if (!w || !keepsFlash) {
+    endWorkers();
+    endRun(detach ? null : 'Stopped.');
+    return;
   }
+  w.postMessage({ type: 'stop' });
+  if (detach) {
+    /* Its flash is still saved: a Worker the page has let go of keeps
+     * only that (start()'s handler). */
+    worker = null;
+    endRun(null);
+  }
+  setTimeout(() => {
+    w.terminate();
+    if (worker === w) { worker = null; endRun('Stopped.'); }
+  }, 500);
 }
 
 /* What the page remembers between visits, in this browser only. Storage
@@ -1056,9 +1095,9 @@ function startPeer(build, board) {
     else if (data.type === 'out') peer.term.write(new Uint8Array(data.buf));
     else if (data.type === 'err') peer.term.note(data.text);
     else if (data.type === 'done') {
-      peer.xterm.write('\x1b[?25l');
       /* The pair ends together. */
       if (running) stopRun();
+      else endWorkers();
     }
   };
   w.onerror = (e) => {
@@ -1095,8 +1134,12 @@ async function start() {
   if (!build) return;
   currentBuild = build;
   stopping = false;
+  /* Whatever ran before is ended now, not when it gets round to it. */
+  endWorkers();
   resetBoard();
   setRunning(true);
+  /* A save still in progress lands before this reads. */
+  await flashSaving;
   const flashImage = await loadFlash(build.name);
   /* The menu stays live while the flash loads. Another choice, or Stop, in
    * that moment means this run is no longer wanted. */
@@ -1141,25 +1184,19 @@ async function start() {
     else if (data.type === 'frame') showFrame(data);
     else if (data.type === 'done') {
       /* The pair ends together. */
-      peerWorker?.postMessage({ type: 'stop' });
-      setRunning(false);
-      /* The board is off: LEDs dark, the display dimmed, and nothing reads
-       * the keyboard any more, so no cursor. */
-      showLeds(0);
-      xterm.write('\x1b[?25l');
-      screenEl.classList.add('off');
-      if (lastState) showKernel(lastState);
+      endWorkers();
       const minutes = Math.round((build.max_time_ms ?? 60_000) / 60_000);
-      statusEl.textContent = stopping ? 'Stopped.'
+      endRun(stopping ? 'Stopped.'
         : data.code === 2 && (build.endless || build.interactive)
           ? `Stopped at the page's ${minutes}-minute limit.`
-          : `Finished with exit code ${data.code}.`;
+          : `Finished with exit code ${data.code}.`);
     }
   };
   w.onerror = (e) => {
     if (worker !== w) return;
     term.note(`\n*** worker error: ${e.message} ***\n`);
-    setRunning(false);
+    endWorkers();
+    endRun(null);
   };
 
   showSelected();

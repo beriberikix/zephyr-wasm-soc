@@ -632,6 +632,20 @@ discarded, so there is nothing to unwind cleanly. The host then:
 Snapshots include flash for free, since it is linear memory, so stepping
 backwards over a write undoes the write.
 
+**Stop ends the Worker; a flash build gets half a second first.** The page
+used to ask a run's Worker to stop and wait for it to say it had. A Worker
+hears that only when its driver loop yields. A guest in one long step, such
+as LVGL drawing its first screen, does not yield for seconds. A paced guest
+that had fallen behind the wall clock never yielded at all. Such a Worker
+went on using a core after Stop or a change of build, and the next run
+booted slowly beside it. Now the page terminates the Worker, and both of a
+pair's, at once. A build that keeps flash is the exception. Its writes
+since the last save would be lost, so it is asked to stop first, and given
+500 ms to hand over its image. It is terminated whether it answers or not.
+Separately, a paced run now lets its host's event loop have a turn at least
+every 50 ms, so Stop, a change of speed and a peer's frames are always
+heard. Only when things happen changes, not what the guest sees.
+
 ### D8i. The display and input are bridged, not emulated
 
 native_sim's `display_sdl` and `input_sdl_touch` put real driver APIs over
