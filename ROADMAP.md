@@ -660,7 +660,10 @@ What happened to each:
       Two things the pairs needed from the host:
       - A client powered on two seconds after its server
         (`start_after_ms`). `coap_client` and `http_client` send once and
-        give up, so they have to find the server already listening. Until
+        give up, so they have to find the server already listening, and
+        so does `echo_client`, which gives up on a refused connection. It
+        found its server ready by luck of load until a browser check run
+        in September did not. Until
         then, frames sent towards the client are dropped, as on a cable
         plugged into nothing.
       - One status line, "Built with: ...", under the hint for each pair set

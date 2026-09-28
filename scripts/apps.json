@@ -427,6 +427,7 @@
         {
           "label": "Client",
           "app": "zephyr/samples/net/sockets/echo_client",
+          "start_after_ms": 2000,
           "args": [
             "-DSNIPPET=wasm-ethernet"
           ],

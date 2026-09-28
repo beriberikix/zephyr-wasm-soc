@@ -1273,3 +1273,14 @@ The rest were page polish:
 - a terminal that follows `data-theme`;
 - output-only builds wrapping at phone width;
 - two guards against a stale worker.
+
+Two things turned up while checking the fixes, neither caused by them:
+- **The LVGL demo boots in one step.** It spends 8 to 13 s of wall time
+  drawing its first screen before anything suspends, with the old build
+  too. The guard against a guest that never suspends allowed three times
+  the run's guest-time limit, 15 s for a five-second CI run, so load alone
+  could trip it. The guard now allows at least a minute.
+- **The echo pair's client could beat its server.** `echo_client` gives
+  up on a refused connection, and in one browser run it connected 0.35 s
+  in, before the server listened. It now powers on two seconds after its
+  server, as the CoAP and HTTP clients already did.
