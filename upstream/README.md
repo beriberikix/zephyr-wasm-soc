@@ -83,6 +83,35 @@ chose the minimal libc too, until the mDNS pair ran into it.
 It applies to the pin and to upstream `main` at `1ee3b93`; checkpatch
 reports only the missing `Signed-off-by`.
 
+## zephyr/: two network samples the host's LAN found
+
+The host's own network (`host/lan.mjs`, `DESIGN.md` D8m) gave two more
+network samples a peer, and each stopped on a bug that is not this
+board's.
+
+| Patch | Fixes | Here, unlocks |
+|---|---|---|
+| 0013 `net: lib: coap: coap_client_tcp: count a request as sent from the start` | a request stamped with `k_uptime_get()` in the first millisecond of uptime has a `tcp_t0` of 0, which `exchange_lifetime_exceeded()` takes to mean "never sent", so the receive thread goes back to sleep without reading the reply. The stamp was also set after the receive thread was woken | `sockets/coap_client_tcp` against the LAN's CoAP-over-TCP server, which as it is stops at "Timeout waiting for CSM exchange": a board here connects 0.4 ms after it starts |
+| 0014 `samples: net: sockets: dumb_http_server_mt` | `process_tcp4` and `process_tcp6` are `void f(void)` thread entries, as echo_server's were (0010) | `sockets/dumb_http_server_mt`, which then serves its page to the LAN's dial |
+
+Both apply to the pin and to upstream `main` as fetched on 29 September
+2026, and checkpatch reports only the missing `Signed-off-by`.
+`try_upstream.sh` does not run these two, since the sweep leaves out
+`harness: net` samples. Check them by hand: apply the patch, build the
+sample with `-DSNIPPET=wasm-ethernet`, and run it with `run.mjs --lan`, or
+for the server `--lan-dial 1000:8080`.
+
+The UDP CoAP client (`coap_client.c`) has the same `t0 == 0` test on
+`pending.t0`. None of the samples here sends that early, so it is only
+noted.
+
+`websocket_client` has a third bug, which needs no patch from here. At this
+workspace's pin its handshake fails with "Cannot calculate sha1 (-134)"
+on every target: commit f331614 moved the websocket library to PSA and
+selected `PSA_WANT_ALG_SHA_256`, but the handshake hashes with SHA-1.
+Upstream `main` selects `PSA_WANT_ALG_SHA_1`, so the sample counts once the
+pin moves past that fix.
+
 ## zephyr/: sending them
 
 Zephyr's contribution guidelines have a section on AI-assisted changes
@@ -107,7 +136,10 @@ A suggested split, by who maintains what:
 6. 0010 with 0002 to 0004, the samples, or on its own for the networking
    samples' maintainers;
 7. 0011 on its own, for the networking samples' maintainers, or with 0010;
-8. 0012 on its own, for the C library maintainers.
+8. 0012 on its own, for the C library maintainers;
+9. 0013 on its own, for the CoAP maintainers;
+10. 0014 with 0010, or on its own, for the networking samples'
+    maintainers.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main

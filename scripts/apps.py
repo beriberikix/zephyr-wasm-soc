@@ -139,10 +139,16 @@ def load(module: str) -> list[dict]:
                 sys.exit(f"apps.json: {b['name']} overrides its configuration, "
                          "so it needs an overrides sentence saying how")
             lan = b["lan"]
-            if lan is not True and not (isinstance(lan, dict) and
-                                        all(isinstance(d.get("at_ms"), int) and isinstance(d.get("port"), int)
-                                            for d in lan.get("dial", []))):
-                sys.exit(f"apps.json: {b['name']}: lan is true or {{\"dial\": [{{\"at_ms\", \"port\"}}]}}")
+            if lan is not True and not (
+                    isinstance(lan, dict) and set(lan) <= {"dial", "ping"} and
+                    all(isinstance(d.get("at_ms"), int) and isinstance(d.get("port"), int) and
+                        str(d.get("path", "/")).startswith("/") and set(d) <= {"at_ms", "port", "path"}
+                        for d in lan.get("dial", [])) and
+                    all(isinstance(ms, int) for ms in lan.get("ping", []))):
+                sys.exit(f"apps.json: {b['name']}: lan is true, or has dial: "
+                         f"[{{\"at_ms\", \"port\", \"path\"}}] and ping: [ms]")
+        if b.get("lan_expect") and not b.get("lan"):
+            sys.exit(f"apps.json: {b['name']} has lan_expect but is not on the LAN")
         for u in units(b):
             u["app"] = u["app"].replace("{module}", module)
         if "boards" in b:

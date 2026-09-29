@@ -512,7 +512,8 @@ for (const b of manifest.builds) {
   }
 
   let ok = true;
-  for (const want of expect) {
+  /* What the LAN did is in the terminal too, as [lan] lines. */
+  for (const want of [...expect, ...(b.lan_expect ?? []).map((w) => `[lan] ${w}`)]) {
     try {
       await page.waitForFunction(
         (w) => window.zephyrOutput().includes(w), want,

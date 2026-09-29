@@ -1,0 +1,66 @@
+From 94d59040aac219ecc69002b622e1a9e9ba34dc9c Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Tue, 29 Sep 2026 12:00:00 +0000
+Subject: [PATCH] net: lib: coap: coap_client_tcp: count a request as sent from
+ the start
+
+A request's tcp_t0 is 0 before it is sent and k_uptime_get() once it is,
+and exchange_lifetime_exceeded() takes a t0 of 0 to mean the request was
+never sent. A request sent within the first millisecond of uptime also
+has a t0 of 0, so it counts as expired at once: has_ongoing_exchange()
+says there is nothing to wait for, and the receive thread goes back to
+sleep without reading the reply. The sample coap_client_tcp then stops
+at "Timeout waiting for CSM exchange" on a target that boots and
+connects that quickly, such as a simulated one.
+
+tcp_t0 is also set only after coap_client_tcp_schedule_poll() has woken
+the receive thread, which can look at the request before it is set.
+
+Treat a t0 of 0 as "never sent" only for a request that is not ongoing,
+and set t0 and the timeout before waking the receive thread.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ subsys/net/lib/coap/coap_client_tcp.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/subsys/net/lib/coap/coap_client_tcp.c b/subsys/net/lib/coap/coap_client_tcp.c
+index 39dc07a62e8..4ebe74eb343 100644
+--- a/subsys/net/lib/coap/coap_client_tcp.c
++++ b/subsys/net/lib/coap/coap_client_tcp.c
+@@ -214,7 +214,11 @@ static bool exchange_lifetime_exceeded(struct coap_client_tcp_internal_request *
+ 		return false;
+ 	}
+ 
+-	if (internal_req->tcp_t0 == 0) {
++	/* A t0 of 0 marks a request that was never sent, unless the request
++	 * is ongoing: one sent in the first millisecond of uptime has a t0 of
++	 * 0 too.
++	 */
++	if (internal_req->tcp_t0 == 0 && !internal_req->request_ongoing) {
+ 		return true;
+ 	}
+ 
+@@ -543,15 +547,16 @@ int coap_client_tcp_req(struct coap_client_tcp *client,
+ 		goto release;
+ 	}
+ 
++	/* Before the receive thread is woken, which may look at them at once */
++	internal_req->tcp_t0 = k_uptime_get();
++	internal_req->tcp_timeout_ms = CONFIG_COAP_CLIENT_TCP_REQUEST_TIMEOUT;
++
+ 	ret = coap_client_tcp_schedule_poll(client, req, internal_req);
+ 	if (ret < 0) {
+ 		LOG_ERR("Failed to schedule polling");
+ 		goto release;
+ 	}
+ 
+-	internal_req->tcp_t0 = k_uptime_get();
+-	internal_req->tcp_timeout_ms = CONFIG_COAP_CLIENT_TCP_REQUEST_TIMEOUT;
+-
+ 	internal_req->is_observe = coap_request_is_observe(&internal_req->request);
+ 	LOG_DBG("Request is_observe %d", internal_req->is_observe);
+ 
+-- 
+2.43.0
+

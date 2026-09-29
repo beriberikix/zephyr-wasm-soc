@@ -1536,3 +1536,63 @@ their entries `depends_on: netif`. They are plugged into the LAN, so what
 they see is a repeatable wire, and check_site runs each twice. Each
 repeated byte for byte. `ipv4_autoconf` was left out: its entry allows only
 `qemu_x86` and `native_sim`. Score 72.
+
+### Tick 70 — more services on the LAN
+
+The plan was a WebSocket echo, CoAP over TCP and an MQTT broker, for
+`websocket_client`, `coap_client_tcp` and `mqtt_publisher`. MQTT was out
+before it started: both MQTT publishers allow only named platforms, so
+twister would never run them here. The other two got their services, and
+neither sample counts yet, for reasons in Zephyr rather than the LAN:
+- **`websocket_client`** failed its handshake on the board with "Cannot
+  calculate sha1 (-134)". Upstream commit f331614 moved the websocket
+  library to PSA and selected `PSA_WANT_ALG_SHA_256`, but the handshake
+  hashes with SHA-1, so on every target nothing provides it. Upstream `main`
+  selects `PSA_WANT_ALG_SHA_1` now. Built with that on, it connected and
+  then failed on its eighth message: the echo answered line by line, as
+  `websocketd ... cat` would, and Zephyr's lorem ipsum has line breaks in
+  it. The client checks that the bytes it sent come back in one message,
+  so the echo now answers message by message. After that, 60 round trips
+  in 20 s passed, with the same output on both runs.
+- **`coap_client_tcp`** stopped at "Timeout waiting for CSM exchange",
+  although the LAN had sent its CSM. The client stamps a request with
+  `k_uptime_get()`, and a stamp of 0 means "never sent". A board here
+  connects 0.4 ms into its run, so its first request is stamped 0, counts
+  as expired, and the receive thread goes back to sleep. The stamp is also
+  set after the receive thread is woken. `upstream/zephyr/0013` fixes
+  both, and with it the sample runs to "Sample complete". It ends with
+  "Close failed: -1" because the LAN closes on Release, which is what RFC
+  8323 says a peer normally does.
+
+The LAN is right in both cases (`check_lan` covers each service), so the
+services stay for when the pin moves.
+
+Then what else the LAN could unlock, from the `harness: net` samples not
+yet on the page:
+- **`ftp_client`**: the LAN got an FTP server, passive mode only, which is
+  all Zephyr's client uses. It sends the command, waits for 150, and only
+  then opens the data connection. Typed into: connect, list, get, cd.
+- **`prometheus`**: it serves `/metrics` on port 80 and prints nothing
+  when asked, so dials now take a path, the LAN logs the status line it got
+  back, and `lan_expect` checks it.
+- **`promiscuous_mode`** failed with -ENOTSUP until the Ethernet driver
+  claimed promiscuous mode. The driver never filtered, so the claim costs
+  nothing. The LAN pings it. It logs every frame as "unknown address
+  family", because it reads the IP header at the start of a packet cloned
+  before L2, where the Ethernet header is. That is upstream behaviour on
+  any Ethernet board, and noted in the hint.
+- **`pkt_filter`**: one of its rules drops IPv4 from 192.0.2.2. The LAN
+  pings it, and the board answers the ARP but not the pings, which
+  `lan_expect` checks as "no reply".
+- **`vlan`** failed with -ENOTSUP until the driver claimed VLANs, which it
+  also carried untouched already.
+- **`dumb_http_server_mt`** traps on an indirect call: two `void f(void)`
+  thread entries, as echo_server had (0010). `upstream/zephyr/0014` fixes
+  it, and it then serves its page to the LAN's dial.
+- **`big_http_download`** downloads an Ubuntu kernel and checks its
+  SHA-256. The LAN could answer only with the wrong bytes, so it is left
+  for a real network.
+
+Seeing what the LAN did mattered for three of these, so its log now shows
+on the page as `[lan]` lines, each on a line of its own, as `run.mjs` puts
+them on stderr. Score 77.

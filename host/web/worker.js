@@ -19,7 +19,7 @@ import { Host } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
 import { Lan } from './lan.mjs';
-import { startServices } from './lan_services.mjs';
+import { startServices, httpGet } from './lan_services.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let sensorReadings = null; // the page's latest tilt, for a host not yet made
@@ -247,10 +247,15 @@ self.onmessage = async (event) => {
         (line) => self.postMessage({ type: 'err', text: `\n${line}\n` }));
       self.postMessage({ type: 'err', text: `[uplink: connected to ${opts.uplink}]\n` });
     } else if (opts.lan) {
-      host.lan = await Lan.create(await browserPlatform.loadModule('./vendor/tcpip.wasm'));
+      /* What the network did goes in the terminal, a line at a time, as
+       * run.mjs puts it on stderr: the board's own output cannot say that a
+       * page was served or a ping went unanswered. */
+      host.lan = await Lan.create(await browserPlatform.loadModule('./vendor/tcpip.wasm'),
+        (line) => self.postMessage({ type: 'err', text: `[lan] ${line}\n`, line: true }));
       startServices(host.lan, {
         dial: (opts.lan.dial ?? []).map((d) => ({ atMs: d.at_ms, port: d.port,
-                                                  send: 'GET / HTTP/1.0\r\n\r\n' })),
+                                                  send: httpGet(d.path) })),
+        ping: opts.lan.ping ?? [],
       });
     }
     const code = await host.run();

@@ -98,8 +98,30 @@ static enum ethernet_hw_caps eth_wasm_host_caps(const struct device *dev,
 	ARG_UNUSED(dev);
 	ARG_UNUSED(iface);
 
-	/* Nothing offloaded: the stack computes its own checksums. */
-	return 0;
+	/* Nothing offloaded: the stack computes its own checksums. What the
+	 * driver can say it does, it does by doing nothing: a frame goes
+	 * either way as it is, so a VLAN tag the stack adds reaches the wire
+	 * and one that arrives reaches the stack (FRAME_MAX has room for it),
+	 * and every frame reaches the stack whatever its destination, since
+	 * nothing here filters, which is promiscuous mode.
+	 */
+	return (IS_ENABLED(CONFIG_NET_VLAN) ? ETHERNET_HW_VLAN : 0) |
+	       (IS_ENABLED(CONFIG_NET_PROMISCUOUS_MODE) ? ETHERNET_PROMISC_MODE : 0);
+}
+
+static int eth_wasm_host_set_config(const struct device *dev, struct net_if *iface,
+				    enum ethernet_config_type type,
+				    const struct ethernet_config *config)
+{
+	ARG_UNUSED(dev);
+	ARG_UNUSED(iface);
+	ARG_UNUSED(config);
+
+	if (IS_ENABLED(CONFIG_NET_PROMISCUOUS_MODE) &&
+	    type == ETHERNET_CONFIG_TYPE_PROMISC_MODE) {
+		return 0;
+	}
+	return -ENOTSUP;
 }
 
 static void eth_wasm_host_iface_init(struct net_if *iface)
@@ -131,6 +153,7 @@ static int eth_wasm_host_init(const struct device *dev)
 static const struct ethernet_api eth_wasm_host_api = {
 	.iface_api.init = eth_wasm_host_iface_init,
 	.get_capabilities = eth_wasm_host_caps,
+	.set_config = eth_wasm_host_set_config,
 	.send = eth_wasm_host_send,
 };
 

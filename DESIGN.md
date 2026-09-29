@@ -975,9 +975,37 @@ and requires the same output, as it does for a pair.
 - TFTP, with `file1.bin` to read and room to write;
 - HTTP on 80, answering `/` with a redirect, which is what `http_get`'s
   upstream test expects from google.com;
-- dialling a board's port at a stated time, for a sample that is a server.
+- a WebSocket echo on 9001, for `websocket_client`, which gives each
+  message back whole. The handshake needs SHA-1, and a small synchronous
+  one is written out in the file: Web Crypto's digest answers with a
+  promise, and everything on the LAN happens within one call;
+- CoAP over TCP on 5683 (RFC 8323), for `coap_client_tcp`: a CSM, pong for
+  ping, `GET /test`, and closing on Release, as the RFC says a peer
+  normally does;
+- FTP on 21, passive mode only, which is all Zephyr's FTP client uses: any
+  user and password, a small tree to list and read, and room to write that
+  lasts as long as the page;
+- dialling a board's port at a stated time and asking for a path, for a
+  sample that is a server;
+- pinging the board at stated times, for a sample that watches what
+  arrives (`promiscuous_mode`) or decides what may (`pkt_filter`).
 
-Where it answers in words, it says it is the LAN.
+Where it answers in words, it says it is the LAN. What it does, it logs:
+`[lan]` lines on stderr under `run.mjs`, and in the terminal on the page,
+each on a line of its own. A server sample does not print what it served,
+nor a filter what it dropped, so `lan_expect` in `apps.json` checks the log
+for that (`prometheus`, `pkt_filter`).
+
+**The board's side.** Two samples asked the Ethernet driver for things it
+had not claimed, and both are claims it can make by doing nothing:
+- **Promiscuous mode** (`promiscuous_mode`): nothing in the driver filters,
+  so every frame on the link already reaches the stack;
+- **VLANs** (`vlan`): a frame goes either way as it is, so a tag the stack
+  adds reaches the wire and one that arrives reaches the stack, and
+  `FRAME_MAX` has room for it.
+
+Each capability is claimed only when its option is on, so no other build
+changes.
 
 **Three things in tcpip.js's C glue** matter:
 - **Received frames are never freed.** A frame given to lwIP is used in
@@ -1002,7 +1030,15 @@ Where it answers in words, it says it is the LAN.
 
 **What it is not.**
 - **IPv4 only.** lwIP was built without IPv6, so a sample's IPv6 half fails
-  and says so (`sntp_client`).
+  and says so (`sntp_client`, `websocket_client`).
+- **Not a way round a bug.** Two of the samples these services are for do
+  not count yet. `websocket_client` fails its own handshake at this
+  workspace's Zephyr: the websocket library selects SHA-256 where it hashes
+  with SHA-1, and upstream has since fixed it. `coap_client_tcp` waits for
+  ever, because its client takes a request sent in the first millisecond
+  of uptime for one never sent, and a board here connects in less
+  (`upstream/zephyr/0013`). Each runs against the LAN with its fix, and
+  counts when the pin moves or the fix lands.
 - **No real traffic.** The LAN answers for the internet but never reaches
   it. That is D8l's job, and an entry with both runs on the LAN unless
   someone gives the page a relay.
