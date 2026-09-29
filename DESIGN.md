@@ -28,9 +28,9 @@ The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
 Four Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl` and
 `picolibc`, through Zephyr's own manifest so they stay at Zephyr's pins.
-Nothing else is: the port needs no HAL, uses the minimal libc unless a sample
-asks for more (D11), and a full import is hundreds of megabytes of vendor
-code. Module code goes through the same section generator and
+Nothing else is: the port needs no HAL, builds picolibc from its module as
+Zephyr's default C library (D11), and a full import is hundreds of megabytes
+of vendor code. Module code goes through the same section generator and
 link-map check as everything else (D6).
 
 ### D2. Toolchain
@@ -883,15 +883,26 @@ loop, which never got a turn because the Asyncify driver is a synchronous
 loop. It now yields whenever the guest idles, which is when input can matter
 and never on a hot path.
 
-### D11. A full C library is picolibc, built from its module
+### D11. The C library is picolibc, built from its module
 
-The minimal libc is still the default: it is small, it is what the kernel
-needs, and every sample that does not ask for more gets it. A sample that
-sets `REQUIRES_FULL_LIBC`, or that twister filters on
-`CONFIG_FULL_LIBC_SUPPORTED`, now gets picolibc, which Zephyr builds from
-source as a module. No toolchain supplies a libc for wasm32 here, so building
-from source is the only route, and it is the one Zephyr already provides for
-toolchains without their own.
+Picolibc is Zephyr's default C library on every board whose toolchain can
+build it, and it is this board's default too: the board chooses no libc, so
+each build gets what Zephyr's `lib/libc/Kconfig` picks, as it would anywhere
+else. No toolchain supplies a libc for wasm32 here, so picolibc is built from
+source as a module, the route Zephyr already provides for toolchains without
+their own. A build can still choose the minimal libc with
+`CONFIG_MINIMAL_LIBC=y`.
+
+It was not always the default. The board began by forcing the minimal libc,
+when picolibc could not be built for wasm at all, and kept it after picolibc
+could, for samples that did not ask for more. That made every result a
+measure of a choice the board made and upstream does not: a sample that
+built on every other board could fail here on something the minimal libc
+lacks. The mDNS pair found one. The network shell calls `strcasecmp`, which
+the minimal libc does not have, so `dns_resolve` could not compile.
+`upstream/zephyr/0012` adds `strcasecmp` to the minimal libc for the boards
+that choose it. This board now takes Zephyr's default instead, and every
+record was re-measured against it (ROADMAP.md, "The measure").
 
 What that took, each for a reason that would bite any wasm32 port:
 - Clang defines `__BYTE_ORDER__` for wasm32 but not `__FLOAT_WORD_ORDER__`,
@@ -901,9 +912,11 @@ What that took, each for a reason that would bite any wasm32 port:
   once as a toolchain flag for picolibc's own sources, which the module
   builds without `zephyr_interface`'s definitions.
 - There is no compiler-rt for wasm32. Clang lowers 128-bit multiplies and
-  shifts to calls, and picolibc's `strtoull` and float `printf` make them.
-  `arch/wasm/core/builtins.c` has the three that anything has needed so
-  far, each tested against the host compiler's own 128-bit arithmetic.
+  shifts to calls, and picolibc's `strtoull` and float `printf` make them;
+  its `strtod` widens a double to `long double`, which on wasm32 is
+  binary128, through another. `arch/wasm/core/builtins.c` has the four
+  that anything has needed so far, each tested against the host
+  compiler's own 128-bit arithmetic.
 - The common `malloc`'s default arena runs from the linker symbol `_end` to
   the end of RAM, and there is no linker script to define `_end`. The arch
   defaults to a 16 KB arena in BSS instead, which is native_sim's answer to

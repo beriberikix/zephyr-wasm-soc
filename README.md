@@ -7,9 +7,8 @@ boot the kernel, run its test suite, or type into the Zephyr shell. Nothing to
 install.
 
 This is not native_sim built with a Wasm toolchain. The kernel runs
-freestanding in a single `wasm32` linear memory, using Zephyr's own libc (or
-picolibc, built from source, for a sample that asks for a full C library) and
-scheduler. The host plays the part of a SoC: instead of memory-mapped
+freestanding in a single `wasm32` linear memory, using Zephyr's own
+scheduler and its default C library, picolibc, built from source. The host plays the part of a SoC: instead of memory-mapped
 registers it provides a handful of imported functions, and it owns the clock.
 
 Context switching runs on Binaryen's Asyncify. Interrupts are cooperative: the
@@ -49,22 +48,23 @@ log, including what did not work. `BRIEF.md` is the original task.
 * A display drawn on the page, and touch and keys into the input subsystem.
   LVGL runs unmodified: all seven of its demo entries pass, and the widgets
   demo on the page responds to touch.
-* Picolibc, for samples that need a full C library, and C++ static
+* Picolibc, Zephyr's default C library, for every build, and C++ static
   constructors. The POSIX `env`, `uname` and `philosophers` samples run
   unmodified on it.
 * Sensors: an accelerometer and a pressure sensor, upstream's emulated
   chips on upstream's emulated I2C bus, read by the real drivers. The page
   has a Tilt pad that sets what the accelerometer reads, and
   `samples/sensor/accel_polling` shows gravity move as the board is tilted.
-* Networking: Zephyr's IP stack over loopback, sockets included. 119 of the
+* Networking: Zephyr's IP stack over loopback, sockets included. 125 of the
   139 network test suites pass: UDP, TCP, TLS and DTLS, IPv4, IPv6, DHCP,
   DNS, CoAP, MQTT, websockets, the HTTP server and more.
   `scripts/net_tests.json` records every suite.
 * mbedTLS and PSA crypto, from the modules Zephyr pins, unchanged.
-* Two boards on one page, joined by a virtual Ethernet, in nine pairs of
+* Two boards on one page, joined by a virtual Ethernet, in ten pairs of
   upstream samples: `echo_client` against four echo servers, CoAP's server
-  against its three clients, HTTP's client and server, and zperf against
-  itself, typed into on both boards. The echo pairs run as shipped; the
+  against its three clients, HTTP's client and server, zperf against
+  itself, typed into on both boards, and `dns_resolve` finding
+  `mdns_responder` by name. The echo pairs run as shipped; the
   others have only their addresses and ports set, and the page says which.
   The two boards run on one clock, so a pair gives the same output every
   run. `run.mjs --peer` does the same in Node, and `--peer-stdin` types
@@ -412,7 +412,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 62 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 64 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

@@ -174,8 +174,9 @@
     },
     {
       "path": "lib/coap_client",
-      "status": "build-fails",
-      "note": "Built against the minimal libc, which lacks it (unknown type name 'ssize_t'; did you mea); the suite does not ask for a full libc."
+      "status": "passes",
+      "passes": 29,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc it stopped on ssize_t."
     },
     {
       "path": "lib/coap_oscore",
@@ -219,8 +220,9 @@
     },
     {
       "path": "lib/http_client",
-      "status": "build-fails",
-      "note": "Built against the minimal libc, which lacks it (call to undeclared function 'strcasecmp'); the suite does not ask for a full libc."
+      "status": "passes",
+      "passes": 10,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc it stopped on strcasecmp, which upstream/zephyr/0012 adds."
     },
     {
       "path": "lib/http_header_fields",
@@ -325,9 +327,9 @@
     },
     {
       "path": "lib/mcp",
-      "status": "does-not-finish",
-      "passes": 2,
-      "note": "exit 1. Not yet diagnosed."
+      "status": "passes",
+      "passes": 11,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc it exited after 2 cases."
     },
     {
       "path": "lib/mdns_responder",
@@ -421,18 +423,21 @@
     },
     {
       "path": "lib/wifi_credentials_backend_psa",
-      "status": "build-fails",
-      "note": "Compile error: an initializer that is not a compile-time constant, the same as the settings backend. Not yet diagnosed."
+      "status": "passes",
+      "passes": 4,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc an initializer was not a compile-time constant."
     },
     {
       "path": "lib/wifi_credentials_backend_settings",
-      "status": "build-fails",
-      "note": "Compile error: an initializer that is not a compile-time constant. Not yet diagnosed."
+      "status": "passes",
+      "passes": 4,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc an initializer was not a compile-time constant."
     },
     {
       "path": "lib/wireguard",
-      "status": "build-fails",
-      "note": "Needs EKEYEXPIRED, an errno value picolibc does not define."
+      "status": "passes",
+      "passes": 10,
+      "note": "Passes under picolibc, the board's default C library since the mDNS pair. Under the minimal libc it stopped on EKEYEXPIRED."
     },
     {
       "path": "lib/zperf",

@@ -1374,3 +1374,40 @@ nine pairs, run twice, take about a minute. On the page both boards run
 in one Worker, since two Workers could only meet by message and the site
 can't use `SharedArrayBuffer`. The pair is paced there as one. zperf's
 rates are now the same every run.
+
+### Tick 65 — picolibc by default, and the mDNS pair
+
+The mDNS pair, `dns_resolve` against `mdns_responder`, was left out of the
+first pairs because the network shell calls `strcasecmp` and the minimal
+libc has only `strncasecmp`. The pair rule allows addresses and ports,
+not a libc, so the question was the board's, not the pair's.
+
+The board forced the minimal libc from before picolibc could be built for
+wasm, and kept it after. Every other board gets picolibc, Zephyr's
+default, unless a build chooses otherwise, so the sweep had been
+measuring a choice upstream does not make. The board now chooses no libc.
+`upstream/zephyr/0012` adds `strcasecmp` to the minimal libc as well: with
+it applied, `dns_resolve` builds under the minimal libc, and without it the
+build stops in `subsys/net/lib/shell/dns.c`.
+
+A change to every build means re-measuring every record:
+- **Samples**, all 230 entries: nothing worse. Three that stopped on a
+  function the minimal libc lacks now build. `smf_calculator` then needed
+  `__extenddftf2`, the double to binary128 widening picolibc's `strtod`
+  uses; it went into `builtins.c`, checked against the host compiler's
+  own conversion on 20 million doubles, and the LVGL calculator runs.
+  The twister count stays 47.
+- **Kernel suites:** all 25 as recorded.
+- **Network suites:** six more pass, 125 of 139. One old note said
+  wireguard needed an `EKEYEXPIRED` that picolibc lacks; picolibc has it,
+  and the minimal libc is what lacked it.
+- **The site:** all 28 builds, twice for each pair, in Node and Chromium,
+  and determinism, both engines and blinky as before. Small builds grew by
+  16 to 21 KB (hello from 80 to 96 KB, the shell from 402 to 423 KB),
+  which is picolibc's stdio; the echo builds already used picolibc and did
+  not change, and LVGL's shrank a little.
+
+The pair itself ran first time. The client resolves `zephyr.local` to
+192.0.2.1 and 2001:db8::1, and its plain DNS queries, with no server to
+answer, are cancelled after their timeout, which is what upstream prints
+too. The score is 64.

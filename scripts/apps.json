@@ -808,6 +808,55 @@
           ]
         }
       ]
+    },
+    {
+      "name": "mdns",
+      "kind": "sample",
+      "title": "mDNS name lookup (two boards)",
+      "hint": "dns_resolve asks the local link who zephyr.local is, over IPv4 and IPv6 multicast, and mdns_responder answers with its addresses. Its plain DNS queries have no server to answer them and time out. Both boards have a shell: try `net dns zephyr.local` on the client.",
+      "overrides": "The client is given the addresses 192.0.2.2 and 2001:db8::2, and the responder's as its peer; as shipped, both boards would be 192.0.2.1 and 2001:db8::1.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "ci_link_frames_at_least": 4,
+      "boards": [
+        {
+          "label": "Responder",
+          "app": "zephyr/samples/net/mdns_responder",
+          "args": [
+            "-DSNIPPET=wasm-ethernet"
+          ],
+          "expect": [
+            "Waiting mDNS queries..."
+          ],
+          "uses": [
+            "terminal"
+          ]
+        },
+        {
+          "label": "Client",
+          "app": "zephyr/samples/net/dns_resolve",
+          "start_after_ms": 2000,
+          "args": [
+            "-DSNIPPET=wasm-ethernet",
+            "-DCONFIG_NET_CONFIG_MY_IPV4_ADDR=\"192.0.2.2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV4_ADDR=\"192.0.2.1\"",
+            "-DCONFIG_NET_CONFIG_MY_IPV6_ADDR=\"2001:db8::2\"",
+            "-DCONFIG_NET_CONFIG_PEER_IPV6_ADDR=\"2001:db8::1\""
+          ],
+          "expect": [
+            "zephyr.local IPv4 address: 192.0.2.1",
+            "zephyr.local IPv6 address: 2001:db8::1",
+            "mDNS resolving finished"
+          ],
+          "uses": [
+            "terminal"
+          ]
+        }
+      ]
     }
   ]
 }

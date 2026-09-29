@@ -67,6 +67,22 @@ which fits, so 0011 leaves it alone. The patch applies to the pin and to
 upstream `main` at `1ee3b93`; checkpatch reports only the missing
 `Signed-off-by`.
 
+## zephyr/: `strcasecmp` for the minimal libc
+
+0012 is a gap rather than a bug. The network shell's `dns` and connection
+manager commands call `strcasecmp`, and Zephyr's minimal libc has
+`strncasecmp` but not `strcasecmp`, so any application with `CONFIG_NET_SHELL`
+and `CONFIG_DNS_RESOLVER` fails to compile when the minimal libc is chosen.
+Other boards rarely see it because picolibc is Zephyr's default. This board
+chose the minimal libc too, until the mDNS pair ran into it.
+
+| Patch | Fixes | Here, unlocks |
+|---|---|---|
+| 0012 `libc: minimal: add strcasecmp` | `strcasecmp` declared in the minimal libc's `<strings.h>` and defined next to `strncasecmp`, as `strncasecmp(s1, s2, SIZE_MAX)` | nothing counted: the board now takes picolibc, Zephyr's default (DESIGN.md D11). With 0012 applied, `dns_resolve` builds under the minimal libc too; without it, it stops at `subsys/net/lib/shell/dns.c` |
+
+It applies to the pin and to upstream `main` at `1ee3b93`; checkpatch
+reports only the missing `Signed-off-by`.
+
 ## zephyr/: sending them
 
 Zephyr's contribution guidelines have a section on AI-assisted changes
@@ -90,7 +106,8 @@ A suggested split, by who maintains what:
 5. 0009 on its own, for the LwM2M maintainers;
 6. 0010 with 0002 to 0004, the samples, or on its own for the networking
    samples' maintainers;
-7. 0011 on its own, for the networking samples' maintainers, or with 0010.
+7. 0011 on its own, for the networking samples' maintainers, or with 0010;
+8. 0012 on its own, for the C library maintainers.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main

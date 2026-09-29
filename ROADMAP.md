@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **62**. 47 pass upstream's own criterion, and 15 more are counted
+today: **64**. 47 pass upstream's own criterion, and 17 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -23,9 +23,10 @@ if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
 adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
-twelve network samples the two-board pairs run: the echo client and four
+fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
-server, and zperf, which is both ends of its own pair. Upstream gives those no criterion twister can run, because it has no
+server, zperf, which is both ends of its own pair, and `dns_resolve` with
+`mdns_responder`. Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
 
@@ -44,9 +45,9 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 62, seven count only
+criterion, which is why it is spelled out: of the 64, nine count only
 because of it: the CoAP server with its three clients, HTTP's client and
-server, and zperf. The five echo samples pair as shipped.
+server, zperf, and the mDNS pair. The five echo samples pair as shipped.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -56,11 +57,18 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | Filtered out by upstream's own twister filter | 68 | |
 | **Runnable: what twister itself would run here** | **162** | **102** |
 | Pass upstream's own criterion | 70 | 47 |
-| Build, but upstream only builds them | 12 | |
-| Run, with no criterion upstream | 4 | |
+| Build, but upstream only builds them | 13 | |
+| Run, with no criterion upstream | 5 | |
 | Run and fail their criterion | 3 | |
-| Do not finish | 24 | |
-| Do not build | 49 | |
+| Do not finish | 25 | |
+| Do not build | 46 | |
+
+Every entry is built with Zephyr's default C library, picolibc, as on any
+other board. Until the mDNS pair the board forced the minimal libc, and the
+whole record was re-measured when it stopped (`DESIGN.md` D11). Nothing got
+worse, and the 47 did not move: three entries that stopped on a function the
+minimal libc lacks now build, `strcasecmp`, `strpbrk` and `strtod`. One of
+them, `smf_calculator`, runs, but has no upstream criterion to pass.
 
 The 1039 entries outside "plausible" were not tried, for reasons recorded in
 the summary of `samples.json`:
@@ -99,14 +107,15 @@ cause is in `samples.json`):
 | Cause | entries | what it is |
 |---|---:|---|
 | Wasm's indirect-call check | 23 | 10 applications, 7 of them zbus; D8b, below |
-| Kconfig refuses | 20 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| Other build errors | 20 | `smf_calculator` calls `strtod`, which the minimal libc lacks; `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` needs an SoC P-state API; `llext` wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly |
+| Other build errors | 19 | `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` (3) needs an SoC P-state API; `llext` (2) wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
+| Kconfig refuses | 13 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
 | No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
-| Link | 2 | `get_bootargs`, `uuid_generate_v5` |
+| Link | 1 | `get_bootargs` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
 | Module not imported | 1 | `cmsis_dsp` |
 | Fails its regex | 3 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5); `posix/eventfd`, which prints nothing after the banner (not diagnosed) |
 | Trap | 1 | `sensing/simple`, an out-of-bounds access |
+| Gives up | 1 | `dhcpv4_client`, waiting for a DHCP server one board does not have |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
 Wasm type-checks indirect calls, and before the sweep nobody knew what that
@@ -154,23 +163,23 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 62. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 64. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
 1. **Send the D8b fixes upstream.** They are prepared and checked in
    `upstream/zephyr/`: ten applications, `basic/threads` among them, two
    kernel suites and two network suites. With them go the QUIC and CAN
-   socket fixes, 0011 for the echo servers' IPv6 address buffers, and one
-   for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
+   socket fixes, 0011 for the echo servers' IPv6 address buffers, 0012 for
+   the minimal libc's missing `strcasecmp`, and one for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
    since Zephyr needs the submitter's own `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **The last pairs.** Nine pairs run, on one clock now, so each is as
+3. **The last pair.** Ten pairs run, on one clock, so each is as
    repeatable as a single board (Phase 6). QUIC's pair waits on patch
-   0007, and mDNS's on the minimal libc's `strcasecmp`.
+   0007.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -183,12 +192,13 @@ three more samples pass, and C++ constructors run (below, "Two levers"). So
 is the first lesson, with the thread table's answer to what each thread is
 waiting for (below, "Lessons"), and so is mbedTLS, which raised the score by
 four. So is diagnosing the network suites' indirect-call traps, most of
-which were a stack overflow in the port. Between them, 119 of 139 network
-suites now pass (Phase 6). And so is the virtual L2: two boards on the
+which were a stack overflow in the port. Between them, and picolibc as the
+default C library, 125 of 139 network suites now pass (Phase 6). And so is the virtual L2: two boards on the
 page, echoing over Ethernet, which raised the score to 52, seven more
 pairs, which took it to 61, and zperf, typed into on both boards, which
 took it to 62. The pairs now run on one clock, so each is as repeatable
-as a single board.
+as a single board, and the mDNS pair, once the board took Zephyr's default
+C library, took it to 64.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -679,7 +689,8 @@ What happened to each:
       Left out, each for a reason:
       - `dns_resolve` with `mdns_responder`: the network shell calls
         `strcasecmp`, which the minimal libc lacks. Fixing that means
-        choosing a libc, which is more than an address.
+        choosing a libc, which is more than an address. It runs now:
+        below, "The mDNS pair".
       - `echo_server`: needs patch 0010.
 
       Upstream's CoAP client library reports `-ECANCELED` for a request
@@ -725,6 +736,29 @@ What happened to each:
       its own next event, but a frame the running board sent could wake it
       sooner. Sending a frame now pulls the sender's limit in to that
       frame's arrival.
+- [x] **The mDNS pair**, which raised the score from 62 to 64.
+      `dns_resolve` asks the link who `zephyr.local` is, over IPv4 and IPv6
+      multicast, and `mdns_responder` answers with 192.0.2.1 and
+      2001:db8::1. The client is given the other addresses of the two.
+      Both boards have the shell, and `net dns zephyr.local` on the client
+      asks again.
+
+      What stopped it was the C library, not the network. The network
+      shell calls `strcasecmp`, which the minimal libc lacks, and the board
+      forced the minimal libc, a choice upstream makes for no board by
+      default. The board now takes Zephyr's default, picolibc, and every
+      record was re-measured against it (`DESIGN.md` D11):
+      - samples: nothing got worse, and three more build (above, "The
+        measure"). `smf_calculator` needed one more compiler helper,
+        `__extenddftf2`, for picolibc's `strtod`;
+      - kernel suites: all 25 as recorded;
+      - network suites: six more pass, **125 of 139**. `coap_client` and
+        `http_client` had stopped on `ssize_t` and `strcasecmp`, `wireguard`
+        on `EKEYEXPIRED`, and `mcp` and the two Wi-Fi credential backends
+        on causes not diagnosed then that went with the minimal libc.
+
+      `upstream/zephyr/0012` adds `strcasecmp` to the minimal libc anyway,
+      for the boards that do choose it.
 - [ ] Optionally a WebSocket or WebTransport uplink to the real network.
 
 The sweep counts samples, and networking's samples are nearly all `net`
@@ -753,9 +787,10 @@ and the two largest groups are not in any phase.
       - the wasm-ld link puts picolibc's `libc.a` last, as lld does;
       - `malloc` gets a fixed 16 KB arena, native_sim's answer to having no
         linker script to define `_end`;
-      - the arch provides the three 128-bit helpers clang calls and nothing
-        here supplied (`__multi3`, `__ashlti3`, `__lshrti3`), because there
-        is no compiler-rt for wasm32;
+      - the arch provides the 128-bit helpers clang calls and nothing
+        here supplied (`__multi3`, `__ashlti3`, `__lshrti3`, and since the
+        mDNS pair `__extenddftf2`), because there is no compiler-rt for
+        wasm32;
       - `patches/picolibc/0001` leaves out a `.fini_array` entry the wasm
         backend refuses. Zephyr never runs that array on any target.
 
@@ -802,7 +837,7 @@ and the two largest groups are not in any phase.
 
       `scripts/try_upstream.sh` applies it for one run. All 23 entries pass,
       so all ten applications, and both kernel suites finish and pass. With
-      the series the score would be ten higher, 72. It stays 62 until Zephyr
+      the series the score would be ten higher, 74. It stays 64 until Zephyr
       takes the patches and the pin moves, because "unmodified" means
       upstream's tree.
 
@@ -810,7 +845,7 @@ and the two largest groups are not in any phase.
 
 The issue asks two things: how much of Zephyr runs in a tab, and whether that
 is a good way to learn it. The score answers the first, and has gone from 3
-to 62. Nothing yet answers the second. The page now teaches with one
+to 64. Nothing yet answers the second. The page now teaches with one
 sample, and nobody learning Zephyr has tried it yet.
 
 - [x] **Which thread is waiting on what** (Phase 2's open item) came first,
