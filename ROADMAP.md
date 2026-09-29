@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **69**. 47 pass upstream's own criterion, and 22 more are counted
+today: **72**. 47 pass upstream's own criterion, and 25 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -27,7 +27,9 @@ fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
 server, zperf, which is both ends of its own pair, and `dns_resolve` with
 `mdns_responder`; `dhcpv4_client`, `http_get`, `dumb_http_server`,
-`tftp_client` and `sntp_client`, whose peer is the host's own network.
+`tftp_client` and `sntp_client`, whose peer is the host's own network;
+and `net_mgmt`, `stats` and `virtual`, which need an interface but no one
+to talk to.
 Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
@@ -47,7 +49,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 69, ten count only
+criterion, which is why it is spelled out: of the 72, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -64,6 +66,10 @@ plays the Linux host the samples expect at `192.0.2.2`, so the pair rule
 applies with the LAN as the peer: the same `PAIR_ARG` list, with
 `overrides` saying what was set. It runs on the board's clock, so each of
 these is checked twice, like a pair, and must say the same both times.
+A sample whose upstream entry `depends_on: netif` and needs no peer
+(`net_mgmt`, `stats`, `virtual`) is built the same way: its interface is
+the one the snippet gives, plugged into the LAN so what it sees is a
+repeatable wire.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -179,7 +185,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 69. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 72. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -220,7 +226,8 @@ as a single board, and the mDNS pair, once the board took Zephyr's default
 C library, took it to 64. `dhcpv4_client`, leased an address by a real
 relay, took it to 65. The host's own network, lwIP on the board's clock,
 took it to 69 with `http_get`, `dumb_http_server`, `tftp_client` and
-`sntp_client`.
+`sntp_client`, and three samples that need an interface but no peer,
+`net_mgmt`, `stats` and `virtual`, took it to 72.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output

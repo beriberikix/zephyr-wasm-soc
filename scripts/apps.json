@@ -958,6 +958,73 @@
       ]
     },
     {
+      "name": "net-mgmt",
+      "kind": "sample",
+      "title": "Network management events",
+      "hint": "net_mgmt listens on a network management socket while it adds an IPv6 address to its interface, waits for duplicate address detection, and removes it again, round and round, printing each event. The interface is plugged into the simulated network the page plays, a Linux host at 192.0.2.2, which answers nothing here: nobody else claims the address, so every check succeeds.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/sockets/net_mgmt",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "IPv6 address added to interface 1 (2001:db8::3)",
+        "DAD succeed for interface 1 (2001:db8::3)",
+        "IPv6 address removed from interface 1 (2001:db8::3)"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "stats",
+      "kind": "sample",
+      "title": "Network statistics",
+      "hint": "The stats sample prints the network stack's counters every 30 s of guest time: packets sent and received per protocol, globally and for the interface. Its interface is plugged into the simulated network the page plays, a Linux host at 192.0.2.2, and the 42 bytes received are that host announcing itself.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 40000,
+      "app": "zephyr/samples/net/stats",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Global network statistics",
+        "Statistics for interface",
+        "IPv6 ND recv"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "virtual",
+      "kind": "sample",
+      "title": "Virtual network interfaces",
+      "hint": "The virtual sample stacks tunnel interfaces on its Ethernet interface, which is plugged into the simulated network the page plays, and prints what it attached to what. It reports its IPIP interface as -1 on every board: it looks for a device called \"IP_tunnel\", which Zephyr now names \"IP_TUNNEL0\".",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/virtual",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Start application (dev VIRTUAL_TEST/",
+        "My example tunnel interface 3 (VirtualTest-1",
+        "This interface 3/",
+        "attached to 2/"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
       "name": "dhcp",
       "kind": "sample",
       "title": "DHCP client",
