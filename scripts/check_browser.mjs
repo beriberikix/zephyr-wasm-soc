@@ -1157,5 +1157,5 @@ console.log(failures !== 0
   : skipped === 0
     ? `the page ran all ${manifest.builds.length} builds in Chromium`
     : `the page ran all ${manifest.builds.length - skipped} builds that do not need a relay ` +
-      `in Chromium; ${skipped} on a real network were skipped`);
+      `in Chromium; skipped ${skipped} on a real network`);
 process.exit(failures === 0 ? 0 : 1);

@@ -51,6 +51,10 @@ export function connectUplink(host, url, onStatus = () => {}) {
   let closing = false;      // closed from this end, which needs no notice
   const pending = [];
 
+  /* The platform can outlive the run (the Worker keeps one for every run),
+   * so what was there before goes back when the link closes. */
+  const before = host.platform.ethSend;
+  const restore = () => { host.platform.ethSend = before; };
   host.platform.ethSend = (frame) => {
     if (frame.length < FRAME_MIN || frame.length > FRAME_MAX) return;
     if (open) ws.send(frame);
@@ -71,13 +75,17 @@ export function connectUplink(host, url, onStatus = () => {}) {
       open = true;
       for (const frame of pending) ws.send(frame);
       pending.length = 0;
-      resolve({ close: () => { closing = true; ws.close(); } });
+      resolve({ close: () => { closing = true; restore(); ws.close(); } });
     };
     ws.onerror = () => {
-      if (!open) reject(new Error(`could not reach the relay at ${url}`));
+      if (!open) {
+        restore();
+        reject(new Error(`could not reach the relay at ${url}`));
+      }
     };
     ws.onclose = () => {
       if (!open) {
+        restore();
         reject(new Error(`could not reach the relay at ${url}`));
         return;
       }

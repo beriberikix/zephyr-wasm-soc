@@ -97,6 +97,7 @@ async function distinctColours(file) {
 const manifest = JSON.parse(await readFile(path.join(site, 'manifest.json'), 'utf8'));
 let failures = 0;
 let skipped = 0;
+let ran = 0;
 
 for (const b of manifest.builds) {
   if (only && !only.has(b.name)) continue;
@@ -105,6 +106,7 @@ for (const b of manifest.builds) {
     console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
     continue;
   }
+  ran++;
 
   /* A pair is judged board by board: each board's expect against its own
    * output. The first board is the one run.mjs writes to stdout. */
@@ -190,11 +192,10 @@ for (const b of manifest.builds) {
   }
 }
 
-const ran = manifest.builds.length - skipped;
 console.log(failures !== 0
   ? `${failures} of ${ran} builds failed`
   : skipped === 0
     ? `all ${ran} builds ran; score is ${manifest.score} upstream samples`
-    : `all ${ran} builds that ran passed; ${skipped} on a real network were skipped, ` +
+    : `all ${ran} builds that ran passed; skipped ${skipped} on a real network, ` +
       'since no relay was given');
 process.exit(failures === 0 ? 0 : 1);
