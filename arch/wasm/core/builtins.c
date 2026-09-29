@@ -6,7 +6,9 @@
  *
  * Only what something has been found to need is here, each written the way
  * compiler-rt writes it. Picolibc's strtoull() checks for overflow with a
- * 128-bit multiply, and its printf() converts a double with 128-bit shifts.
+ * 128-bit multiply, its printf() converts a double with 128-bit shifts, and
+ * its strtod() widens a double to long double, which on wasm32 is IEEE
+ * binary128.
  */
 
 #include <stdint.h>
@@ -76,4 +78,40 @@ ti_int __lshrti3(ti_int a, int b)
 		hi >>= b;
 	}
 	return (ti_int)(((tu_int)hi << 64) | lo);
+}
+
+/* double to long double: binary64 to binary128, which is always exact. The
+ * sign carries over, the exponent is rebiased from 1023 to 16383, and the
+ * 52-bit fraction becomes the top of the 112-bit one. A subnormal double is
+ * a normal long double, so its leading bit becomes the implicit one. */
+long double __extenddftf2(double a)
+{
+	union {
+		double f;
+		uint64_t u;
+	} in = { .f = a };
+	union {
+		long double f;
+		tu_int u;
+	} out;
+	const uint64_t sign = in.u >> 63;
+	const uint64_t exp = (in.u >> 52) & 0x7ff;
+	uint64_t frac = in.u & ((UINT64_C(1) << 52) - 1);
+	uint64_t exp128;
+
+	if (exp == 0x7ff) {
+		/* Infinity or NaN, payload and all. */
+		exp128 = 0x7fff;
+	} else if (exp != 0) {
+		exp128 = exp + (16383 - 1023);
+	} else if (frac != 0) {
+		const int shift = __builtin_clzll(frac) - 11;
+
+		frac = (frac << shift) & ((UINT64_C(1) << 52) - 1);
+		exp128 = (16383 - 1023) + 1 - shift;
+	} else {
+		exp128 = 0;
+	}
+	out.u = ((tu_int)sign << 127) | ((tu_int)exp128 << 112) | ((tu_int)frac << 60);
+	return out.f;
 }

@@ -912,9 +912,11 @@ What that took, each for a reason that would bite any wasm32 port:
   once as a toolchain flag for picolibc's own sources, which the module
   builds without `zephyr_interface`'s definitions.
 - There is no compiler-rt for wasm32. Clang lowers 128-bit multiplies and
-  shifts to calls, and picolibc's `strtoull` and float `printf` make them.
-  `arch/wasm/core/builtins.c` has the three that anything has needed so
-  far, each tested against the host compiler's own 128-bit arithmetic.
+  shifts to calls, and picolibc's `strtoull` and float `printf` make them;
+  its `strtod` widens a double to `long double`, which on wasm32 is
+  binary128, through another. `arch/wasm/core/builtins.c` has the four
+  that anything has needed so far, each tested against the host
+  compiler's own 128-bit arithmetic.
 - The common `malloc`'s default arena runs from the linker symbol `_end` to
   the end of RAM, and there is no linker script to define `_end`. The arch
   defaults to a 16 KB arena in BSS instead, which is native_sim's answer to
