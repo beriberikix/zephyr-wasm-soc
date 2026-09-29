@@ -1482,3 +1482,31 @@ struct pbuf sits just before the payload of a buffer lwIP allocated; it is
 checked against the frame's own pointer and length, then walked. Every size
 now completes, the check fails without the fix, and the issue is written up
 in `upstream/README.md` for tcpip.js.
+
+### Tick 68 — a browser round on the network builds
+
+A Claude in Chrome run on the live site (f42e1e5) tried the five builds on
+the simulated network, a bad relay URL, and three older builds. Nothing
+failed. What it found, and what each turned out to be:
+- **"Stopped at the page's 0-minute limit."** A page bug: the limit was
+  rounded to minutes, and the network builds stop at 10 s of guest time.
+  Under a minute it is now said in seconds.
+- **"The host's own network" meant nothing to a visitor.** The hints now
+  say what it is where it is used: the page plays a Linux host at
+  192.0.2.2 on a simulated network. So does the status line.
+- **The DHCP hint led with the optional relay**, and its `net ping 10.0.2.2`
+  read like a mistake. It now leads with the simulated network and the
+  shell commands that work on it, says Uplink can stay empty, and says
+  10.0.2.2 is the relay's gateway, not this one's.
+- **The echo server's terminal stays still.** echo_service doesn't log per
+  packet; the hint now says so, and that the client does the counting.
+- **Upstream, left as they are:**
+  - `net iface` prints `DHCPv4 state` twice: `subsys/net/lib/shell/iface.c`
+    prints it inside the DHCP block and again after it. It is a one-line
+    patch, not written this round.
+  - `net_config` logs the last-added IPv6 address on every DAD success, so
+    `IPv6 address` appears twice.
+  - The boot banner and `net_config`'s lines come after the sample's own
+    `printf` output, because printk and LOG go through the deferred log
+    thread while `printf` goes straight to the UART. A board with the same
+    configuration does the same.
