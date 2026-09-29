@@ -1510,3 +1510,29 @@ failed. What it found, and what each turned out to be:
     `printf` output, because printk and LOG go through the deferred log
     thread while `printf` goes straight to the UART. A board with the same
     configuration does the same.
+
+### Tick 69 — network samples with no one to talk to
+
+Some `harness: net` samples need an interface but no peer. The sweep leaves
+all `harness: net` entries out, so these count by the demo's checks, like
+the pairs. Four were tried:
+- **`net_mgmt`** adds an IPv6 address, waits for duplicate address
+  detection and removes it, in a loop, and prints each event from a
+  management socket. It runs on the LAN, as it should: nobody answers.
+- **`stats`** prints the stack's counters every 30 s. On the LAN the only
+  bytes received are the LAN's gratuitous ARP: 42.
+- **`virtual`** stacks tunnel interfaces on the Ethernet one. It reports its
+  IPIP interface as `-1` on every board, because it looks for a device
+  called `"IP_tunnel"` and the IPIP L2 now names its devices `"IP_TUNNEL0"`
+  and up. An upstream bug in the sample, noted here.
+- **`socketpair`** prints FAILURE: `pthread_attr_setstack: Invalid
+  argument`. Its thread stacks are 1 KB, and `PTHREAD_STACK_MIN` is
+  `K_KERNEL_STACK_LEN(0)`, which here is the 4 KB Asyncify buffer every
+  stack reserves (DESIGN.md D8). The sample would need bigger stacks, so
+  it is not added.
+
+The three that run are built with the snippet and nothing else, since
+their entries `depends_on: netif`. They are plugged into the LAN, so what
+they see is a repeatable wire, and check_site runs each twice. Each
+repeated byte for byte. `ipv4_autoconf` was left out: its entry allows only
+`qemu_x86` and `native_sim`. Score 72.
