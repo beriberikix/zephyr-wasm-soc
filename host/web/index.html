@@ -1156,10 +1156,15 @@ async function start() {
     else if (data.type === 'done') {
       /* The pair ends together. */
       endWorkers();
-      const minutes = Math.round((build.max_time_ms ?? 60_000) / 60_000);
+      /* The limit is guest time. Under a minute it is said in seconds: a
+       * 10 s limit rounded to minutes read "0-minute". */
+      const limitMs = build.max_time_ms ?? 60_000;
+      const limit = limitMs < 60_000
+        ? `limit of ${Math.round(limitMs / 1000)} s of guest time`
+        : `${Math.round(limitMs / 60_000)}-minute limit`;
       endRun(stopping ? 'Stopped.'
         : data.code === 2 && (build.endless || build.interactive)
-          ? `Stopped at the page's ${minutes}-minute limit.`
+          ? `Stopped at the page's ${limit}.`
           : `Finished with exit code ${data.code}.`);
     }
   };
@@ -1174,7 +1179,7 @@ async function start() {
   statusEl.textContent = build.uplink && uplinkUrl()
     ? 'Running, on a real network through the relay.'
     : build.lan
-      ? "Running, on the host's own network."
+      ? 'Running, on the simulated network the page plays.'
       : build.uplink
         ? 'Running, with no uplink: the board has no network to ask.'
         : 'Running.';
