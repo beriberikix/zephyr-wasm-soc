@@ -111,6 +111,17 @@ def load(module: str) -> list[dict]:
             if overridden and not b.get("overrides"):
                 sys.exit(f"apps.json: {b['name']} overrides its boards' configuration, "
                          "so it needs an overrides sentence saying how")
+        if b.get("uplink"):
+            # A board on a real network through a relay (host/uplink.mjs).
+            # The relay is its peer, so it is built as upstream ships it with
+            # the link turned on, and nothing else: no address is set, since
+            # the relay's DHCP gives it one.
+            if "boards" in b:
+                sys.exit(f"apps.json: {b['name']}: an uplink is for one board, not a pair")
+            extra = [a for a in b.get("args", []) if a != "-DSNIPPET=wasm-ethernet"]
+            if extra or "-DSNIPPET=wasm-ethernet" not in b.get("args", []):
+                sys.exit(f"apps.json: {b['name']} has an uplink, so it is built with "
+                         "-DSNIPPET=wasm-ethernet and nothing else")
         for u in units(b):
             u["app"] = u["app"].replace("{module}", module)
         if "boards" in b:

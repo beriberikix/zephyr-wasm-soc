@@ -79,12 +79,30 @@ jobs:
       - name: Build the demo
         run: ./zephyr-wasm/scripts/stage_site.sh
 
+      # A relay for the builds on a real network (host/uplink.mjs): the one
+      # README tells people to run, pinned, on loopback only. What the checks
+      # ask of it -- a DHCP lease -- it answers itself, so they do not depend
+      # on the internet.
+      - name: Start a network relay
+        run: |
+          mkdir -p "$RUNNER_TEMP/relay" && cd "$RUNNER_TEMP/relay"
+          npm install --no-save --no-audit --no-fund rootlessrelay@0.6.0
+          ENABLE_WSS=false WS_BIND_ADDRESS=127.0.0.1 ADMIN_BIND_ADDRESS=127.0.0.1 \
+            PROXY_BIND_ADDRESS=127.0.0.1 LOG_LEVEL=0 \
+            nohup node node_modules/rootlessrelay/relay.js > relay.log 2>&1 &
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/8086) 2>/dev/null && exit 0
+            sleep 1
+          done
+          cat relay.log
+          exit 1
+
       # Every build in the manifest, against the output scripts/apps.json says
       # it should produce. The list used to live here and covered three of the
       # five; the timeslice test, which is the only one with a self-checking
       # PASS line, was built on every run and never executed.
       - name: Check the builds actually run
-        run: node zephyr-wasm/scripts/check_site.mjs _site
+        run: node zephyr-wasm/scripts/check_site.mjs _site --uplink-relay ws://127.0.0.1:8086/
 
       - name: Check two runs are identical
         run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000
@@ -115,7 +133,7 @@ jobs:
         run: |
           npm install --no-save playwright@1.56
           npx playwright install --with-deps chromium
-          node zephyr-wasm/scripts/check_browser.mjs _site
+          node zephyr-wasm/scripts/check_browser.mjs _site --uplink-relay ws://127.0.0.1:8086/
 
       - name: Upload the site
         if: github.ref == 'refs/heads/main'

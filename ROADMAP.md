@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **64**. 47 pass upstream's own criterion, and 17 more are counted
+today: **65**. 47 pass upstream's own criterion, and 18 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -26,7 +26,8 @@ adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
 fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
 server, zperf, which is both ends of its own pair, and `dns_resolve` with
-`mdns_responder`. Upstream gives those no criterion twister can run, because it has no
+`mdns_responder`; and `dhcpv4_client`, which gets its lease from a real
+relay. Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
 
@@ -48,6 +49,13 @@ shows that under the entry's hint. This is looser than twister's own
 criterion, which is why it is spelled out: of the 64, nine count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, and the mDNS pair. The five echo samples pair as shipped.
+
+**And for a board on a real network.** Its peer is a relay (`DESIGN.md`
+D8l), and it is built as upstream ships it with the link turned on, and
+nothing else: `apps.py` refuses any other argument for an `uplink` entry.
+The relay gives it its address. CI runs a relay on loopback, and checks
+only what the relay answers itself, a DHCP lease, so the count does not
+depend on the internet.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -163,7 +171,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 64. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 65. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -177,9 +185,12 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **The last pair.** Ten pairs run, on one clock, so each is as
-   repeatable as a single board (Phase 6). QUIC's pair waits on patch
-   0007.
+3. **The last pair, and more on the uplink.** Ten pairs run, on one
+   clock, so each is as repeatable as a single board (Phase 6). QUIC's
+   pair waits on patch 0007. A board reaches a real network through a
+   relay now; the samples that ship with static addresses wait on
+   `upstream/rootlessrelay/0001`, and after that the next two network
+   ideas are kartben's in-page LAN and pairs across tabs (Phase 6).
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -198,7 +209,8 @@ page, echoing over Ethernet, which raised the score to 52, seven more
 pairs, which took it to 61, and zperf, typed into on both boards, which
 took it to 62. The pairs now run on one clock, so each is as repeatable
 as a single board, and the mDNS pair, once the board took Zephyr's default
-C library, took it to 64.
+C library, took it to 64. `dhcpv4_client`, leased an address by a real
+relay, took it to 65.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -759,7 +771,43 @@ What happened to each:
 
       `upstream/zephyr/0012` adds `strcasecmp` to the minimal libc anyway,
       for the boards that do choose it.
-- [ ] Optionally a WebSocket or WebTransport uplink to the real network.
+- [x] **A real network, through a relay** (`DESIGN.md` D8l), which raised
+      the score from 64 to 65. The board's frames go over a WebSocket to a
+      relay that speaks v86's `wsproxy` protocol, one frame per message,
+      and the relay makes real connections for it.
+      - **Why a relay.** A tab cannot open raw sockets. Port tunnels such
+        as wstunnel carry streams, not frames, so they would still need a
+        stack. v86's relays already exist and need nothing written or
+        hosted here.
+      - **Which relay.** RootlessRelay needs neither root nor TAP:
+        `ENABLE_WSS=false npx rootlessrelay`. `run.mjs --uplink
+        ws://127.0.0.1:8086/` and the page's Uplink field both take its
+        URL.
+      - **What runs.** `dhcpv4_client`, as shipped, gets a lease and from
+        its shell pings the gateway and resolves real names. CI starts the
+        relay, pinned, on loopback, and checks the lease in Node and in
+        Chromium.
+      - **Samples with static addresses.** Most ship with `192.0.2.1`,
+        gateway and DNS `192.0.2.2`, which RootlessRelay could not serve:
+        its pool was fixed at `10.0.2.x`, and it sent DNS for the gateway
+        out to the internet. `upstream/rootlessrelay/0001` fixes both, and
+        with it `sockets/http_get` fetched `http://google.com`, unmodified,
+        from Node. They go on the page once the fix is taken.
+      - **Off by default.** The page names no relay. Choosing a public one
+        for visitors, as zephyr-v86 did, is for whoever publishes the site.
+
+      Drawn from v86's networking notes, beriberikix/zephyr-v86 (wsproxy
+      and RootlessRelay under `native_sim`) and
+      kartben/zephyr-in-the-browser (the `192.0.2.x` addressing, and an
+      opt-in bridge).
+- [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
+      reach a board's server (`dumb_http_server`); not tried yet.
+- [ ] **The page as the LAN**, as kartben/zephyr-in-the-browser does it:
+      the page answers DHCP, DNS, SNTP and HTTP-through-`fetch` itself. It
+      would work on the public site with no helper, and on virtual time, so
+      it could be repeatable.
+- [ ] **Pairs across tabs or machines**, through one relay:
+      RootlessRelay lets its VMs reach each other.
 
 The sweep counts samples, and networking's samples are nearly all `net`
 harness: they need a peer, which twister never gives them. The virtual L2

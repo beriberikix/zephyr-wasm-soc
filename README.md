@@ -69,6 +69,9 @@ log, including what did not work. `BRIEF.md` is the original task.
   The two boards run on one clock, so a pair gives the same output every
   run. `run.mjs --peer` does the same in Node, and `--peer-stdin` types
   into the second board.
+* A real network, through a relay you run: the board's Ethernet frames go
+  over a WebSocket to any relay that speaks v86's wsproxy protocol, and
+  `dhcpv4_client` gets a real lease. See "A real network" below.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
@@ -294,6 +297,32 @@ printed: a typo corrected with Backspace, a command recalled with the up
 arrow, the philosophers' table redrawn in place, LED 0 lit only while
 Button 0 is held.
 
+### A real network
+
+A tab cannot open raw sockets, so a board reaches a real network through a
+relay on your machine. Any relay written for v86 works, since the board's
+frames go over a WebSocket one per message, which is v86's wsproxy
+protocol. RootlessRelay needs neither root nor a TAP device:
+
+```sh
+ENABLE_WSS=false npx rootlessrelay            # listens on ws://127.0.0.1:8086/
+node zephyr-wasm/host/run.mjs --uplink ws://127.0.0.1:8086/ --interactive \
+    build-dhcp/zephyr/zephyr.wasm             # built with -DSNIPPET=wasm-ethernet
+```
+
+On the page, choose "DHCP client on a real network", put the same URL in
+Uplink and press Run. It is empty until you fill it, and the page names no
+relay of its own. Chrome may ask before letting the site reach your
+machine. The board gets `10.0.2.15`; `net ping 10.0.2.2` and `net dns
+zephyrproject.org` in its shell go through the relay. An uplinked board
+follows the wall clock, so unlike everything else here its runs are not
+repeatable.
+
+Most network samples ship with a static `192.0.2.1`, gateway and DNS
+`192.0.2.2`. RootlessRelay serves those once it has
+`upstream/rootlessrelay/0001`, with `GATEWAY_IP=192.0.2.2 DHCP_START=1
+DHCP_END=1`. `DESIGN.md` D8l has the rest.
+
 This says nothing new about engine neutrality, because Chrome is V8, the same
 engine as Node. That claim rests on the wasmtime result below. What the
 browser shows is that the harness is portable to somewhere with no
@@ -337,6 +366,8 @@ under wasmtime. The kernel is the same module in all three.
 | `--touch <ms>:<x>,<y>` | touch the display at a guest time and release 50 ms later, repeatable; display pixels |
 | `--key <ms>:<code>` | press and release a key (a Zephyr `INPUT_KEY_*` code) at a guest time, repeatable |
 | `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
+| `--peer <wasm>` | run a second board linked to this one by Ethernet, on one clock; `--peer-out`, `--peer-delay` and `--peer-stdin` go with it |
+| `--uplink <ws-url>` | link the board's Ethernet to a real network through a wsproxy relay (see "A real network"). Implies `--paced` |
 
 ## Continuous integration
 
@@ -412,7 +443,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 64 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 65 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

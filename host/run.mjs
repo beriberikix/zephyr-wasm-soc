@@ -13,6 +13,7 @@ import process from 'node:process';
 
 import { Host, DEFAULT_SEED } from './core.mjs';
 import { Pair } from './pair.mjs';
+import { connectUplink } from './uplink.mjs';
 import { describeWait, threadState } from './threads.mjs';
 
 function parseArgs(argv) {
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (a === '--peer-out') opts.peerOut = argv[++i];
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
     else if (a === '--peer-stdin') opts.peerStdin = argv[++i];
+    else if (a === '--uplink') opts.uplink = argv[++i];
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -48,6 +50,14 @@ function parseArgs(argv) {
     else { console.error(`unknown option ${a}`); usage(); process.exit(2); }
   }
   if (!opts.wasm) { usage(); process.exit(2); }
+  if (opts.uplink) {
+    if (opts.peer) {
+      console.error('--uplink and --peer cannot be used together yet');
+      process.exit(2);
+    }
+    /* Real peers follow the wall clock (host/uplink.mjs). */
+    opts.clock = 'paced';
+  }
   opts.inputScript.sort((a, b) => (a.atNs < b.atNs ? -1 : a.atNs > b.atNs ? 1 : 0));
   return opts;
 }
@@ -164,7 +174,12 @@ function usage() {
                      its server
   --peer-stdin <file>
                      what is typed into the second board's UART, as
-                     stdin is into the first's under --interactive`);
+                     stdin is into the first's under --interactive
+  --uplink <ws-url>  link the board's Ethernet to a real network through a
+                     relay that speaks v86's wsproxy protocol, such as
+                     RootlessRelay (ENABLE_WSS=false npx rootlessrelay, then
+                     ws://127.0.0.1:8086/). Needs a build with the
+                     wasm-ethernet snippet. Implies --paced`);
 }
 
 const nodePlatform = {
@@ -289,6 +304,18 @@ if (opts.peer) {
 }
 
 const host = new Host(nodePlatform, opts);
+/* --uplink: the link is open before the board boots, so its first DHCP
+ * discover has somewhere to go. */
+let uplink = null;
+if (opts.uplink) {
+  try {
+    uplink = await connectUplink(host, opts.uplink,
+                                 (line) => process.stderr.write(`${line}\n`));
+  } catch (err) {
+    process.stderr.write(`--uplink: ${err.message}\n`);
+    process.exit(2);
+  }
+}
 if (peer) {
   /* Piped input to the first board is read whole and queued, as the
    * second board's is. Arriving through the event loop, it would land at
@@ -308,6 +335,8 @@ if (peer) {
 } else {
   process.exitCode = await host.run();
 }
+/* An open socket would keep Node running after the board has finished. */
+uplink?.close();
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
 
 /* The display's last frame, as a PPM: the simplest image format there is,

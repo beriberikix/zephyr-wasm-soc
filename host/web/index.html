@@ -76,6 +76,9 @@
   #hint code { font-size: 12px; }
   #overrides { margin: 2px 0 2px; color: var(--muted); font-size: 12px; font-style: italic; }
   #overrides[hidden] { display: none; }
+  #uplinkRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
+  #uplinkRow[hidden] { display: none; }
+  #uplink { flex: 1; min-width: 0; max-width: 22em; font: inherit; padding: 2px 4px; }
   #status {
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -214,6 +217,14 @@
   <!-- For a two-board build set up differently from how upstream ships it:
        what was changed, in words. Only addresses and ports ever are. -->
   <div id="overrides" hidden></div>
+  <!-- For a build on a real network: the relay that takes it there, which
+       the person runs themselves. Empty means no link. See host/uplink.mjs. -->
+  <div id="uplinkRow" hidden>
+    <label for="uplink"
+           title="A relay that speaks v86's wsproxy protocol, such as RootlessRelay. Used from the next Run.">Uplink</label>
+    <input id="uplink" type="url" placeholder="ws://127.0.0.1:8086/"
+           spellcheck="false" autocomplete="off" aria-label="relay URL">
+  </div>
   <div id="status">Loading the list of builds…</div>
 
   <!-- A guided lesson, for a build whose apps.json entry has one. The steps
@@ -942,6 +953,15 @@ const remembered = {
  * followed stays slowed down when it is run again, after a reload too. */
 const speeds = new Map(Object.entries(remembered.get('speeds') ?? {}));
 
+/* The relay a build on a real network goes through, if the person gave one:
+ * ?uplink= for this visit, or what they typed last time. Nothing is ever
+ * opened without it, and the page names no relay of its own. */
+const uplinkRowEl = document.getElementById('uplinkRow');
+const uplinkEl = document.getElementById('uplink');
+uplinkEl.value = new URLSearchParams(location.search).get('uplink') ?? remembered.get('uplink') ?? '';
+uplinkEl.onchange = () => remembered.set('uplink', uplinkEl.value.trim());
+const uplinkUrl = () => (/^wss?:\/\/\S+$/.test(uplinkEl.value.trim()) ? uplinkEl.value.trim() : null);
+
 /* Show what the selected build needs, before it runs as well as while: the
  * controls appearing only after Run moved everything under the pointer. */
 function showSelected() {
@@ -980,6 +1000,7 @@ function showSelected() {
   const overridesEl = document.getElementById('overrides');
   overridesEl.hidden = !build.overrides;
   overridesEl.textContent = build.overrides ? `Built with: ${build.overrides}` : '';
+  uplinkRowEl.hidden = !build.uplink;
   showLesson(build);
   statusEl.textContent = 'Ready.';
 }
@@ -1150,7 +1171,9 @@ async function start() {
   };
 
   showSelected();
-  statusEl.textContent = 'Running.';
+  statusEl.textContent = build.uplink && !uplinkUrl()
+    ? 'Running, with no uplink: the board has no network to ask.'
+    : 'Running.';
   /* Only a paced build that runs by itself has a speed worth changing:
    * under virtual time the run is over before the control could be
    * reached, and an interactive one goes at the pace of the person. */
@@ -1183,6 +1206,7 @@ async function start() {
       clock: build.clock ?? 'virtual',
       timeScale: paced ? Number(speedEl.value) : 1,
       flashImage,
+      uplink: build.uplink ? uplinkUrl() : null,
     });
   }
   /* The board starts as the tilt pad has it: level, unless someone tilted

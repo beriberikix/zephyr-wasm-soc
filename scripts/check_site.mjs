@@ -29,12 +29,17 @@ const runner = path.join(here, '..', 'host', 'run.mjs');
 const args = process.argv.slice(2);
 const onlyIdx = args.indexOf('--only');
 const only = onlyIdx === -1 ? null : new Set(args[onlyIdx + 1].split(','));
-const site = args.find((a, i) => !a.startsWith('--') && (onlyIdx === -1 || i !== onlyIdx + 1))
+/* A wsproxy relay for the builds on a real network (host/uplink.mjs). CI
+ * starts one; without it those builds are skipped, and said to be. */
+const relayIdx = args.indexOf('--uplink-relay');
+const relay = relayIdx === -1 ? null : args[relayIdx + 1];
+const values = new Set([onlyIdx, relayIdx].filter((i) => i !== -1).map((i) => i + 1));
+const site = args.find((a, i) => !a.startsWith('--') && !values.has(i))
   ?? path.join(here, '..', '..', '_site');
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer, uplink) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -54,6 +59,7 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
     if (peer.delayMs) argv.push('--peer-delay', String(peer.delayMs));
     if (peer.stdin) argv.push('--peer-stdin', peer.stdin);
   }
+  if (uplink) argv.push('--uplink', uplink);
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -90,9 +96,15 @@ async function distinctColours(file) {
 
 const manifest = JSON.parse(await readFile(path.join(site, 'manifest.json'), 'utf8'));
 let failures = 0;
+let skipped = 0;
 
 for (const b of manifest.builds) {
   if (only && !only.has(b.name)) continue;
+  if (b.uplink && !relay) {
+    skipped++;
+    console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
+    continue;
+  }
 
   /* A pair is judged board by board: each board's expect against its own
    * output. The first board is the one run.mjs writes to stdout. */
@@ -116,7 +128,7 @@ for (const b of manifest.builds) {
    * blank or black screen fails even when the console looks right. */
   const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
   const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                                       !!b.threads_expect, peer);
+                                       !!b.threads_expect, peer, b.uplink ? relay : null);
   const peerOut = peer ? await readFile(peer.out, 'utf8').catch(() => '') : '';
 
   const problems = [];
@@ -178,7 +190,11 @@ for (const b of manifest.builds) {
   }
 }
 
-console.log(failures === 0
-  ? `all ${manifest.builds.length} builds ran; score is ${manifest.score} upstream samples`
-  : `${failures} of ${manifest.builds.length} builds failed`);
+const ran = manifest.builds.length - skipped;
+console.log(failures !== 0
+  ? `${failures} of ${ran} builds failed`
+  : skipped === 0
+    ? `all ${ran} builds ran; score is ${manifest.score} upstream samples`
+    : `all ${ran} builds that ran passed; ${skipped} on a real network were skipped, ` +
+      'since no relay was given');
 process.exit(failures === 0 ? 0 : 1);

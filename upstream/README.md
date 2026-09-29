@@ -144,3 +144,35 @@ git -C mbedtls checkout -b x509-now-init origin/development
 git -C mbedtls am --signoff ../zephyr-wasm/upstream/mbedtls/*.patch
 ```
 
+
+## rootlessrelay/: a relay on the samples' own subnet
+
+The uplink (`host/uplink.mjs`, `DESIGN.md` D8l) sends a board's frames to a
+relay that speaks v86's wsproxy protocol, and RootlessRelay is the one
+README points people at: it needs neither root nor a TAP device. Its
+`GATEWAY_IP` is configurable, but two things assumed QEMU's `10.0.2.0/24`:
+- the DHCP pool, the broadcast address and the VM-to-VM check were fixed at
+  `10.0.2.x`, so `GATEWAY_IP=192.0.2.2` offered `10.0.2.15` with a gateway
+  outside its subnet;
+- a DNS query sent to the gateway went to the gateway's address on the real
+  network, where nothing answers. QEMU's user networking answers DNS at its
+  own address.
+
+Most of Zephyr's networking samples ship with a static `192.0.2.1`, and the
+gateway `192.0.2.2` as their DNS server, so neither worked through the relay
+as it is. Only a sample that asks DHCP for everything, such as
+`dhcpv4_client`, did.
+
+| Patch | Fixes | Here, unlocks |
+|---|---|---|
+| 0001 `Take the VM subnet from GATEWAY_IP, and answer DNS sent to the gateway` | the /24 is the gateway's; a query to the gateway goes to `DNS_SERVER_IP` and is answered from the gateway's address | static-address samples, run as shipped with `GATEWAY_IP=192.0.2.2 DHCP_START=1 DHCP_END=1`. `sockets/http_get` fetched `http://google.com` through it, unmodified |
+
+It applies to `obegron/rootlessRelay` `main` at `1b541e2` (0.6.0), and the
+project's own tests pass with it (82 pass, 34 network tests skipped). The
+project is MIT-licensed and asks for nothing more than a pull request; the
+patch carries the same `Assisted-by` placeholder to fill in.
+
+```sh
+git -C rootlessRelay checkout -b gateway-subnet origin/main
+git -C rootlessRelay am ../zephyr-wasm/upstream/rootlessrelay/*.patch
+```

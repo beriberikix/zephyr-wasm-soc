@@ -17,6 +17,7 @@
  * this file, so local and published layouts are the same thing. */
 import { Host } from './core.mjs';
 import { Pair } from './pair.mjs';
+import { connectUplink } from './uplink.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let sensorReadings = null; // the page's latest tilt, for a host not yet made
@@ -209,7 +210,11 @@ self.onmessage = async (event) => {
     wasm: msg.url,
     flashImage: msg.flashImage ?? null,
     seed: msg.seed,
+    /* A relay the person gave the page (host/uplink.mjs). Real peers
+     * follow the wall clock, so the board is paced. */
+    uplink: msg.uplink || null,
   };
+  if (opts.uplink) opts.clock = 'paced';
   lastFlash = msg.flashImage ?? null;
 
   /* Stop has to reach a run that is already going, and the only safe moment
@@ -225,10 +230,19 @@ self.onmessage = async (event) => {
     sendFrame();
     if (++ticks % 40 === 0 && host.storage) sendFlash(host.flashImage());
   }, 50);
+  let uplink = null;
   try {
     host = new Host(browserPlatform, opts);
     /* A tilt sent while the module was still loading. */
     if (sensorReadings) host.pushSensor(sensorReadings);
+    /* The link is open before the board boots, so its first DHCP discover
+     * has somewhere to go. The Worker opens it itself: frames never pass
+     * through the page. */
+    if (opts.uplink) {
+      uplink = await connectUplink(host, opts.uplink,
+        (line) => self.postMessage({ type: 'err', text: `\n${line}\n` }));
+      self.postMessage({ type: 'err', text: `[uplink: connected to ${opts.uplink}]\n` });
+    }
     const code = await host.run();
     clearInterval(tick);
     if (host.storage) sendFlash(host.flashImage());
@@ -239,6 +253,7 @@ self.onmessage = async (event) => {
     self.postMessage({ type: 'done', code: 1 });
   } finally {
     clearInterval(tick);
+    uplink?.close();
     host = null;
   }
 };

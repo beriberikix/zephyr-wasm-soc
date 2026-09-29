@@ -36,7 +36,12 @@ const args = process.argv.slice(2);
 const headed = args.includes('--headed');
 const shotsAt = args.indexOf('--screenshots');
 const shots = shotsAt >= 0 ? path.resolve(args[shotsAt + 1]) : null;
-const positional = args.filter((a, i) => !a.startsWith('--') && i !== shotsAt + 1);
+/* A wsproxy relay for the builds on a real network, as check_site.mjs takes
+ * one. Without it they are skipped, and said to be. */
+const relayAt = args.indexOf('--uplink-relay');
+const relay = relayAt >= 0 ? args[relayAt + 1] : null;
+const values = new Set([shotsAt, relayAt].filter((i) => i >= 0).map((i) => i + 1));
+const positional = args.filter((a, i) => !a.startsWith('--') && !values.has(i));
 /* Absolute: the path is compared against a request's resolved path below,
  * and a relative one would never match. */
 const site = path.resolve(positional[0] ?? path.join(here, '..', '..', '_site'));
@@ -326,6 +331,28 @@ if (listed.length !== manifest.builds.length) {
   console.log(`  ok    manifest  ${listed.length} builds listed`);
 }
 
+/* The uplink is the one thing on the page that reaches outside it, so it is
+ * off until a person turns it on: the field shows only for a build that can
+ * use it, and starts empty. */
+{
+  const uplinkBuild = manifest.builds.find((b) => b.uplink);
+  const plain = manifest.builds.find((b) => !b.uplink && !b.boards);
+  if (uplinkBuild && plain) {
+    await page.selectOption('#build', plain.name);
+    const hiddenForPlain = await page.evaluate(() => document.getElementById('uplinkRow').hidden);
+    await page.selectOption('#build', uplinkBuild.name);
+    const shown = await page.evaluate(() => !document.getElementById('uplinkRow').hidden);
+    const value = await page.inputValue('#uplink');
+    if (!hiddenForPlain || !shown) {
+      fail('uplink', `the Uplink field shows for ${hiddenForPlain ? 'no build' : plain.name}`);
+    } else if (value !== '') {
+      fail('uplink', `the Uplink field starts as ${JSON.stringify(value)}, not empty`);
+    } else {
+      console.log(`  ok    uplink    offered for ${uplinkBuild.name} only, and empty until someone fills it`);
+    }
+  }
+}
+
 /* A two-board build, as a person would use it: both terminals and the
  * link line shown, Run starting both boards, the first board's terminal
  * typed into, each board printing its own expectations, frames crossing
@@ -396,10 +423,23 @@ async function checkPair(b) {
   }
 }
 
+let skipped = 0;
 for (const b of manifest.builds) {
   if (b.boards) {
     await checkPair(b);
     continue;
+  }
+  /* A build on a real network, through the relay given, typed into the
+   * field as a person would. */
+  if (b.uplink) {
+    if (!relay) {
+      skipped++;
+      console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
+      continue;
+    }
+    await page.selectOption('#build', b.name);
+    await page.fill('#uplink', relay);
+    await page.dispatchEvent('#uplink', 'change');
   }
   const expect = b.expect ?? [];
 
@@ -1080,6 +1120,29 @@ for (const b of manifest.builds.filter((x) => x.persist_expect)) {
   }
 }
 
+/* A relay that is not there: the run says so in the terminal and ends,
+ * rather than booting a board that waits for ever for a network. */
+{
+  const uplinkBuild = manifest.builds.find((b) => b.uplink);
+  if (uplinkBuild) {
+    try {
+      await page.selectOption('#build', uplinkBuild.name);
+      await page.fill('#uplink', 'ws://127.0.0.1:9/');
+      await page.dispatchEvent('#uplink', 'change');
+      await page.click('#run');
+      await page.waitForFunction(
+        () => window.zephyrOutput().includes('could not reach the relay'), null,
+        { timeout: 30_000, polling: 250 });
+      console.log('  ok    no-relay  a relay that is not there is reported, and the run ends');
+    } catch {
+      fail('no-relay', 'a relay that is not there was not reported', await page.evaluate(() => window.zephyrOutput()));
+    }
+    await page.click('#stop', { timeout: 1000 }).catch(() => {});
+    await page.fill('#uplink', '');
+    await page.dispatchEvent('#uplink', 'change');
+  }
+}
+
 await browser.close();
 server.close();
 
@@ -1089,7 +1152,10 @@ if (pageErrors.length) {
   for (const e of pageErrors.slice(0, 10)) console.log(`        | ${e}`);
 }
 
-console.log(failures === 0
-  ? `the page ran all ${manifest.builds.length} builds in Chromium`
-  : `${failures} browser checks failed`);
+console.log(failures !== 0
+  ? `${failures} browser checks failed`
+  : skipped === 0
+    ? `the page ran all ${manifest.builds.length} builds in Chromium`
+    : `the page ran all ${manifest.builds.length - skipped} builds that do not need a relay ` +
+      `in Chromium; ${skipped} on a real network were skipped`);
 process.exit(failures === 0 ? 0 : 1);

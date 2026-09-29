@@ -1,0 +1,119 @@
+From 9f375038a2a91a7a42dcf61eec62b167b25711f7 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Tue, 29 Sep 2026 04:46:52 +0000
+Subject: [PATCH] Take the VM subnet from GATEWAY_IP, and answer DNS sent to
+ the gateway
+
+GATEWAY_IP was configurable, but the DHCP pool, the broadcast address and
+the VM-to-VM check were fixed at 10.0.2.0/24. With GATEWAY_IP=192.0.2.2 a
+VM was offered 10.0.2.15 with a gateway outside its subnet. The /24 is now
+the gateway's, so the pool, broadcast and VM-to-VM routing follow it.
+
+A DNS query sent to the gateway was forwarded to the gateway's address on
+the real network, where nothing answers. QEMU's user networking answers
+DNS at its own address; this does the same, forwarding the query to
+DNS_SERVER_IP and replying from the gateway's address, which is the one
+the VM asked.
+
+Together these let a guest configured with a static address and its
+gateway as DNS server, such as Zephyr's networking samples (192.0.2.1,
+gateway and DNS 192.0.2.2), run unmodified with
+GATEWAY_IP=192.0.2.2 DHCP_START=1 DHCP_END=1.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ relay.js | 25 +++++++++++++++++--------
+ 1 file changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/relay.js b/relay.js
+index 97b3681..d4879ae 100644
+--- a/relay.js
++++ b/relay.js
+@@ -71,6 +71,10 @@ const GATEWAY_IP = process.env.GATEWAY_IP || "10.0.2.2";
+ 
+ // DHCP_START: The starting IP address for the DHCP pool (the last octet).
+ // ENV: DHCP_START
++// SUBNET: the /24 the VMs are on, which is the gateway's.
++const SUBNET = GATEWAY_IP.split(".").slice(0, 3).join(".");
++const BROADCAST_IP = `${SUBNET}.255`;
++
+ const DHCP_START = process.env.DHCP_START ? parseInt(process.env.DHCP_START, 10) : 15; // Assigns IPs from 10.0.2.15
+ 
+ // DHCP_END: The ending IP address for the DHCP pool (the last octet).
+@@ -250,7 +254,7 @@ function allocateIP(mac) {
+   // Find next available IP
+   for (let i = DHCP_START; i <= DHCP_END; i++) {
+     if (!usedIPs.has(i)) {
+-      const ip = `10.0.2.${i}`;
++      const ip = `${SUBNET}.${i}`;
+       usedIPs.add(i);
+       macToIP.set(mac, ip);
+       console.log(`📋 Allocated ${ip} to MAC ${mac}`);
+@@ -333,7 +337,7 @@ console.log(
+   `TCP delayed ACK: every ${TCP_ACK_EVERY_SEGMENTS} segments or ` +
+   `${TCP_ACK_DELAY_MS} ms`,
+ );
+-console.log(`DHCP Pool: 10.0.2.${DHCP_START} - 10.0.2.${DHCP_END}`);
++console.log(`DHCP Pool: ${SUBNET}.${DHCP_START} - ${SUBNET}.${DHCP_END}`);
+ console.log(`VM-to-VM routing: ${ENABLE_VM_TO_VM ? "ENABLED" : "DISABLED"}`);
+ 
+ const PassThrough = require("stream").PassThrough;
+@@ -359,7 +363,7 @@ class VMSession {
+           response,
+           flow.remotePort,
+           flow.vmPort,
+-          flow.remoteIP,
++          flow.replyIP ?? flow.remoteIP,
+           flow.vmIP,
+         );
+       },
+@@ -1324,7 +1328,7 @@ class VMSession {
+     }
+ 
+     // Handle UDP broadcast
+-    if (ENABLE_VM_TO_VM && dstIP === "10.0.2.255" && protocol === 17) {
++    if (ENABLE_VM_TO_VM && dstIP === BROADCAST_IP && protocol === 17) {
+       if (log_level >= LOG_LEVEL_DEBUG) {
+         console.log(`📢 Broadcasting UDP packet from ${srcIP}`);
+       }
+@@ -1341,8 +1345,8 @@ class VMSession {
+ 
+     // Check if this is VM-to-VM traffic
+     if (
+-      ENABLE_VM_TO_VM && dstIP.startsWith("10.0.2.") && dstIP !== GATEWAY_IP &&
+-      dstIP !== "10.0.2.255"
++      ENABLE_VM_TO_VM && dstIP.startsWith(`${SUBNET}.`) && dstIP !== GATEWAY_IP &&
++      dstIP !== BROADCAST_IP
+     ) {
+       const targetSession = ipToSession.get(dstIP);
+       if (targetSession) {
+@@ -2093,11 +2097,16 @@ class VMSession {
+         console.log(`   🔎 DNS Query for: ${hostname}`);
+       }
+ 
++      // A query to the gateway is for the relay's own resolver, as with
++      // QEMU's user networking: forward it to DNS_SERVER_IP, and answer
++      // from the gateway's address, which is the one the VM asked.
++      const toGateway = dstIP === GATEWAY_IP;
+       const accepted = this.udpFlows.send(payload, {
+         vmPort: srcPort,
+         vmIP: srcIP,
+         remotePort: dstPort,
+-        remoteIP: dstIP,
++        remoteIP: toGateway ? DNS_SERVER_IP : dstIP,
++        replyIP: toGateway ? GATEWAY_IP : dstIP,
+         isDNS: true,
+       });
+       if (!accepted && log_level >= LOG_LEVEL_DEBUG) {
+@@ -2539,7 +2548,7 @@ wss.on("connection", (ws, req) => {
+ });
+ 
+ console.log(
+-  `💡 VMs will be assigned IPs from 10.0.2.${DHCP_START} to 10.0.2.${DHCP_END}`,
++  `💡 VMs will be assigned IPs from ${SUBNET}.${DHCP_START} to ${SUBNET}.${DHCP_END}`,
+ );
+ console.log(`💡 Gateway: ${GATEWAY_IP}`);
+ console.log(`💡 DNS: ${DNS_SERVER_IP}`);
+-- 
+2.43.0
+
