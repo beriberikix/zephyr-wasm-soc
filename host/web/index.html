@@ -1171,9 +1171,13 @@ async function start() {
   };
 
   showSelected();
-  statusEl.textContent = build.uplink && !uplinkUrl()
-    ? 'Running, with no uplink: the board has no network to ask.'
-    : 'Running.';
+  statusEl.textContent = build.uplink && uplinkUrl()
+    ? 'Running, on a real network through the relay.'
+    : build.lan
+      ? "Running, on the host's own network."
+      : build.uplink
+        ? 'Running, with no uplink: the board has no network to ask.'
+        : 'Running.';
   /* Only a paced build that runs by itself has a speed worth changing:
    * under virtual time the run is over before the control could be
    * reached, and an interactive one goes at the pace of the person. */
@@ -1207,6 +1211,7 @@ async function start() {
       timeScale: paced ? Number(speedEl.value) : 1,
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
+      lan: build.lan ?? null,
     });
   }
   /* The board starts as the tilt pad has it: level, unless someone tilted

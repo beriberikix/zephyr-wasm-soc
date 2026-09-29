@@ -39,7 +39,7 @@ const site = args.find((a, i) => !a.startsWith('--') && !values.has(i))
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer, uplink) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer, uplink, lan) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
@@ -60,6 +60,11 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
     if (peer.stdin) argv.push('--peer-stdin', peer.stdin);
   }
   if (uplink) argv.push('--uplink', uplink);
+  /* The host's own network, and the connections it makes to the board. */
+  else if (lan) {
+    argv.push('--lan');
+    for (const d of lan.dial ?? []) argv.push('--lan-dial', `${d.at_ms}:${d.port}`);
+  }
   argv.push(wasm);
   return new Promise((resolve) => {
     const child = spawn(process.execPath, argv,
@@ -101,7 +106,7 @@ let ran = 0;
 
 for (const b of manifest.builds) {
   if (only && !only.has(b.name)) continue;
-  if (b.uplink && !relay) {
+  if (b.uplink && !b.lan && !relay) {
     skipped++;
     console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
     continue;
@@ -129,8 +134,11 @@ for (const b of manifest.builds) {
    * has to show at least display.colors_at_least distinct colours, so a
    * blank or black screen fails even when the console looks right. */
   const shot = b.display ? path.join(os.tmpdir(), `check-site-${b.name}.ppm`) : undefined;
+  /* An entry on the LAN runs there; one that can also take a relay runs
+   * through it as well, below, when there is one. */
+  const uplink = b.uplink && !b.lan ? relay : null;
   const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                                       !!b.threads_expect, peer, b.uplink ? relay : null);
+                                       !!b.threads_expect, peer, uplink, b.lan);
   const peerOut = peer ? await readFile(peer.out, 'utf8').catch(() => '') : '';
 
   const problems = [];
@@ -143,6 +151,20 @@ for (const b of manifest.builds) {
     const peerAgain = await readFile(peer.out, 'utf8').catch(() => '');
     if (again.out !== out) problems.push(`the ${first.label}'s output differed on a second run`);
     if (peerAgain !== peerOut) problems.push(`the ${second.label}'s output differed on a second run`);
+  }
+  /* So does a board on the LAN (host/lan.mjs), which runs on its clock. */
+  if (b.lan) {
+    const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
+                            !!b.threads_expect, null, null, b.lan);
+    if (again.out !== out) problems.push('the output differed on a second run on the LAN');
+  }
+  /* And one that can also take a relay, through the one given. */
+  if (b.lan && b.uplink && relay) {
+    const real = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
+                           false, null, relay);
+    for (const want of first.expect ?? []) {
+      if (!real.out.includes(want)) problems.push(`through the relay, missing: ${JSON.stringify(want)}`);
+    }
   }
   /* A build that never finishes ends at --max-time, which is exit 2 and is
    * the expected end of its run rather than a failure. */

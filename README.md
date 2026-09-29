@@ -69,6 +69,11 @@ log, including what did not work. `BRIEF.md` is the original task.
   The two boards run on one clock, so a pair gives the same output every
   run. `run.mjs --peer` does the same in Node, and `--peer-stdin` types
   into the second board.
+* The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
+  the Linux host upstream's networking samples expect. It offers DHCP, DNS,
+  SNTP, TFTP and HTTP. `http_get`, `dumb_http_server`, `tftp_client` and
+  `sntp_client` run on it unmodified, with nothing leaving the page and the
+  same output every run. `run.mjs --lan` in Node.
 * A real network, through a relay you run: the board's Ethernet frames go
   over a WebSocket to any relay that speaks v86's wsproxy protocol, and
   `dhcpv4_client` gets a real lease. See "A real network" below.
@@ -368,6 +373,8 @@ under wasmtime. The kernel is the same module in all three.
 | `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
 | `--peer <wasm>` | run a second board linked to this one by Ethernet, on one clock; `--peer-out`, `--peer-delay` and `--peer-stdin` go with it |
 | `--uplink <ws-url>` | link the board's Ethernet to a real network through a wsproxy relay (see "A real network"). Implies `--paced` |
+| `--lan` | plug the board into the host's own network: lwIP at 192.0.2.2 with DHCP, DNS, SNTP, TFTP and HTTP, on the board's clock (`DESIGN.md` D8m) |
+| `--lan-dial <ms>:<port>` | with `--lan`, connect to the board's port at a guest time and send `GET /`, for a sample that is a server |
 
 ## Continuous integration
 
@@ -443,7 +450,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 65 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 69 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

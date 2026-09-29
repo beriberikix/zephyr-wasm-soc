@@ -1448,3 +1448,37 @@ pass with the patch. The page gets those samples once the fix is taken.
 Two argument parsers in the checks treated index 0 as an option's value
 when the option was absent (`-1 + 1`); `check_browser` had always had
 it, and only worked because its default site path is the one CI passes.
+
+### Tick 67 — the host is the LAN
+
+kartben's page plays the whole network for its boards: DHCP, DNS, HTTP. The
+same here would put the samples that want a Linux host at `192.0.2.2` on the
+public site, with no relay, and on the board's clock, so repeatable. Two ways
+to get a TCP stack were weighed: write one, as kartben did (no licence, so
+ideas only), or use lwIP from tcpip.js, which the user asked to evaluate. The
+evaluation settled it. tcpip.js's JavaScript runs lwIP off a wall-clock
+`setInterval`, but the wasm itself reads nothing from outside except one WASI
+clock call. Answer that with the board's time, drive the exports
+synchronously, and lwIP is deterministic without a rebuild. So only the 94 KB
+wasm is vendored, with its licences; `host/lan.mjs` is about 340 lines of
+glue, comments included, and the services another 280.
+
+The LAN's timers are one more deadline for the board's idle loop, on a 50 ms
+grid; frames go both ways with the wire's 100 µs; and every service answers
+from the board's clock and constants. DNS answers every name with the LAN
+itself, which saves inventing remote hosts. http_get, tftp_client,
+sntp_client (pointed at its server) and dumb_http_server (which the LAN
+dials) all worked on their first run and repeat byte for byte. Score 69.
+
+`scripts/check_lan.mjs` then put a second lwIP against the first and found a
+real bug: an echo of 4 MB came back 2,256 bytes short, but 3 MB and 5 MB
+were fine. The trace showed one segment retransmitted for ever with a bad
+checksum. tcpip.js's tap interface hands a sent frame over as its first
+buffer's payload with the chain's total length, and lwIP chains a buffer
+when a write joins a segment not yet sent. The first fix, writing only when
+nothing was in flight, avoided the chains but ran into delayed ACKs and
+crawled: 58 KB in 15 s. The one kept finds the chain from JavaScript. The
+struct pbuf sits just before the payload of a buffer lwIP allocated; it is
+checked against the frame's own pointer and length, then walked. Every size
+now completes, the check fails without the fix, and the issue is written up
+in `upstream/README.md` for tcpip.js.

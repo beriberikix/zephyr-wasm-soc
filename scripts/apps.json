@@ -80,7 +80,15 @@
     "  and nothing else; the relay's DHCP gives it an address. The page",
     "  offers an Uplink field for it, off until someone gives it a relay's",
     "  URL, and the checks run it only when given one with --uplink-relay.",
-    "  Real peers follow the wall clock, so it is paced and not repeatable."
+    "  Real peers follow the wall clock, so it is paced and not repeatable.",
+    "lan: one board on the host's own network (host/lan.mjs): lwIP at",
+    "  192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP and HTTP, on the",
+    "  board's clock, so the run is as repeatable as any other; check_site.mjs",
+    "  runs it twice and requires the same output. true, or {\"dial\": [{\"at_ms\",",
+    "  \"port\"}]} for a sample that is a server: the LAN connects at that guest",
+    "  time and asks for \"/\". Built with -DSNIPPET=wasm-ethernet and what",
+    "  PAIR_ARG allows, with overrides saying so. An entry with lan and uplink",
+    "  runs on the LAN unless someone gives the page a relay."
   ],
   "builds": [
     {
@@ -865,10 +873,96 @@
       ]
     },
     {
+      "name": "http-get",
+      "kind": "sample",
+      "title": "HTTP GET over the host's network",
+      "hint": "http_get looks up google.com and asks it for \"/\". The host's own network, 192.0.2.2, answers both: the name resolves to it, and it replies with a redirect, the answer upstream's own test expects. Nothing leaves the page, and the page says so.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/sockets/http_get",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Connected!",
+        "The document has moved",
+        "Close socket"
+      ]
+    },
+    {
+      "name": "http-srv",
+      "kind": "sample",
+      "title": "A web server, asked by the host",
+      "hint": "dumb_http_server waits for a connection on port 8080. A second in, the host's own network, 192.0.2.2, connects and asks for \"/\", and the board sends its page back.",
+      "upstream": true,
+      "endless": true,
+      "lan": {
+        "dial": [
+          {
+            "at_ms": 1000,
+            "port": 8080
+          }
+        ]
+      },
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/sockets/dumb_http_server",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Connection #0 from 192.0.2.2",
+        "Connection from 192.0.2.2 closed"
+      ]
+    },
+    {
+      "name": "tftp",
+      "kind": "sample",
+      "title": "TFTP client",
+      "hint": "tftp_client reads file1.bin from the TFTP server at 192.0.2.2, which the host's own network plays, prints it, and writes a file back.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/tftp_client",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "TFTP client get done",
+        "TFTP client put done"
+      ]
+    },
+    {
+      "name": "sntp",
+      "kind": "sample",
+      "title": "SNTP client",
+      "hint": "sntp_client asks an SNTP server for the time, twice, over IPv4. The host's own network, 192.0.2.2, answers with its clock, which starts at 2026-01-01 00:00 UTC when the board's does. It speaks only IPv4, so the sample's IPv6 request fails.",
+      "overrides": "The client is pointed at the SNTP server 192.0.2.2; as shipped it asks pool.ntp.org, and has no DNS resolver to find it with.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/sockets/sntp_client",
+      "args": [
+        "-DSNIPPET=wasm-ethernet",
+        "-DCONFIG_NET_SAMPLE_SNTP_SERVER_ADDRESS=\"192.0.2.2\""
+      ],
+      "expect": [
+        "SNTP Time: 1767225600",
+        "SNTP Time: 1767225600 (async)"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
       "name": "dhcp",
       "kind": "sample",
-      "title": "DHCP client on a real network (relay)",
-      "hint": "dhcpv4_client asks for an address and prints its lease. It needs a real network, which a tab cannot reach by itself: start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay`, set Uplink to ws://127.0.0.1:8086/ and Run. Then try `net ping 10.0.2.2` or `net dns zephyrproject.org` in its shell.",
+      "title": "DHCP client",
+      "hint": "dhcpv4_client asks for an address and prints its lease. The host's own network, 192.0.2.2, answers, so nothing leaves the page. To put the board on a real network instead, start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay`, set Uplink to ws://127.0.0.1:8086/ and Run: then `net ping 10.0.2.2` or `net dns zephyrproject.org` in its shell go out through it.",
+      "lan": true,
       "upstream": true,
       "clock": "paced",
       "interactive": true,

@@ -198,6 +198,14 @@ export class Host {
      * driver, in the order they are due: { atNs, frame }, where atNs is on
      * the pair's shared timeline (host/pair.mjs). */
     this.ethQueue = [];
+    /* The host's own network, when the board is plugged into it instead of
+     * another board (host/lan.mjs). It runs on this board's clock. */
+    this.lan = null;
+  }
+
+  /* Frames the LAN sent, which reach the board a wire's latency later. */
+  fromLan(frames) {
+    for (const frame of frames) this.pushEthernet(frame, this.lan.clockNs + LINK_LATENCY_NS);
   }
 
   /* A frame from the board at the other end of the link, due at atNs on
@@ -558,8 +566,10 @@ export class Host {
           const frame = new Uint8Array(self.mem.buffer, ptr, len).slice();
           self.ethSent++;
           /* Stamped with when it will arrive: now, on the pair's timeline,
-           * plus the wire's latency. */
-          self.platform.ethSend?.(frame, self.globalNs + LINK_LATENCY_NS);
+           * plus the wire's latency. The LAN answers at once, in guest
+           * time; anything else at the other end takes it from here. */
+          if (self.lan) self.fromLan(self.lan.input(frame, self.globalNs + LINK_LATENCY_NS));
+          else self.platform.ethSend?.(frame, self.globalNs + LINK_LATENCY_NS);
         },
 
         eth_recv(ptr, max) {
@@ -800,6 +810,15 @@ export class Host {
     const frameAt = this.nextFrameNs();
     let at = next ? next.atNs : null;
     if (frameAt !== null && (at === null || frameAt < at)) at = frameAt;
+    /* The LAN's own next event: its timers, or a service's. It wakes the
+     * LAN, not the board, which sees only the frames that come of it. */
+    const lanAt = this.lan ? this.lan.nextNs() - this.epochNs : null;
+    if (lanAt !== null && (at === null || lanAt < at) &&
+        (this.alarmNs === null || lanAt < this.alarmNs)) {
+      if (lanAt > this.nowNs) this.nowNs = lanAt;
+      this.fromLan(this.lan.advance(this.globalNs));
+      return true;
+    }
     if (this.alarmNs !== null && (at === null || this.alarmNs < at)) at = this.alarmNs;
     /* In a pair, a board may only go as far as the other lets it
      * (host/pair.mjs). Short of its next event it idles up to the limit,
@@ -1209,8 +1228,10 @@ export class Host {
             const byWall = this.pace.guest +
               BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
             if (byWall > this.nowNs) this.nowNs = byWall;
-            /* A frame from the relay arrived while the host waited, stamped
-             * with the time it came in. */
+            /* The LAN keeps time with the board, and a frame from the relay
+             * arrived while the host waited, stamped with the time it came
+             * in. */
+            if (this.lan) this.fromLan(this.lan.advance(this.globalNs));
             const frameAt = this.nextFrameNs();
             if (frameAt !== null && frameAt <= this.nowNs) this.injectIrq(IRQ.ETH);
           } else {

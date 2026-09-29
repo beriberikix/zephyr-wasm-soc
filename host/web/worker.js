@@ -18,6 +18,8 @@
 import { Host } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
+import { Lan } from './lan.mjs';
+import { startServices } from './lan_services.mjs';
 
 let pushInput = null;      // set by the core once a run starts
 let sensorReadings = null; // the page's latest tilt, for a host not yet made
@@ -213,6 +215,8 @@ self.onmessage = async (event) => {
     /* A relay the person gave the page (host/uplink.mjs). Real peers
      * follow the wall clock, so the board is paced. */
     uplink: msg.uplink || null,
+    /* The host's own network (host/lan.mjs), unless a relay replaces it. */
+    lan: msg.uplink ? null : msg.lan || null,
   };
   if (opts.uplink) opts.clock = 'paced';
   lastFlash = msg.flashImage ?? null;
@@ -242,6 +246,12 @@ self.onmessage = async (event) => {
       uplink = await connectUplink(host, opts.uplink,
         (line) => self.postMessage({ type: 'err', text: `\n${line}\n` }));
       self.postMessage({ type: 'err', text: `[uplink: connected to ${opts.uplink}]\n` });
+    } else if (opts.lan) {
+      host.lan = await Lan.create(await browserPlatform.loadModule('./vendor/tcpip.wasm'));
+      startServices(host.lan, {
+        dial: (opts.lan.dial ?? []).map((d) => ({ atMs: d.at_ms, port: d.port,
+                                                  send: 'GET / HTTP/1.0\r\n\r\n' })),
+      });
     }
     const code = await host.run();
     clearInterval(tick);

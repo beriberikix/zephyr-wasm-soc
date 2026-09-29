@@ -432,13 +432,14 @@ for (const b of manifest.builds) {
   /* A build on a real network, through the relay given, typed into the
    * field as a person would. */
   if (b.uplink) {
-    if (!relay) {
+    /* One that can run on the host's own network does, without a relay. */
+    if (!relay && !b.lan) {
       skipped++;
       console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
       continue;
     }
     await page.selectOption('#build', b.name);
-    await page.fill('#uplink', relay);
+    await page.fill('#uplink', relay ?? '');
     await page.dispatchEvent('#uplink', 'change');
   }
   const expect = b.expect ?? [];
