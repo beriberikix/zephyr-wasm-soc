@@ -20,15 +20,16 @@ site="${SITE_DIR:-$topdir/_site}"
 
 rm -rf "$site"
 mkdir -p "$site/m"
-# Flat, apart from vendor/, because worker.js imports ./core.mjs and
-# ./pair.mjs, core.mjs imports ./irq_lines.mjs, and the page imports that
-# and ./threads.mjs.
+# Flat, apart from vendor/, because worker.js imports ./core.mjs,
+# ./pair.mjs and ./uplink.mjs, core.mjs imports ./irq_lines.mjs, and the
+# page imports that and ./threads.mjs.
 # Anything the page or the worker imports has to be listed here: a module
 # that fails to load takes the Worker with it and says nothing, so the page
 # simply never starts.
 cp "$module/host/web/index.html" "$module/host/web/worker.js" \
    "$module/host/core.mjs" "$module/host/irq_lines.mjs" \
-   "$module/host/threads.mjs" "$module/host/pair.mjs" "$site/"
+   "$module/host/threads.mjs" "$module/host/pair.mjs" \
+   "$module/host/uplink.mjs" "$site/"
 # The page's terminal, xterm.js, vendored with its licence.
 cp -r "$module/host/web/vendor" "$site/vendor"
 

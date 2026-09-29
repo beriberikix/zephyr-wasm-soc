@@ -74,7 +74,13 @@
     "  set, and the page shows it. start_after_ms powers a board on after the",
     "  other, as a client is plugged in after its server; the first board is",
     "  the one that starts first. ci_link_frames_at_least is how many frames",
-    "  the browser check wants each way (default 100)."
+    "  the browser check wants each way (default 100).",
+    "uplink: one board on a real network, through a relay that speaks v86's",
+    "  wsproxy protocol (host/uplink.mjs). Built with -DSNIPPET=wasm-ethernet",
+    "  and nothing else; the relay's DHCP gives it an address. The page",
+    "  offers an Uplink field for it, off until someone gives it a relay's",
+    "  URL, and the checks run it only when given one with --uplink-relay.",
+    "  Real peers follow the wall clock, so it is paced and not repeatable."
   ],
   "builds": [
     {
@@ -856,6 +862,30 @@
             "terminal"
           ]
         }
+      ]
+    },
+    {
+      "name": "dhcp",
+      "kind": "sample",
+      "title": "DHCP client on a real network (relay)",
+      "hint": "dhcpv4_client asks for an address and prints its lease. It needs a real network, which a tab cannot reach by itself: start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay`, set Uplink to ws://127.0.0.1:8086/ and Run. Then try `net ping 10.0.2.2` or `net dns zephyrproject.org` in its shell.",
+      "upstream": true,
+      "clock": "paced",
+      "interactive": true,
+      "endless": true,
+      "uplink": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 15000,
+      "app": "zephyr/samples/net/dhcpv4_client",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Address[1]: ",
+        "Lease time[1]: "
+      ],
+      "uses": [
+        "terminal"
       ]
     }
   ]

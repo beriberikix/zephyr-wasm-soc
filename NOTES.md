@@ -1411,3 +1411,40 @@ The pair itself ran first time. The client resolves `zephyr.local` to
 192.0.2.1 and 2001:db8::1, and its plain DNS queries, with no server to
 answer, are cancelled after their timeout, which is what upstream prints
 too. The score is 64.
+
+### Tick 66 — a real network, through someone else's relay
+
+The last open Phase 6 item. The first plan was a relay of our own: passt
+behind a WebSocket server written here. Looking at what already exists
+changed it:
+- v86's networking notes: its `wsproxy` protocol is one Ethernet frame per
+  WebSocket message, and a family of relays already speak it.
+- beriberikix/zephyr-v86: RootlessRelay, which needs no root, under
+  `native_sim` inside v86's Linux. Outbound only.
+- kartben/zephyr-in-the-browser: the page itself is the LAN by default,
+  with an opt-in Go bridge, both on `192.0.2.1` with gateway `.2`, because
+  that is what upstream's samples ship with.
+- Tunnels (wstunnel, frp, bore): streams and ports, not frames, so they
+  would still need a stack, and wstunnel's client is not a browser
+  WebSocket. Useful beside a relay, to publish a port.
+
+So `host/uplink.mjs` speaks wsproxy, and Node 22 and a Worker both have
+WebSocket built in, so nothing is written server-side or installed. The
+only change to the run loop: an uplinked board idles like an interactive
+one, and a frame that arrives while it waits raises `IRQ.ETH`.
+
+`dhcpv4_client`, as shipped, got `10.0.2.15` from RootlessRelay on the
+first run, and from its shell pinged the gateway and resolved
+`zephyrproject.org`. It was recorded as waiting for a DHCP server; it had
+one now. The score is 65.
+
+Static-address samples did not work: RootlessRelay fixed its pool at
+`10.0.2.x` whatever `GATEWAY_IP` said, and sent DNS addressed to the
+gateway out to the network. Two small fixes, now
+`upstream/rootlessrelay/0001`, and `sockets/http_get`, unmodified at
+`192.0.2.1`, fetched `http://google.com` from Node. The relay's own tests
+pass with the patch. The page gets those samples once the fix is taken.
+
+Two argument parsers in the checks treated index 0 as an option's value
+when the option was absent (`-1 + 1`); `check_browser` had always had
+it, and only worked because its default site path is the one CI passes.

@@ -1194,18 +1194,25 @@ export class Host {
         }
         return true;
       }
-      if (this.opts.interactive) {
-        /* Let input arrive before deciding there is nothing to do. */
+      if (this.opts.interactive || this.opts.uplink) {
+        /* Let input arrive before deciding there is nothing to do. For a
+         * board on an uplink (host/uplink.mjs) that input is frames from
+         * the relay, as well as keys. */
         this.yieldToHost = true;
         if (pending === 0) {
           if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
-            /* Paced, and nothing to wake for but a person: time passes as
-             * it does for them. Jumping to the next deadline would leave
-             * the clock standing still until they did something, and a
-             * five-second press would be logged as lasting no time. */
+            /* Paced, and nothing to wake for but a person or the network:
+             * time passes as it does for them. Jumping to the next deadline
+             * would leave the clock standing still until they did
+             * something, and a five-second press would be logged as lasting
+             * no time. */
             const byWall = this.pace.guest +
               BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
             if (byWall > this.nowNs) this.nowNs = byWall;
+            /* A frame from the relay arrived while the host waited, stamped
+             * with the time it came in. */
+            const frameAt = this.nextFrameNs();
+            if (frameAt !== null && frameAt <= this.nowNs) this.injectIrq(IRQ.ETH);
           } else {
             this.advanceToNextDeadline();
           }

@@ -852,6 +852,82 @@ each other's addresses as shipped. `echo_server` would be the obvious
 server, but its thread entries are `void f(void)` and trap (D8b);
 `upstream/zephyr/0010` fixes it.
 
+### D8l. A real network, through someone else's relay
+
+The wire in D8k only reaches another board. To reach a real network, the
+same frames go somewhere else. A tab cannot open raw sockets, so something
+outside it has to run a TCP/IP stack that ends the board's connections and
+makes real ones: NAT, as a home router does, with DHCP and DNS for the
+board. The board's side does not change, since its driver already hands
+over whole frames and Zephyr's own stack does the rest.
+
+**The protocol is v86's, not ours.** `host/uplink.mjs` speaks v86's
+`wsproxy` protocol: one Ethernet frame per binary WebSocket message, both
+ways, with nothing else on the wire. Every relay written for v86 speaks it,
+including websockproxy, go-websockproxy, wsnic and RootlessRelay, so none
+has to be written or hosted here. RootlessRelay is the one README points
+to. It runs its own userspace stack, so it needs neither root nor a TAP
+device (`ENABLE_WSS=false npx rootlessrelay`). Node 22 and a Worker both
+have WebSocket built in, so one small module serves `run.mjs --uplink` and
+the page, and nothing is installed.
+
+What else was looked at, and why not:
+- **Port tunnels** (wstunnel, frp, bore, chisel, cloudflared) carry TCP and
+  UDP streams, not frames, so a stack would still be needed to end the
+  board's connections. wstunnel's client is not a plain browser WebSocket
+  either: its framing names the destination. A tunnel is useful beside a
+  relay, to publish a port the relay forwards, and that needs nothing here.
+- **passt** does the same job as RootlessRelay without root, but over a
+  Unix socket. The page cannot reach one without a relay of its own in
+  front.
+- **Socket offloading**, the host implementing the socket API, would bypass
+  the IP stack, which is what the samples are there to show.
+  beriberikix/zephyr-v86 ran `native_sim` inside v86's Linux, so its sockets
+  went through Linux; kartben/zephyr-in-the-browser, like this port, keeps
+  Zephyr's stack and moves frames.
+
+**Time.** A relay's peers follow the wall clock, so an uplinked board is
+paced and does not stop when nothing is scheduled, as an interactive one
+does not. A frame from the relay is stamped with the board's time when it
+arrives, and one that arrives while the host waits out an idle period
+raises `IRQ.ETH` at once. Such a run is not repeatable, and nothing that
+needs repeatability depends on it: the pairs stay on their own clock.
+
+**Addresses.** RootlessRelay's DHCP hands out `10.0.2.15` with gateway
+`10.0.2.2`, as QEMU's user networking does. `dhcpv4_client` takes that and
+runs as shipped. Most networking samples, though, set a static `192.0.2.1`
+with `192.0.2.2` as gateway and DNS server, which kartben's bridge serves
+for the same reason. RootlessRelay fixed its pool at `10.0.2.x` whatever
+the gateway, and sent a DNS query addressed to the gateway out to the real
+network. `upstream/rootlessrelay/0001` fixes both. With it,
+`GATEWAY_IP=192.0.2.2 DHCP_START=1 DHCP_END=1` runs such samples
+unmodified: `sockets/http_get` fetched `http://google.com` through it
+from Node.
+
+**Nothing is on by default.**
+- **The page.** It offers an Uplink field only for a build marked
+  `uplink` in `apps.json`. The field starts empty, `?uplink=` fills it for
+  one visit, and what someone types is remembered in their browser. The
+  page names no relay of its own. zephyr-v86 defaulted to a public one;
+  sending visitors' traffic through a third party is a decision for whoever
+  publishes the site, and this one has not made it.
+- **Opening the link.** The Worker opens the socket itself, so frames never
+  pass through the page. A relay that cannot be reached ends the run with
+  a message rather than booting a board that waits for ever.
+- **Frames.** Frames outside 14 to 1518 bytes are dropped both ways, and
+  anything else the relay sends is ignored.
+- **Chrome.** From an https page, Chrome may ask before letting the site
+  reach a relay on the local machine.
+
+**Inbound** is the relay's business. RootlessRelay has a reverse proxy
+for it, and whether a board's server can be reached through it is not
+checked yet. zephyr-v86 recorded its relays as outbound only.
+
+CI starts RootlessRelay 0.6.0, pinned, on loopback, and runs the uplink
+build through it in Node and in Chromium. What it checks is a DHCP lease,
+which the relay answers itself, so the checks do not depend on the
+internet.
+
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
 The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
