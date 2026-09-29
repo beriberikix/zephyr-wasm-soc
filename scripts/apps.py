@@ -73,7 +73,7 @@ PAIR_ARG = re.compile(
     r"|CONFIG_NET_CONFIG_(?:MY|PEER)_IPV[46]_ADDR=.*"
     r"|CONFIG_NET_CONFIG_NEED_IPV[46]=n"
     r"|CONFIG_NET_IPV[46]=n"
-    r"|CONFIG_NET_SAMPLE_[A-Z0-9_]*(?:_PEER|_PORT|_ADDR|_RESOURCE_PATH)=.*)$")
+    r"|CONFIG_NET_SAMPLE_[A-Z0-9_]*(?:_PEER|_PORT|_ADDR|_ADDRESS|_RESOURCE_PATH)=.*)$")
 
 
 def units(b: dict) -> list[dict]:
@@ -122,6 +122,27 @@ def load(module: str) -> list[dict]:
             if extra or "-DSNIPPET=wasm-ethernet" not in b.get("args", []):
                 sys.exit(f"apps.json: {b['name']} has an uplink, so it is built with "
                          "-DSNIPPET=wasm-ethernet and nothing else")
+        if b.get("lan"):
+            # A board on the host's own network (host/lan.mjs), which plays
+            # the Linux host the samples expect at 192.0.2.2. Its args are
+            # what a pair's board may have, since the LAN is its peer.
+            if "boards" in b:
+                sys.exit(f"apps.json: {b['name']}: the LAN is for one board, not a pair")
+            if "-DSNIPPET=wasm-ethernet" not in b.get("args", []):
+                sys.exit(f"apps.json: {b['name']} is on the LAN, so it needs -DSNIPPET=wasm-ethernet")
+            for arg in b.get("args", []):
+                if not PAIR_ARG.match(arg):
+                    sys.exit(f"apps.json: {b['name']} is built with {arg}, and a board on the LAN "
+                             "may only be given the link, addresses, ports and IP versions "
+                             "(see PAIR_ARG in scripts/apps.py)")
+            if any(a.startswith("-DCONFIG_") for a in b.get("args", [])) and not b.get("overrides"):
+                sys.exit(f"apps.json: {b['name']} overrides its configuration, "
+                         "so it needs an overrides sentence saying how")
+            lan = b["lan"]
+            if lan is not True and not (isinstance(lan, dict) and
+                                        all(isinstance(d.get("at_ms"), int) and isinstance(d.get("port"), int)
+                                            for d in lan.get("dial", []))):
+                sys.exit(f"apps.json: {b['name']}: lan is true or {{\"dial\": [{{\"at_ms\", \"port\"}}]}}")
         for u in units(b):
             u["app"] = u["app"].replace("{module}", module)
         if "boards" in b:

@@ -176,3 +176,26 @@ patch carries the same `Assisted-by` placeholder to fill in.
 git -C rootlessRelay checkout -b gateway-subnet origin/main
 git -C rootlessRelay am ../zephyr-wasm/upstream/rootlessrelay/*.patch
 ```
+
+## tcpip.js: chained buffers in the tap interface (to report)
+
+The host's LAN (`host/lan.mjs`, `DESIGN.md` D8m) runs tcpip.js's
+`tcpip.wasm` 0.4.0. Its tap interface hands a sent frame to JavaScript as
+`p->payload` and `p->tot_len` (`packages/tcpip/wasm/tap_interface.c`,
+`tap_interface_output`). When lwIP adds a write to a TCP segment that has
+not been sent yet, it chains a second buffer onto it, and that frame goes
+out as the first buffer followed by whatever is next in memory. It fails its
+checksum at the other end, and fails again on every retransmission, so the
+connection stops. An echo of 4 MB between two tcpip.js stacks came back
+2,256 bytes short, and every size from about 3.5 MB to 4 MB stopped the
+same way (`scripts/check_lan.mjs` reproduces it with the fix taken out).
+The receive side has the same shape: `recv_tcp_callback` and
+`recv_udp_callback` pass `p->payload` and `p->len`, and free the rest of a
+chain.
+
+This is written up as an issue rather than a patch: the fix is in C, and
+it can't be built and tested here without their Docker build. The fix it
+would suggest is to copy the chain out with `pbuf_copy_partial()` in all
+three places, or to call the import once per buffer. Until then, `lan.mjs`
+finds the chain from JavaScript (`Lan.frameAt`), and the receive side is
+safe on this wire because segments always arrive in order.

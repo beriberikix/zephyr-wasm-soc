@@ -928,6 +928,85 @@ build through it in Node and in Chromium. What it checks is a DHCP lease,
 which the relay answers itself, so the checks do not depend on the
 internet.
 
+### D8m. The host is the LAN
+
+Most networking samples want a peer that is neither another board nor the
+internet: the Linux host upstream expects at `192.0.2.2`, running a DHCP
+server, a resolver, a web server, `tftpd`. So the host is that too. A board
+built with the `wasm-ethernet` snippet can be plugged into the host's own
+network (`host/lan.mjs`, `run.mjs --lan`, `lan` in `apps.json`). The page
+plays the whole network, and nothing leaves it. The idea is
+kartben/zephyr-in-the-browser's, whose page is its LAN. That repository
+has no licence, so the idea is taken and none of the code.
+
+**The stack is lwIP**, as tcpip.js compiles it to wasm (MIT, with lwIP
+under BSD-3), vendored as the one file `host/web/vendor/tcpip.wasm`.
+tcpip.js's own JavaScript is not used. It drives lwIP from a wall-clock
+`setInterval` through async streams, and a LAN here has to keep the board's
+virtual time and be driven one call at a time, so that a run on it is as
+repeatable as any other. The module turned out to allow that without a
+rebuild:
+- **The clock.** lwIP reads nothing from outside but the clock, through
+  the one WASI call it imports, `clock_time_get`. `lan.mjs` answers it with
+  the board's time.
+- **Nothing random.** lwIP has no random source in this build, so ports,
+  sequence numbers and IP identifiers come from counters and the clock,
+  and repeat.
+- **All synchronous.** A frame goes in through `send_tap_interface`, and
+  lwIP's answers, frames and TCP/UDP events come back through the module's
+  imports during that same call.
+
+**On the board's clock.** A frame the board sends reaches the LAN at the
+wire's 100 µs, and the LAN answers at once in guest time. What it sends
+back is a frame arriving 100 µs later, like one from a peer board. Its own
+timers are events on the board's timeline: `advanceToNextDeadline`
+considers the LAN's next one, on a 50 ms grid, alongside the board's own.
+When the board reaches it, the LAN runs and may send something, and the
+board sees only the frames. So a board on the LAN never runs out of things
+that can happen, and its builds are endless. `check_site` runs each twice
+and requires the same output, as it does for a pair.
+
+**What it offers** (`host/lan_services.mjs`) is what those samples ask for:
+- DHCP, offering `192.0.2.1`;
+- DNS, on 53 and on 15353, answering every name with `192.0.2.2`, so the
+  LAN is whichever server a sample looks up and no remote host needs
+  inventing;
+- SNTP, with time from 2026-01-01 plus the board's clock;
+- TFTP, with `file1.bin` to read and room to write;
+- HTTP on 80, answering `/` with a redirect, which is what `http_get`'s
+  upstream test expects from google.com;
+- dialling a board's port at a stated time, for a sample that is a server.
+
+Where it answers in words, it says it is the LAN.
+
+**Three things in tcpip.js's C glue** matter:
+- **Received frames are never freed.** A frame given to lwIP is used in
+  place (`PBUF_REF`) and may be kept, so it is never freed. That leaks
+  about a byte of wasm memory per byte received, which a LAN's few
+  kilobytes don't notice.
+- **Received data comes from the first buffer only.** That is all there is
+  while segments arrive in order, as they always do on this wire.
+- **Sent frames were cut short.** A sent frame is handed over as its first
+  buffer's payload with the whole chain's length. lwIP chains a buffer
+  when a write joins a segment that has not gone yet, and such a frame went
+  out with whatever followed the first buffer in memory. It failed its
+  checksum, and failed again on every retransmission: an echo of 4 MB came
+  back 2,256 bytes short, for ever.
+
+  `Lan.frameAt` follows the chain instead. A buffer lwIP allocated keeps its
+  `struct pbuf` just before the payload, so the struct is found there,
+  believed only if its `payload` and `tot_len` fields are this frame's, and
+  walked. `scripts/check_lan.mjs` puts 4 MB through an echo, checks every
+  segment's checksum, and fails without the fix. The fix belongs in
+  tcpip.js's `tap_interface_output`, and `upstream/README.md` says so.
+
+**What it is not.**
+- **IPv4 only.** lwIP was built without IPv6, so a sample's IPv6 half fails
+  and says so (`sntp_client`).
+- **No real traffic.** The LAN answers for the internet but never reaches
+  it. That is D8l's job, and an entry with both runs on the LAN unless
+  someone gives the page a relay.
+
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
 The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).

@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **65**. 47 pass upstream's own criterion, and 18 more are counted
+today: **69**. 47 pass upstream's own criterion, and 22 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -26,8 +26,9 @@ adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
 fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
 server, zperf, which is both ends of its own pair, and `dns_resolve` with
-`mdns_responder`; and `dhcpv4_client`, which gets its lease from a real
-relay. Upstream gives those no criterion twister can run, because it has no
+`mdns_responder`; `dhcpv4_client`, `http_get`, `dumb_http_server`,
+`tftp_client` and `sntp_client`, whose peer is the host's own network.
+Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
 
@@ -46,9 +47,10 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 64, nine count only
+criterion, which is why it is spelled out: of the 69, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
-server, zperf, and the mDNS pair. The five echo samples pair as shipped.
+server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
+The five echo samples pair as shipped.
 
 **And for a board on a real network.** Its peer is a relay (`DESIGN.md`
 D8l), and it is built as upstream ships it with the link turned on, and
@@ -56,6 +58,12 @@ nothing else: `apps.py` refuses any other argument for an `uplink` entry.
 The relay gives it its address. CI runs a relay on loopback, and checks
 only what the relay answers itself, a DHCP lease, so the count does not
 depend on the internet.
+
+**And for a board on the host's own network** (`DESIGN.md` D8m). The host
+plays the Linux host the samples expect at `192.0.2.2`, so the pair rule
+applies with the LAN as the peer: the same `PAIR_ARG` list, with
+`overrides` saying what was set. It runs on the board's clock, so each of
+these is checked twice, like a pair, and must say the same both times.
 
 What was tried, out of 650 upstream applications and 1268 entries:
 
@@ -171,7 +179,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 65. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 69. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -185,12 +193,12 @@ What comes next, in order, and why:
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
    emulator that drives an interrupt pin; the chart waits on pixel loops
    being cheaper.
-3. **The last pair, and more on the uplink.** Ten pairs run, on one
-   clock, so each is as repeatable as a single board (Phase 6). QUIC's
-   pair waits on patch 0007. A board reaches a real network through a
-   relay now; the samples that ship with static addresses wait on
-   `upstream/rootlessrelay/0001`, and after that the next two network
-   ideas are kartben's in-page LAN and pairs across tabs (Phase 6).
+3. **More on the LAN.** Ten pairs run, and a board can be plugged into
+   the host's own network or, through a relay, a real one (Phase 6). The
+   LAN could serve more samples: a WebSocket echo, CoAP over TCP and an
+   MQTT broker would bring `websocket_client`, `coap_client_tcp` and
+   `mqtt_publisher`. QUIC's pair waits on patch 0007, and the relay's
+   static-address samples on `upstream/rootlessrelay/0001`.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
@@ -210,7 +218,9 @@ pairs, which took it to 61, and zperf, typed into on both boards, which
 took it to 62. The pairs now run on one clock, so each is as repeatable
 as a single board, and the mDNS pair, once the board took Zephyr's default
 C library, took it to 64. `dhcpv4_client`, leased an address by a real
-relay, took it to 65.
+relay, took it to 65. The host's own network, lwIP on the board's clock,
+took it to 69 with `http_get`, `dumb_http_server`, `tftp_client` and
+`sntp_client`.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -802,10 +812,29 @@ What happened to each:
       opt-in bridge).
 - [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
       reach a board's server (`dumb_http_server`); not tried yet.
-- [ ] **The page as the LAN**, as kartben/zephyr-in-the-browser does it:
-      the page answers DHCP, DNS, SNTP and HTTP-through-`fetch` itself. It
-      would work on the public site with no helper, and on virtual time, so
-      it could be repeatable.
+- [x] **The host as the LAN** (`DESIGN.md` D8m), which raised the score
+      from 65 to 69. The host is the network a single board is plugged
+      into: lwIP at `192.0.2.2`, from tcpip.js's wasm, driven by our own
+      glue on the board's virtual clock. It offers:
+      - DHCP;
+      - DNS, answering every name with itself;
+      - SNTP, TFTP and HTTP;
+      - dialling a board's port, for samples that are servers.
+
+      Nothing leaves the page, and runs are repeatable. `check_site` runs
+      each twice. New builds: `http_get`, `dumb_http_server`,
+      `tftp_client` and `sntp_client`. `dhcpv4_client` now gets its lease
+      from the LAN, and from a relay when the page is given one.
+
+      Testing it found a bug in tcpip.js's C glue: a frame built from
+      chained buffers was handed over as its first buffer, so it went out
+      with a bad checksum and the connection stopped. `Lan.frameAt`
+      follows the chain from JavaScript. `scripts/check_lan.mjs` puts
+      4 MB through an echo and checks every checksum, and it fails
+      without the fix. The report is in `upstream/README.md`.
+
+      The idea is kartben/zephyr-in-the-browser's, whose page is its LAN.
+      That repository has no licence, so only the idea is used.
 - [ ] **Pairs across tabs or machines**, through one relay:
       RootlessRelay lets its VMs reach each other.
 

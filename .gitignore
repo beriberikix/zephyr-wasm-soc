@@ -1,6 +1,8 @@
 build/
 build-*/
 *.wasm
+# Built modules stay out; a vendored one is source (host/web/vendor/README.md).
+!host/web/vendor/*.wasm
 *.wat
 node_modules/
 __pycache__/

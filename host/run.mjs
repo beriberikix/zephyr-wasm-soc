@@ -14,13 +14,16 @@ import process from 'node:process';
 import { Host, DEFAULT_SEED } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
+import { Lan } from './lan.mjs';
+import { startServices } from './lan_services.mjs';
 import { describeWait, threadState } from './threads.mjs';
 
 function parseArgs(argv) {
   const opts = { realtime: false, traceSwitches: false, maxTimeMs: 10_000,
                  interactive: false, traceGpio: false, gpio: [], inputScript: [],
                  clock: 'virtual', timeScale: 1,
-                 seed: undefined, trueRandom: false, threads: false, wasm: null };
+                 seed: undefined, trueRandom: false, threads: false, wasm: null,
+                 lanDial: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--realtime') opts.realtime = true;
@@ -43,6 +46,8 @@ function parseArgs(argv) {
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
     else if (a === '--peer-stdin') opts.peerStdin = argv[++i];
     else if (a === '--uplink') opts.uplink = argv[++i];
+    else if (a === '--lan') opts.lan = true;
+    else if (a === '--lan-dial') { opts.lan = true; opts.lanDial.push(parseDial(argv[++i])); }
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
@@ -50,16 +55,27 @@ function parseArgs(argv) {
     else { console.error(`unknown option ${a}`); usage(); process.exit(2); }
   }
   if (!opts.wasm) { usage(); process.exit(2); }
+  if ([opts.uplink, opts.peer, opts.lan].filter(Boolean).length > 1) {
+    console.error('--uplink, --peer and --lan each give the board its network: choose one');
+    process.exit(2);
+  }
   if (opts.uplink) {
-    if (opts.peer) {
-      console.error('--uplink and --peer cannot be used together yet');
-      process.exit(2);
-    }
     /* Real peers follow the wall clock (host/uplink.mjs). */
     opts.clock = 'paced';
   }
   opts.inputScript.sort((a, b) => (a.atNs < b.atNs ? -1 : a.atNs > b.atNs ? 1 : 0));
   return opts;
+}
+
+/* --lan-dial <ms>:<port>: the LAN connects to the board's port at a guest
+ * time and asks for "/", for a sample that is a server. */
+function parseDial(spec) {
+  const m = /^(\d+):(\d+)$/.exec(spec ?? '');
+  if (!m) {
+    console.error(`--lan-dial wants <ms>:<port>, not ${JSON.stringify(spec)}`);
+    process.exit(2);
+  }
+  return { atMs: Number(m[1]), port: Number(m[2]), send: 'GET / HTTP/1.0\r\n\r\n' };
 }
 
 /* --gpio <ms>:<pin>=<level>, repeatable. Scripted rather than interactive so
@@ -179,7 +195,13 @@ function usage() {
                      relay that speaks v86's wsproxy protocol, such as
                      RootlessRelay (ENABLE_WSS=false npx rootlessrelay, then
                      ws://127.0.0.1:8086/). Needs a build with the
-                     wasm-ethernet snippet. Implies --paced`);
+                     wasm-ethernet snippet. Implies --paced
+  --lan              plug the board into the host's own network instead:
+                     192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP and
+                     HTTP, on the board's clock, so runs stay repeatable
+  --lan-dial <ms>:<port>
+                     with --lan, connect to the board's port at a guest
+                     time and send GET /, repeatable`);
 }
 
 const nodePlatform = {
@@ -315,6 +337,13 @@ if (opts.uplink) {
     process.stderr.write(`--uplink: ${err.message}\n`);
     process.exit(2);
   }
+}
+/* --lan: the host's own network, on the board's clock. What it does goes
+ * to stderr, so stdout stays what the board printed. */
+if (opts.lan) {
+  const wasm = fs.readFileSync(new URL('./web/vendor/tcpip.wasm', import.meta.url));
+  host.lan = await Lan.create(wasm, (line) => process.stderr.write(`[lan] ${line}\n`));
+  startServices(host.lan, { dial: opts.lanDial });
 }
 if (peer) {
   /* Piped input to the first board is read whole and queued, as the

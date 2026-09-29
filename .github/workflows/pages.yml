@@ -79,6 +79,12 @@ jobs:
       - name: Build the demo
         run: ./zephyr-wasm/scripts/stage_site.sh
 
+      # The host's own network (host/lan.mjs) on its own, before any build
+      # uses it: every service it offers, 4 MB through TCP, and the same
+      # frames on the wire twice. Needs nothing but Node.
+      - name: Check the host's LAN
+        run: node zephyr-wasm/scripts/check_lan.mjs
+
       # A relay for the builds on a real network (host/uplink.mjs): the one
       # README tells people to run, pinned, on loopback only. What the checks
       # ask of it -- a DHCP lease -- it answers itself, so they do not depend
