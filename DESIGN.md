@@ -313,6 +313,30 @@ catch this, and it works here on a healthy sample, but in one suite it
 reported an overflow on a thread whose test does nothing. That report is
 not explained, so the sentinel is not trusted yet.
 
+It is explained now, and so is why the thread analyzer's figures here make
+no sense. Zephyr puts a stack object's reserved bytes at the **bottom**,
+where an MPU target keeps its guard, and describes the thread's stack
+(`stack_info`) as the requested size above them. The port carves the
+Asyncify buffer down from the top of the object, so a stack no bigger than
+the buffer has its whole `stack_info` inside the buffer, and the C stack
+actually runs from below the buffer down through the reserved bytes. The
+sentinel's word and the analyzer's paint are where unwinds write, not where
+the C stack grows. Both need the port to describe its stacks as they are
+before they can be trusted.
+
+**A debugging build gets more C stack** (`CONFIG_WASM_STACK_HEADROOM`,
+8192 when built `-Og`, as `CONFIG_DEBUG=y` builds, and 0 otherwise). It is
+added to the reservation, so every stack object grows by it and the size
+the kernel knows about does not change. Optimised, wasm code fits the
+stacks upstream sizes for native targets; built for debugging it does not.
+`smf_calculator` asks for `CONFIG_DEBUG` and gives its own thread 1 KB,
+and it ran off the bottom into what is linked below: first main's timeout
+and the shell thread, so the run went silent; with 2 KB more, the log
+core's buffer, so it trapped on a corrupted function pointer; with 4 KB
+more, the log sources' names, so it printed garbage for its own. With 8 KB
+more, and with 16 KB, an eleven-key session printed the same, correctly.
+Only a debugging build pays for it.
+
 The port uses the **full** Asyncify pass, not `ignore-indirect` and not an
 onlylist. Both narrowing options break the case Zephyr depends on: a yield
 reached through an indirect call, which is how thread entries, init handlers
@@ -691,6 +715,17 @@ drew, not just what it printed.
 LVGL's pointer, `input_dump` and `draw_touch_events` therefore all run
 against the real input subsystem. Scripted input under Node counts as a
 deadline, like a scripted GPIO event (D8c), so a touch test is repeatable.
+
+The board turns `CONFIG_INPUT` on for any build with LVGL, as upstream's
+touchscreen boards and display shields do. A sample that uses LVGL leaves
+input to the board: `smf_calculator` never asks for it, and before this was
+a keypad drawn on the screen that nothing could press.
+
+The display is RGB565 only. `modules/lvgl/screen_transparency` renders at 32
+bits, since its point is an alpha channel, and native_sim's display is
+ARGB8888; here it draws its labels repeated down the screen. A second pixel
+format would double the framebuffer and change every display build, so the
+sample is left out for now.
 
 ### D8j. Sensors are upstream's emulators, and the host sets what they read
 

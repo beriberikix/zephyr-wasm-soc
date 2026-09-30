@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **77**. 47 pass upstream's own criterion, and 30 more are counted
+today: **79**. 47 pass upstream's own criterion, and 32 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -22,7 +22,9 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events`, two LVGL
+samples with nothing upstream checks, `display/lvgl` and
+`smf_calculator`, whose screens and consoles the demo checks, and the
 fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
 server, zperf, which is both ends of its own pair, and `dns_resolve` with
@@ -50,7 +52,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 77, ten count only
+criterion, which is why it is spelled out: of the 79, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -194,7 +196,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 77. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 79. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -243,7 +245,10 @@ took it to 69 with `http_get`, `dumb_http_server`, `tftp_client` and
 `net_mgmt`, `stats` and `virtual`, took it to 72. More services on the
 LAN, FTP and pings and a page asked for by path, with promiscuous mode and
 VLANs in the Ethernet driver, took it to 77 with `ftp_client`,
-`prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan`.
+`prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan`. Two LVGL
+samples took it to 79: `display/lvgl`, and `smf_calculator`, once the board
+turned input on for LVGL and a debugging build got the C stack it needs
+(DESIGN.md D8).
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output

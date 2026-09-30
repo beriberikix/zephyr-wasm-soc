@@ -369,6 +369,57 @@
       }
     },
     {
+      "name": "lvgl-hello",
+      "app": "zephyr/samples/subsys/display/lvgl",
+      "kind": "sample",
+      "title": "LVGL hello world",
+      "hint": "LVGL's hello world: a button, and a counter below it that counts seconds. Click the button to set the counter back to 0. The output is a shell as well: try `lvgl stats memory`.",
+      "uses": ["terminal"],
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 3000,
+      "ci_stdin": "lvgl stats memory\n",
+      "expect": [
+        "Booting Zephyr OS",
+        "free bytes",
+        "allocated bytes"
+      ],
+      "display": {
+        "colors_at_least": 20
+      }
+    },
+    {
+      "name": "calculator",
+      "app": "zephyr/samples/subsys/smf/smf_calculator",
+      "kind": "sample",
+      "title": "SMF calculator",
+      "hint": "A desk calculator whose logic is a hierarchical state machine (the State Machine Framework), drawn with LVGL. Click its keys: each one is logged, with the state the machine is left in. It asks for CONFIG_DEBUG, so it is built for debugging, which on this board means more stack for every thread.",
+      "uses": ["terminal"],
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 6000,
+      "ci_touch": ["1000:60,158", "2000:259,186", "3000:126,158", "4000:193,186"],
+      "expect": [
+        "SMF Desk Calculator Demo"
+      ],
+      "ci_expect": [
+        "Received 1 from GUI",
+        "Received + from GUI",
+        "Received 2 from GUI",
+        "Received = from GUI",
+        "res= 3"
+      ],
+      "display": {
+        "colors_at_least": 20
+      }
+    },
+    {
       "name": "nvs",
       "app": "zephyr/samples/subsys/kvss/nvs",
       "kind": "sample",

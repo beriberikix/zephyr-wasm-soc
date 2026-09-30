@@ -455,7 +455,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 77 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 79 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

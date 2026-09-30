@@ -31,16 +31,20 @@ extern "C" {
 
 /*
  * Every thread stack object carries its Asyncify buffer in the high part, so
- * the reserved amount comes straight out of the usable stack.
+ * the reserved amount comes straight out of the usable stack. A debugging
+ * build reserves headroom as well, which the C stack grows into before it
+ * reaches the size the thread asked for (CONFIG_WASM_STACK_HEADROOM).
  */
-#define ARCH_THREAD_STACK_RESERVED (CONFIG_WASM_ASYNCIFY_BUFFER_SIZE)
+#define ARCH_THREAD_STACK_RESERVED \
+	(CONFIG_WASM_ASYNCIFY_BUFFER_SIZE + CONFIG_WASM_STACK_HEADROOM)
 
 /* Kernel stacks need the same reservation. The idle thread and the system
  * work queue run on K_KERNEL_STACK objects, and they suspend exactly like any
  * other thread, so without this their Asyncify buffers would be written into
  * whatever memory happens to follow the stack.
  */
-#define ARCH_KERNEL_STACK_RESERVED (CONFIG_WASM_ASYNCIFY_BUFFER_SIZE)
+#define ARCH_KERNEL_STACK_RESERVED \
+	(CONFIG_WASM_ASYNCIFY_BUFFER_SIZE + CONFIG_WASM_STACK_HEADROOM)
 
 #define ARCH_EXCEPT_REASON_OFFSET 0
 
