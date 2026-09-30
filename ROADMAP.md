@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **77**. 47 pass upstream's own criterion, and 30 more are counted
+today: **80**. 47 pass upstream's own criterion, and 33 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -22,12 +22,15 @@ regex, a ztest verdict, or a scripted shell session. An application counts once
 if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button`, `input/draw_touch_events` and the
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events`, two LVGL
+samples with nothing upstream checks, `display/lvgl` and
+`smf_calculator`, whose screens and consoles the demo checks, and the
 fourteen network samples the two-board pairs run: the echo client and four
 echo servers, the CoAP server and three CoAP clients, HTTP's client and
 server, zperf, which is both ends of its own pair, and `dns_resolve` with
 `mdns_responder`; `dhcpv4_client`, `http_get`, `dumb_http_server`,
-`tftp_client`, `sntp_client`, `ftp_client` and `prometheus`, whose peer
+`tftp_client`, `sntp_client`, `ftp_client`, `prometheus` and
+`mqtt_publisher`, whose peer
 is the host's own network; `promiscuous_mode` and `pkt_filter`, which the
 host's network pings; and `net_mgmt`, `stats`, `virtual` and `vlan`, which
 need an interface but no one to talk to.
@@ -50,7 +53,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 77, ten count only
+criterion, which is why it is spelled out: of the 80, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -72,11 +75,22 @@ A sample whose upstream entry `depends_on: netif` and needs no peer
 eth`) is built the same way: its interface is the one the snippet gives,
 plugged into the LAN so what it sees is a repeatable wire.
 
+**Which entries could run here at all** is one rule for the sweep and the
+demo alike. An entry whose `platform_allow` names only hardware is left
+out. One whose list names a simulator (native_sim, qemu, native_posix)
+counts as runnable without hardware, since upstream runs it that way
+itself. That is what `scripts/check_samples.py` has always applied. The
+network demo applied a stricter one for a while, and left out
+`ipv4_autoconf` and the two MQTT publishers for having such lists. It now
+applies the same one.
+
 A sample the LAN serves counts only if it passes on Zephyr as this
 workspace pins it. `websocket_client` and `coap_client_tcp` run against the
 LAN's WebSocket and CoAP services only with a fix to Zephyr, so they do not
 count yet (D8m); nor does `dumb_http_server_mt`, which traps on its thread
-entries (`upstream/zephyr/0014`). `big_http_download` checks the SHA-256 of
+entries (`upstream/zephyr/0014`), nor `mqtt_sn_publisher`, which traps on
+its thread entry (0015), nor `ipv4_autoconf`, which registers for the event
+it prints after the event has happened here (0016). `big_http_download` checks the SHA-256 of
 an Ubuntu kernel it downloads, which the LAN could only fake, so it is
 left for a real network.
 
@@ -194,7 +208,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 77. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 80. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -203,8 +217,9 @@ What comes next, in order, and why:
    kernel suites and two network suites. With them go the QUIC and CAN
    socket fixes, 0011 for the echo servers' IPv6 address buffers, 0012 for
    the minimal libc's missing `strcasecmp`, 0013 for the CoAP-over-TCP
-   client's first millisecond, 0014 for `dumb_http_server_mt`'s thread
-   entries, and one for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
+   client's first millisecond, 0014 and 0015 for `dumb_http_server_mt`'s
+   and `mqtt_sn_publisher`'s thread entries, 0016 for `ipv4_autoconf`'s late
+   registration, and one for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
    since Zephyr needs the submitter's own `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
@@ -213,9 +228,7 @@ What comes next, in order, and why:
 3. **Move Zephyr's pin.** The LAN already serves WebSocket and CoAP over
    TCP. `websocket_client` passes against it once the pin takes upstream's
    Kconfig fix, and `coap_client_tcp` once 0013 lands; moving the pin is
-   also what counts any of the D8b fixes Zephyr has taken. MQTT's samples
-   are not on this list: `mqtt_publisher` and `mqtt_sn_publisher` allow
-   only named platforms, so twister would never run them here. QUIC's pair
+   also what counts any of the D8b fixes Zephyr has taken. QUIC's pair
    waits on patch 0007, and the relay's static-address samples on
    `upstream/rootlessrelay/0001`.
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
@@ -243,7 +256,11 @@ took it to 69 with `http_get`, `dumb_http_server`, `tftp_client` and
 `net_mgmt`, `stats` and `virtual`, took it to 72. More services on the
 LAN, FTP and pings and a page asked for by path, with promiscuous mode and
 VLANs in the Ethernet driver, took it to 77 with `ftp_client`,
-`prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan`.
+`prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan`. Two LVGL
+samples took it to 79: `display/lvgl`, and `smf_calculator`, once the board
+turned input on for LVGL and a debugging build got the C stack it needs
+(DESIGN.md D8). An MQTT broker on the LAN took it to 80 with
+`mqtt_publisher`, once the demo counted entries by the sweep's rule.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output

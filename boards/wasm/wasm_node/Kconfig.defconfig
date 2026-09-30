@@ -17,4 +17,11 @@ config EMUL
 config ZTEST_STACK_SIZE
 	default 4096
 
+# The display takes touches (wasm,host-input, with a zephyr,lvgl-pointer-input
+# node for LVGL), and a board with a touchscreen turns input on for LVGL, as
+# upstream's touchscreen boards and display shields do. smf_calculator asks
+# for LVGL but not for input, and was a keypad nothing could press.
+config INPUT
+	default y if LVGL
+
 endif # BOARD_WASM_NODE

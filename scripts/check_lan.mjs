@@ -4,7 +4,8 @@
  *
  * A second lwIP stands in for the board at 192.0.2.1 and uses every service
  * the LAN offers at 192.0.2.2: DHCP, DNS, SNTP, TFTP, HTTP, a WebSocket
- * echo, CoAP over TCP and FTP, and answers the LAN's pings. Then it
+ * echo, CoAP over TCP, FTP, MQTT and MQTT-SN, and answers the LAN's pings.
+ * Then it
  * sends 4 MB through an echo on the LAN and checks it comes back whole,
  * and that every TCP segment on the wire had a good checksum. An echo
  * writes as it reads, so lwIP adds writes to segments not yet sent and
@@ -28,6 +29,7 @@ import { Lan, LAN_IP, BOARD_IP } from '../host/lan.mjs';
 import {
   startServices, TFTP_FILES, LAN_EPOCH_UNIX, FTP_FILES, COAP_RESOURCES,
   sha1, websocketAccept, coapTcpEncode, coapTcpDecode,
+  mqttPacket, mqttDecode, mqttSnMessage,
 } from '../host/lan_services.mjs';
 
 const wasm = fs.readFileSync(new URL('../host/web/vendor/tcpip.wasm', import.meta.url));
@@ -211,6 +213,46 @@ async function scenario() {
   results.ftp.back = ftpData('RETR /pub/new.txt');
   results.ftp.control = ctl;
 
+  /* MQTT: connect, subscribe to t/#, publish at QoS 1 and 2 to t/a (which
+   * comes back, since the board subscribed), and ping. */
+  const mq = board.tcpConnect(LAN_IP, 1883);
+  let mqIn = new Uint8Array(0);
+  results.mqtt = [];
+  const str = (t) => { const b = enc.encode(t); return [b.length >> 8, b.length & 0xff, ...b]; };
+  mq.onConnect = () => mq.write(mqttPacket(1, 0, [...str('MQTT'), 4, 2, 0, 60, ...str('check')]));
+  mq.onData = (d) => {
+    mqIn = Buffer.concat([mqIn, d]);
+    let got;
+    while ((got = mqttDecode(mqIn))) {
+      mqIn = mqIn.subarray(got.size);
+      results.mqtt.push(got.type === 3 ? `3 ${dec.decode(got.body.subarray(5))}` : `${got.type}`);
+      if (got.type === 5) mq.write(mqttPacket(6, 2, [got.body[0], got.body[1]]));   // PUBREL
+    }
+  };
+  settle(board.takeEmitted(), []);
+  tick(50);
+  mq.write(mqttPacket(8, 2, [0, 1, ...str('t/#'), 0]));
+  mq.write(mqttPacket(3, 2, [...str('t/a'), 0, 2, ...enc.encode('one')]));
+  mq.write(mqttPacket(3, 4, [...str('t/a'), 0, 3, ...enc.encode('two')]));
+  mq.write(mqttPacket(12, 0));
+  settle(board.takeEmitted(), []);
+  tick(100);
+
+  /* MQTT-SN: connect, subscribe to /x, register /x, publish at QoS 1. */
+  results.sn = [];
+  const sn = board.udpOpen(0, (msg) => results.sn.push(msg[1]));
+  sn.send(mqttSnMessage(0x04, [0x04, 1, 0, 60, ...enc.encode('check')]), LAN_IP, 10000);
+  settle(board.takeEmitted(), []);
+  tick(50);
+  sn.send(mqttSnMessage(0x12, [0, 0, 1, ...enc.encode('/x')]), LAN_IP, 10000);
+  sn.send(mqttSnMessage(0x0a, [0, 0, 0, 2, ...enc.encode('/x')]), LAN_IP, 10000);
+  settle(board.takeEmitted(), []);
+  tick(50);
+  sn.send(mqttSnMessage(0x0c, [0x20, 0, 1, 0, 3, ...enc.encode('hi')]), LAN_IP, 10000);
+  sn.send(mqttSnMessage(0x16, []), LAN_IP, 10000);
+  settle(board.takeEmitted(), []);
+  tick(50);
+
   results.lanLog = lanLog;
 
   /* 4 MB through an echo on the LAN. */
@@ -288,6 +330,12 @@ expect('FTP stores a file and gives it back', results.ftp.back === 'written by t
 expect('FTP answers each step', ['220 ', '331 ', '230 ', '227 ', '150 ', '226 '].every(
   (c) => results.ftp.control.includes(`\r\n${c}`) || results.ftp.control.startsWith(c)),
        JSON.stringify(results.ftp.control.split('\r\n').slice(0, 4)));
+expect('MQTT: CONNACK, SUBACK, PUBACK, the QoS 1 message back, PUBREC, PUBCOMP, the QoS 2 message, PINGRESP',
+       JSON.stringify(results.mqtt) === JSON.stringify(['2', '9', '4', '3 one', '5', '3 two', '13', '7']),
+       JSON.stringify(results.mqtt));
+expect('MQTT-SN: CONNACK, SUBACK, REGACK, PUBACK, the message back, PINGRESP',
+       JSON.stringify(results.sn) === JSON.stringify([0x05, 0x13, 0x0b, 0x0d, 0x0c, 0x17]),
+       JSON.stringify(results.sn));
 expect('the LAN pings the board, and hears back',
        results.lanLog.includes('ping 192.0.2.1 seq 0: reply') &&
        results.lanLog.includes('ping 192.0.2.1 seq 1: reply'),

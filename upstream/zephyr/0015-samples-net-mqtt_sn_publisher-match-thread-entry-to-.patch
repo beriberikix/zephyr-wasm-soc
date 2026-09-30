@@ -1,0 +1,52 @@
+From 8abbf2664cfb45964ed57cec21b7f37ef1e9cf9e Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Wed, 30 Sep 2026 14:00:00 +0000
+Subject: [PATCH] samples: net: mqtt_sn_publisher: match thread entry to
+ k_thread_entry_t
+
+process_thread() is declared void f(void) and passed to K_THREAD_DEFINE(),
+which casts it to k_thread_entry_t and calls it with three arguments.
+Calling a function through an incompatible function type is undefined
+behaviour, and it traps on targets that check indirect calls.
+
+Give the entry the signature k_thread_entry_t declares.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ samples/net/mqtt_sn_publisher/src/udp.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/samples/net/mqtt_sn_publisher/src/udp.c b/samples/net/mqtt_sn_publisher/src/udp.c
+index fa369520959..9ff4639d59b 100644
+--- a/samples/net/mqtt_sn_publisher/src/udp.c
++++ b/samples/net/mqtt_sn_publisher/src/udp.c
+@@ -23,7 +23,7 @@ LOG_MODULE_DECLARE(mqtt_sn_publisher_sample);
+ #define SAMPLE_GW_ADDRESS ""
+ #endif
+ 
+-static void process_thread(void);
++static void process_thread(void *p1, void *p2, void *p3);
+ 
+ K_THREAD_DEFINE(udp_thread_id, STACK_SIZE, process_thread, NULL, NULL, NULL, THREAD_PRIORITY,
+ 		IS_ENABLED(CONFIG_USERSPACE) ? K_USER : 0, -1);
+@@ -124,12 +124,16 @@ static int do_work(void)
+ 	return 0;
+ }
+ 
+-static void process_thread(void)
++static void process_thread(void *p1, void *p2, void *p3)
+ {
+ 	struct sockaddr bcaddr = {0};
+ 	int err;
+ 	bool success;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	LOG_DBG("Parsing Broadcast Address " CONFIG_NET_SAMPLE_MQTT_SN_BROADCAST_ADDRESS);
+ 	success = net_ipaddr_parse(CONFIG_NET_SAMPLE_MQTT_SN_BROADCAST_ADDRESS,
+ 				   strlen(CONFIG_NET_SAMPLE_MQTT_SN_BROADCAST_ADDRESS), &bcaddr);
+-- 
+2.43.0
+

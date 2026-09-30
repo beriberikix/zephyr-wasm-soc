@@ -24,6 +24,10 @@
  * - FTP on 21, passive mode only, as Zephyr's FTP client uses it: any user
  *   and password, a small tree to list and read, and room to write, which
  *   lasts for the run.
+ * - MQTT 3.1.1 on 1883: a broker that takes publishes at every QoS, answers
+ *   pings, and delivers to subscribers, for mqtt_publisher.
+ * - MQTT-SN on UDP 10000: a gateway with the same broker behind it, for
+ *   mqtt_sn_publisher.
  * - Dialling: connect to a port on the board at a given time and send a
  *   request, for samples that are servers.
  * - Pinging: ICMP echo requests to the board at given times, so that a
@@ -64,6 +68,9 @@ export function startServices(lan, opts = {}) {
   websocket(lan);
   coapTcp(lan);
   ftp(lan);
+  const broker = new Broker(lan);
+  mqtt(lan, broker);
+  mqttSn(lan, broker);
   for (const d of opts.dial ?? []) dial(lan, d);
   pings(lan, opts.ping ?? []);
 }
@@ -695,6 +702,215 @@ function ftp(lan) {
         command(cmd, arg);
       }
     };
+  });
+}
+
+/* --- MQTT (3.1.1) and MQTT-SN -------------------------------------- */
+
+/* What both front ends share: who is subscribed to what. A subscriber is
+ * a function that takes a topic and a payload. */
+class Broker {
+  constructor(lan) {
+    this.lan = lan;
+    this.subs = [];            // { filter, deliver }
+  }
+
+  subscribe(filter, deliver) {
+    this.subs.push({ filter, deliver });
+  }
+
+  unsubscribe(deliver) {
+    this.subs = this.subs.filter((s) => s.deliver !== deliver);
+  }
+
+  publish(topic, payload) {
+    for (const s of this.subs) if (topicMatches(s.filter, topic)) s.deliver(topic, payload);
+  }
+}
+
+/* MQTT topic filters: + for one level, # for the rest. */
+export function topicMatches(filter, topic) {
+  const f = filter.split('/');
+  const t = topic.split('/');
+  for (let i = 0; i < f.length; i++) {
+    if (f[i] === '#') return true;
+    if (i >= t.length || (f[i] !== '+' && f[i] !== t[i])) return false;
+  }
+  return f.length === t.length;
+}
+
+const MQTT = {
+  CONNECT: 1, CONNACK: 2, PUBLISH: 3, PUBACK: 4, PUBREC: 5, PUBREL: 6, PUBCOMP: 7,
+  SUBSCRIBE: 8, SUBACK: 9, UNSUBSCRIBE: 10, UNSUBACK: 11, PINGREQ: 12, PINGRESP: 13,
+  DISCONNECT: 14,
+};
+
+/* One MQTT packet: the type and flags byte, then the remaining length as a
+ * variable-length integer, then the rest. */
+export function mqttPacket(type, flags, body = []) {
+  const len = [];
+  let n = body.length;
+  do {
+    let b = n % 128;
+    n = Math.floor(n / 128);
+    if (n > 0) b |= 0x80;
+    len.push(b);
+  } while (n > 0);
+  return Uint8Array.from([(type << 4) | flags, ...len, ...body]);
+}
+
+/* The first whole packet in buf: { type, flags, body, size }, or null. */
+export function mqttDecode(buf) {
+  let len = 0;
+  let mul = 1;
+  let at = 1;
+  for (;;) {
+    if (at >= buf.length) return null;
+    const b = buf[at++];
+    len += (b & 0x7f) * mul;
+    mul *= 128;
+    if (!(b & 0x80)) break;
+    if (at > 4) return null;
+  }
+  if (buf.length < at + len) return null;
+  return { type: buf[0] >> 4, flags: buf[0] & 15, body: buf.slice(at, at + len), size: at + len };
+}
+
+const mqttString = (s) => { const b = enc.encode(s); return [b.length >> 8, b.length & 0xff, ...b]; };
+const u16 = (b, at) => (b[at] << 8) | b[at + 1];
+
+function mqtt(lan, broker) {
+  lan.tcpListen(1883, (conn) => {
+    let buf = new Uint8Array(0);
+    let client = '?';
+    const send = (type, flags, body) => conn.write(mqttPacket(type, flags, body));
+    const deliver = (topic, payload) => send(MQTT.PUBLISH, 0, [...mqttString(topic), ...payload]);
+    conn.onData = (data) => {
+      buf = concat(buf, data);
+      let got;
+      while ((got = mqttDecode(buf))) {
+        buf = buf.subarray(got.size);
+        const { type, flags, body } = got;
+        if (type === MQTT.CONNECT) {
+          /* Protocol name, level, flags, keep-alive, then the client id. */
+          const nameLen = u16(body, 0);
+          const idAt = 2 + nameLen + 4;
+          client = dec.decode(body.subarray(idAt + 2, idAt + 2 + u16(body, idAt)));
+          send(MQTT.CONNACK, 0, [0, 0]);
+          lan.log(`MQTT ${client} connected`);
+        } else if (type === MQTT.PUBLISH) {
+          const qos = (flags >> 1) & 3;
+          const topicLen = u16(body, 0);
+          const topic = dec.decode(body.subarray(2, 2 + topicLen));
+          const id = qos ? u16(body, 2 + topicLen) : 0;
+          const payload = body.subarray(2 + topicLen + (qos ? 2 : 0));
+          if (qos === 1) send(MQTT.PUBACK, 0, [id >> 8, id & 0xff]);
+          if (qos === 2) send(MQTT.PUBREC, 0, [id >> 8, id & 0xff]);
+          lan.log(`MQTT ${client} published ${payload.length} bytes to ${topic} at QoS ${qos}`);
+          broker.publish(topic, payload);
+        } else if (type === MQTT.PUBREL) {
+          send(MQTT.PUBCOMP, 0, [body[0], body[1]]);
+        } else if (type === MQTT.SUBSCRIBE) {
+          const granted = [];
+          for (let i = 2; i < body.length;) {
+            const n = u16(body, i);
+            const filter = dec.decode(body.subarray(i + 2, i + 2 + n));
+            granted.push(0);                                       // QoS 0
+            broker.subscribe(filter, deliver);
+            lan.log(`MQTT ${client} subscribed to ${filter}`);
+            i += 2 + n + 1;
+          }
+          send(MQTT.SUBACK, 0, [body[0], body[1], ...granted]);
+        } else if (type === MQTT.UNSUBSCRIBE) {
+          broker.unsubscribe(deliver);
+          send(MQTT.UNSUBACK, 0, [body[0], body[1]]);
+        } else if (type === MQTT.PINGREQ) {
+          send(MQTT.PINGRESP, 0);
+        } else if (type === MQTT.DISCONNECT) {
+          lan.log(`MQTT ${client} disconnected`);
+          broker.unsubscribe(deliver);
+          conn.end();
+          return;
+        }
+      }
+    };
+    conn.onEnd = () => broker.unsubscribe(deliver);
+  });
+}
+
+const SN = {
+  CONNECT: 0x04, CONNACK: 0x05, REGISTER: 0x0a, REGACK: 0x0b, PUBLISH: 0x0c,
+  PUBACK: 0x0d, SUBSCRIBE: 0x12, SUBACK: 0x13, UNSUBSCRIBE: 0x14, UNSUBACK: 0x15,
+  PINGREQ: 0x16, PINGRESP: 0x17, DISCONNECT: 0x18,
+};
+
+/* One MQTT-SN message: its length, one byte or 0x01 and two, then the
+ * type and the rest. */
+export function mqttSnMessage(type, body = []) {
+  const n = body.length + 2;
+  return Uint8Array.from(n < 256 ? [n, type, ...body] : [1, (n + 2) >> 8, (n + 2) & 0xff, type, ...body]);
+}
+
+function mqttSn(lan, broker) {
+  /* Topic ids, shared by every client, from 1 up. */
+  const ids = new Map();
+  const names = new Map();
+  const idFor = (name) => {
+    if (!ids.has(name)) { ids.set(name, ids.size + 1); names.set(ids.get(name), name); }
+    return ids.get(name);
+  };
+  const clients = new Map();   // "ip:port" -> { name, deliver }
+  const sock = lan.udpOpen(10000, (msg, from, port) => {
+    const at = msg[0] === 1 ? 3 : 1;
+    const type = msg[at];
+    const body = msg.subarray(at + 1);
+    const key = `${from.join('.')}:${port}`;
+    const send = (t, b) => sock.send(mqttSnMessage(t, b), from, port);
+    const client = clients.get(key);
+    if (type === SN.CONNECT) {
+      /* Flags, protocol id, duration, then the client id. */
+      const name = dec.decode(body.subarray(4));
+      const deliver = (topic, payload) => {
+        const id = idFor(topic);
+        send(SN.PUBLISH, [0, id >> 8, id & 0xff, 0, 0, ...payload]);
+      };
+      clients.set(key, { name, deliver });
+      send(SN.CONNACK, [0]);
+      lan.log(`MQTT-SN ${name} connected`);
+    } else if (!client) {
+      /* Nothing but CONNECT from a client the gateway does not know. */
+    } else if (type === SN.REGISTER) {
+      const topic = dec.decode(body.subarray(4));
+      const id = idFor(topic);
+      send(SN.REGACK, [id >> 8, id & 0xff, body[2], body[3], 0]);
+      lan.log(`MQTT-SN ${client.name} registered ${topic} as ${id}`);
+    } else if (type === SN.SUBSCRIBE) {
+      /* Flags, message id, then a topic name (the only type asked for). */
+      const topic = dec.decode(body.subarray(3));
+      const id = idFor(topic);
+      broker.subscribe(topic, client.deliver);
+      send(SN.SUBACK, [0, id >> 8, id & 0xff, body[1], body[2], 0]);
+      lan.log(`MQTT-SN ${client.name} subscribed to ${topic}`);
+    } else if (type === SN.UNSUBSCRIBE) {
+      broker.unsubscribe(client.deliver);
+      send(SN.UNSUBACK, [body[1], body[2]]);
+    } else if (type === SN.PUBLISH) {
+      /* Flags, topic id, message id, data. */
+      const qos = (body[0] >> 5) & 3;
+      const id = u16(body, 1);
+      const topic = names.get(id) ?? `#${id}`;
+      const payload = body.subarray(5);
+      if (qos === 1) send(SN.PUBACK, [body[1], body[2], body[3], body[4], 0]);
+      lan.log(`MQTT-SN ${client.name} published ${payload.length} bytes to ${topic} at QoS ${qos}`);
+      broker.publish(topic, payload);
+    } else if (type === SN.PINGREQ) {
+      send(SN.PINGRESP, []);
+    } else if (type === SN.DISCONNECT) {
+      broker.unsubscribe(client.deliver);
+      clients.delete(key);
+      send(SN.DISCONNECT, []);
+      lan.log(`MQTT-SN ${client.name} disconnected`);
+    }
   });
 }
 

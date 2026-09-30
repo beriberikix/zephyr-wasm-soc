@@ -209,8 +209,9 @@ function usage() {
                      wasm-ethernet snippet. Implies --paced
   --lan              plug the board into the host's own network instead:
                      192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP,
-                     HTTP, WebSocket (9001), CoAP over TCP (5683) and FTP,
-                     on the board's clock, so runs stay repeatable. What it
+                     HTTP, WebSocket (9001), CoAP over TCP (5683), FTP,
+                     MQTT (1883) and MQTT-SN (UDP 10000), on the board's
+                     clock, so runs stay repeatable. What it
                      does goes to stderr as [lan <guest time>] lines
   --lan-dial <ms>:<port>[:<path>]
                      with --lan, connect to the board's port at a guest

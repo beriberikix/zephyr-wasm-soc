@@ -53,6 +53,28 @@ config WASM_ASYNCIFY_BUFFER_SIZE
 	  upload suspends from the shell thread, below a command handler, the
 	  shell and the socket layer: a UDP upload needed 4240.
 
+config WASM_STACK_HEADROOM
+	int "Bytes of C stack each thread gets beyond the size it asked for"
+	default 8192 if DEBUG_OPTIMIZATIONS || NO_OPTIMIZATIONS
+	default 0
+	help
+	  Upstream sizes its thread stacks for native targets. Optimised,
+	  wasm code needs no more than that, but built for debugging (-Og, as
+	  CONFIG_DEBUG=y does) it keeps far more on the shadow stack.
+	  smf_calculator, which asks for CONFIG_DEBUG, gives its own thread
+	  1 KB. It ran off the bottom of that into the kernel objects, the log
+	  core's buffer and the log sources' names linked below it: first the
+	  run went silent, with main's timeout and the shell thread
+	  overwritten; with 2048 more it trapped on a corrupted function
+	  pointer; with 4096 more it ran, but printed its log source's name as
+	  garbage. With 8192 more, and with 16384, an eleven-key session
+	  printed the same, correctly.
+
+	  Nothing guards the C stack (DESIGN.md D8), so too little shows up
+	  later, somewhere else. The extra is reserved in every stack object,
+	  above the size asked for, so the kernel's view of the stack is
+	  unchanged, and only a debugging build pays for it.
+
 config WASM_SAFEPOINTS
 	bool "Check for pending interrupts at loop back-edges"
 	default y
@@ -106,11 +128,14 @@ config WASM_IRQ_LINES
 config COMMON_LIBC_MALLOC_ARENA_SIZE
 	default 16384 if !MINIMAL_LIBC
 
-# PTHREAD_STACK_MIN is K_KERNEL_STACK_LEN(0), which here is the Asyncify
-# buffer every stack reserves, so the kernel's default of 1024 for a
-# dynamically allocated stack makes pthread_create() refuse every thread.
-# x86 has the same default for a similar reason.
+# PTHREAD_STACK_MIN is K_KERNEL_STACK_LEN(0), which here is what every stack
+# reserves, the Asyncify buffer and any headroom, so the kernel's default of
+# 1024 for a dynamically allocated stack makes pthread_create() refuse every
+# thread. x86 has the same default for a similar reason. Kconfig cannot add,
+# so the sums are spelled out.
 config DYNAMIC_THREAD_STACK_SIZE
+	default 16384 if WASM_ASYNCIFY_BUFFER_SIZE = 8192 && WASM_STACK_HEADROOM = 8192
+	default 12288 if WASM_ASYNCIFY_BUFFER_SIZE = 4096 && WASM_STACK_HEADROOM = 8192
 	default WASM_ASYNCIFY_BUFFER_SIZE
 
 endmenu

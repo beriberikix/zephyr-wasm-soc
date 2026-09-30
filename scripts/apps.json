@@ -83,9 +83,10 @@
     "  Real peers follow the wall clock, so it is paced and not repeatable.",
     "lan: one board on the host's own network (host/lan.mjs): lwIP at",
     "  192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP, HTTP, WebSocket,",
-    "  CoAP over TCP and FTP (host/lan_services.mjs), on the board's clock, so",
-    "  the run is as repeatable as any other; check_site.mjs runs it twice and",
-    "  requires the same output. true, or an object with dial:",
+    "  CoAP over TCP, FTP, MQTT and MQTT-SN (host/lan_services.mjs), on the",
+    "  board's clock, so the run is as repeatable as any other; check_site.mjs",
+    "  runs it twice and requires the same output. true, or an object with",
+    "  dial:",
     "  [{\"at_ms\", \"port\", \"path\"}] for a sample that is a server (the LAN",
     "  connects at that guest time and asks for the path, \"/\" unless given)",
     "  and ping: [ms], times at which the LAN pings the board. Built with",
@@ -363,6 +364,57 @@
       "expect": [
         "free bytes",
         "allocated bytes"
+      ],
+      "display": {
+        "colors_at_least": 20
+      }
+    },
+    {
+      "name": "lvgl-hello",
+      "app": "zephyr/samples/subsys/display/lvgl",
+      "kind": "sample",
+      "title": "LVGL hello world",
+      "hint": "LVGL's hello world: a button, and a counter below it that counts seconds. Click the button to set the counter back to 0. The output is a shell as well: try `lvgl stats memory`.",
+      "uses": ["terminal"],
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 3000,
+      "ci_stdin": "lvgl stats memory\n",
+      "expect": [
+        "Booting Zephyr OS",
+        "free bytes",
+        "allocated bytes"
+      ],
+      "display": {
+        "colors_at_least": 20
+      }
+    },
+    {
+      "name": "calculator",
+      "app": "zephyr/samples/subsys/smf/smf_calculator",
+      "kind": "sample",
+      "title": "SMF calculator",
+      "hint": "A desk calculator whose logic is a hierarchical state machine (the State Machine Framework), drawn with LVGL. Click its keys: each one is logged, with the state the machine is left in. It asks for CONFIG_DEBUG, so it is built for debugging, which on this board means more stack for every thread.",
+      "uses": ["terminal"],
+      "upstream": true,
+      "interactive": true,
+      "endless": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 6000,
+      "ci_touch": ["1000:60,158", "2000:259,186", "3000:126,158", "4000:193,186"],
+      "expect": [
+        "SMF Desk Calculator Demo"
+      ],
+      "ci_expect": [
+        "Received 1 from GUI",
+        "Received + from GUI",
+        "Received 2 from GUI",
+        "Received = from GUI",
+        "res= 3"
       ],
       "display": {
         "colors_at_least": 20
@@ -1027,6 +1079,34 @@
         "My example tunnel interface 3 (VirtualTest-1",
         "This interface 3/",
         "attached to 2/"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "mqtt-pub",
+      "kind": "sample",
+      "title": "MQTT publisher",
+      "hint": "mqtt_publisher connects to an MQTT broker at 192.0.2.2 and, over and over, pings it and publishes a message at each quality of service: at most once, at least once (acknowledged with PUBACK) and exactly once (PUBREC, PUBREL, PUBCOMP). The broker is the page, playing a Linux host on a simulated network; its lines show what it received.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/mqtt_publisher",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "MQTT client connected!",
+        "PINGRESP packet",
+        "PUBACK packet id:",
+        "PUBREC packet id:",
+        "PUBCOMP packet id:"
+      ],
+      "lan_expect": [
+        "MQTT zephyr_publisher connected",
+        "MQTT zephyr_publisher published 15 bytes to sensors at QoS 2"
       ],
       "uses": [
         "terminal"
