@@ -1036,7 +1036,7 @@
       "name": "promisc",
       "kind": "sample",
       "title": "Promiscuous mode",
-      "hint": "promiscuous_mode turns on promiscuous mode and logs every frame that arrives. The page plays a Linux host at 192.0.2.2 on a simulated network, and pings the board at 1, 2 and 3 s: an ARP request (42 bytes), then three echo requests (98 bytes). The sample reads the IP header where the Ethernet header is, so it calls every frame \"unknown address family\", as it does on any Ethernet board. The page's own lines start `[lan` and the time on the board's clock; the board logs a frame a little after the time it prints, so a ping's reply can come first.",
+      "hint": "promiscuous_mode turns on promiscuous mode and logs every frame that arrives. The page plays a Linux host at 192.0.2.2 on a simulated network, and pings the board at 1, 2 and 3 s: an ARP request (42 bytes), then three echo requests (98 bytes). The sample reads the IP header where the Ethernet header is, so it calls every frame \"unknown address family\", as it does on any Ethernet board. The page's own lines start `[lan` and the time on the board's clock, and appear as soon as they happen. The board's log lines appear a little after the time they carry, so a `[lan …]` line can come before a board line with an earlier time.",
       "upstream": true,
       "endless": true,
       "lan": {
