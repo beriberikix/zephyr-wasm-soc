@@ -1636,3 +1636,16 @@ rows passed. What it found, and what each turned out to be:
   - the static address printed before DHCP (the samples' `net_config`);
   - the web server's banner before the boot banner (deferred logging);
   - `net iface` being long on a board with three interfaces.
+
+### Tick 72 — the follow-up round
+
+A second Claude-in-Chrome run, on ce50704, checked the fixes from tick 71.
+Four of five passed: the packet filter and Prometheus hints, FTP's `200 UTF8
+set to on` and its tree lasting for the run, and stamped DHCP lines that
+line up with the board's. The stamps showed each ping's reply 0.1 ms after
+the board's `Recv` line, as they should. The promiscuous mode hint had the
+reason backwards, though. It said the board logs a frame after the time it
+prints, when it is the board's log lines that appear after the time they
+carry. It now says so. Also noted, and left: in a paced, typed-into run the
+board's times jump by the seconds a person takes to type, which is guest
+time passing, as it should.
