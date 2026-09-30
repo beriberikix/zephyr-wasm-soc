@@ -82,13 +82,20 @@
     "  URL, and the checks run it only when given one with --uplink-relay.",
     "  Real peers follow the wall clock, so it is paced and not repeatable.",
     "lan: one board on the host's own network (host/lan.mjs): lwIP at",
-    "  192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP and HTTP, on the",
-    "  board's clock, so the run is as repeatable as any other; check_site.mjs",
-    "  runs it twice and requires the same output. true, or {\"dial\": [{\"at_ms\",",
-    "  \"port\"}]} for a sample that is a server: the LAN connects at that guest",
-    "  time and asks for \"/\". Built with -DSNIPPET=wasm-ethernet and what",
-    "  PAIR_ARG allows, with overrides saying so. An entry with lan and uplink",
-    "  runs on the LAN unless someone gives the page a relay."
+    "  192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP, HTTP, WebSocket,",
+    "  CoAP over TCP and FTP (host/lan_services.mjs), on the board's clock, so",
+    "  the run is as repeatable as any other; check_site.mjs runs it twice and",
+    "  requires the same output. true, or an object with dial:",
+    "  [{\"at_ms\", \"port\", \"path\"}] for a sample that is a server (the LAN",
+    "  connects at that guest time and asks for the path, \"/\" unless given)",
+    "  and ping: [ms], times at which the LAN pings the board. Built with",
+    "  -DSNIPPET=wasm-ethernet and what PAIR_ARG allows, with overrides saying",
+    "  so. An entry with lan and uplink runs on the LAN unless someone gives",
+    "  the page a relay.",
+    "lan_expect: substrings the LAN's own log must show, for a sample whose",
+    "  output cannot say what happened: a server does not print what it",
+    "  served, nor a filter what it dropped. The log is the [lan] lines,",
+    "  on stderr under run.mjs and in the terminal on the page."
   ],
   "builds": [
     {
@@ -1019,6 +1026,150 @@
         "My example tunnel interface 3 (VirtualTest-1",
         "This interface 3/",
         "attached to 2/"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "promisc",
+      "kind": "sample",
+      "title": "Promiscuous mode",
+      "hint": "promiscuous_mode turns on promiscuous mode and logs every frame that arrives. The page plays a Linux host at 192.0.2.2 on a simulated network, and pings the board at 1, 2 and 3 s: an ARP request (42 bytes), then three echo requests (98 bytes). The sample reads the IP header where the Ethernet header is, so it calls every frame \"unknown address family\", as it does on any Ethernet board.",
+      "upstream": true,
+      "endless": true,
+      "lan": {
+        "ping": [1000, 2000, 3000]
+      },
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/promiscuous_mode",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Promiscuous mode enabled for interface",
+        "len 42 (unknown address family)",
+        "len 98 (unknown address family)"
+      ],
+      "lan_expect": [
+        "ping 192.0.2.1 seq 2: reply"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "pkt-filter",
+      "kind": "sample",
+      "title": "Packet filter",
+      "hint": "pkt_filter installs packet filter rules, one of which drops IPv4 from 192.0.2.2. That is the page, playing a Linux host on a simulated network, and it pings the board at 1 and 2 s: the board answers the ARP request but not the pings. Type `net filter` to see the rules.",
+      "upstream": true,
+      "endless": true,
+      "lan": {
+        "ping": [1000, 2000]
+      },
+      "interactive": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "app": "zephyr/samples/net/pkt_filter",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Packet priorities are disabled"
+      ],
+      "lan_expect": [
+        "ping 192.0.2.1 seq 0: no reply",
+        "ping 192.0.2.1 seq 1: no reply"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "vlan",
+      "kind": "sample",
+      "title": "VLANs",
+      "hint": "The vlan sample adds two VLAN interfaces, tags 100 and 200, on its Ethernet interface, each with its own IPv4 and IPv6 addresses. The Ethernet interface is plugged into the simulated network the page plays, which has no VLANs of its own. Type `net vlan` or `net iface` to see them.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "interactive": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "app": "zephyr/samples/net/ethernet/vlan",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "Interface 2 VLAN tag 100 setup done.",
+        "Interface 3 VLAN tag 200 setup done."
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "prometheus",
+      "kind": "sample",
+      "title": "Prometheus metrics",
+      "hint": "The prometheus sample serves a request counter at /metrics on port 80. The page plays a Linux host at 192.0.2.2 on a simulated network, which leases the board its address by DHCP and, 2 s in, asks for /metrics as a Prometheus server would; the reply is in its log line.",
+      "upstream": true,
+      "endless": true,
+      "lan": {
+        "dial": [
+          {
+            "at_ms": 2000,
+            "port": 80,
+            "path": "/metrics"
+          }
+        ]
+      },
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/prometheus",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "net_dhcpv4: Received: 192.0.2.1"
+      ],
+      "lan_expect": [
+        "DHCP acknowledged 192.0.2.1",
+        "dialled 192.0.2.1:80, 180 bytes back: HTTP/1.1 200"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "ftp",
+      "kind": "sample",
+      "title": "FTP client",
+      "hint": "ftp_client adds FTP commands to the shell. The page plays a Linux host at 192.0.2.2 on a simulated network, with an FTP server that takes any user and password. Click the output and try `net ftp connect anonymous guest 192.0.2.2`, then `net ftp ls`, `net ftp get readme.txt`, `net ftp cd pub` and `net ftp get hello.txt`. What you put there stays until the page reloads.",
+      "upstream": true,
+      "interactive": true,
+      "clock": "paced",
+      "lan": true,
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 20000,
+      "app": "zephyr/samples/net/ftp_client",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "ci_stdin": "net ftp connect anonymous guest 192.0.2.2\nnet ftp ls\nnet ftp get readme.txt\nnet ftp cd pub\nnet ftp get hello.txt\nnet ftp disconnect\n",
+      "expect": [
+        "You can interact with FTP server via shell.",
+        "230 Logged in",
+        "readme.txt",
+        "This is the FTP server of the page's simulated network",
+        "250 Directory is now /pub",
+        "Hello from FTP on the page.",
+        "221 Goodbye"
+      ],
+      "lan_expect": [
+        "FTP sent /pub/hello.txt"
       ],
       "uses": [
         "terminal"

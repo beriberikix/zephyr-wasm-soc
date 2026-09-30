@@ -547,8 +547,13 @@ function makeTerminal(el, target, board = 0) {
   /* Guest output goes to both. */
   const term = {
     write(bytes) { show(bytes, true); },
-    /* Host messages, which use bare newlines. */
-    note(text) { show(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n')), false); },
+    /* Host messages, which use bare newlines. One that is a line of its
+     * own, such as what the simulated network did, starts a new line if
+     * the guest left the cursor partway along one. */
+    note(text, line = false) {
+      if (line && log.col !== 0) text = `\n${text}`;
+      show(new TextEncoder().encode(text.replace(/\r?\n/g, '\r\n')), false);
+    },
     /* A new run starts on a fresh terminal. */
     reset() {
       xterm.reset(); log.clear();
@@ -1144,7 +1149,7 @@ async function start() {
     }
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') t.write(new Uint8Array(data.buf));
-    else if (data.type === 'err') t.note(data.text);
+    else if (data.type === 'err') t.note(data.text, data.line);
     else if (data.type === 'power' && data.board === 1) {
       /* A client plugged in after its server, as a person would, at a
        * stated time into the server's run. */

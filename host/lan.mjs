@@ -51,6 +51,9 @@ const TICK_NS = 50_000_000n;
 
 const WASI_EBADF = 8;
 
+/* The identifier on the LAN's pings: fixed, so a run repeats. */
+const PING_ID = 0x4c41;
+
 export class Lan {
   /**
    * @param bytes  tcpip.wasm
@@ -72,6 +75,9 @@ export class Lan {
     this.tcp = new Map();    // pcb -> TcpConn
     this.listeners = new Map();
     this.udp = new Map();    // pcb -> handler
+    this.icmp = 0;           // the socket pings go out on, once there is one
+    this.pinging = new Set(); // sequence numbers not answered yet
+    this.onPingReply = null; // (fromIp, seq, payloadLength)
     this.depth = 0;
 
     const lan = this;
@@ -101,7 +107,13 @@ export class Lan {
         register_tun_interface() {},
         register_tap_interface() {},
         receive_packet() {},
-        receive_icmp_echo_reply() {},
+        /* A reply to a ping the LAN sent: 1 says it was taken. Anything
+         * else is left to lwIP. */
+        receive_icmp_echo_reply(_sock, addr, id, seq, _ptr, len) {
+          if (id !== PING_ID || !lan.pinging.delete(seq)) return 0;
+          lan.onPingReply?.([...bytesAt(addr, 4)], seq, len);
+          return 1;
+        },
         receive_frame(_netif, ptr, len) {
           lan.emitted.push(lan.frameAt(ptr, len));
         },
@@ -292,6 +304,18 @@ export class Lan {
         this.ex.close_udp_socket(pcb);
       }),
     };
+  }
+
+  /* ICMP: an echo request to ip, with sequence number seq and a payload of
+   * the 56 bytes ping sends. Replies go to onPingReply. */
+  ping(ip, seq) {
+    const payload = Uint8Array.from({ length: 56 }, (_, i) => i);
+    this.pinging.add(seq);
+    return this.call(() => {
+      if (!this.icmp) this.icmp = this.ex.open_icmp_socket();
+      return this.withBytes(ip, (ipPtr) => this.withBytes(payload,
+        (p) => this.ex.send_icmp_echo_request(this.icmp, ipPtr, PING_ID, seq, p, payload.length)));
+    });
   }
 }
 

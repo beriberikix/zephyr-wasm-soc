@@ -1,0 +1,71 @@
+From a408a2403dfa882228ef470753b977b1d70a06ab Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Tue, 29 Sep 2026 12:05:00 +0000
+Subject: [PATCH] samples: net: sockets: dumb_http_server_mt: match thread
+ entries to k_thread_entry_t
+
+process_tcp4() and process_tcp6() are declared void f(void) and passed to
+K_THREAD_DEFINE(), which casts them to k_thread_entry_t and calls them
+with three arguments. Calling a function through an incompatible
+function type is undefined behaviour, and it traps on targets that check
+indirect calls.
+
+Give the entries the signature k_thread_entry_t declares.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ .../net/sockets/dumb_http_server_mt/src/main.c   | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/samples/net/sockets/dumb_http_server_mt/src/main.c b/samples/net/sockets/dumb_http_server_mt/src/main.c
+index 5971d8efc6f..f999c05f0a5 100644
+--- a/samples/net/sockets/dumb_http_server_mt/src/main.c
++++ b/samples/net/sockets/dumb_http_server_mt/src/main.c
+@@ -86,8 +86,8 @@ static int tcp4_accepted[CONFIG_NET_SAMPLE_NUM_HANDLERS];
+ static int tcp6_listen_sock;
+ static int tcp6_accepted[CONFIG_NET_SAMPLE_NUM_HANDLERS];
+ 
+-static void process_tcp4(void);
+-static void process_tcp6(void);
++static void process_tcp4(void *p1, void *p2, void *p3);
++static void process_tcp6(void *p1, void *p2, void *p3);
+ 
+ K_THREAD_DEFINE(tcp4_thread_id, STACK_SIZE,
+ 		process_tcp4, NULL, NULL, NULL,
+@@ -336,11 +336,15 @@ static int process_tcp(int *sock, int *accepted)
+ 	return 0;
+ }
+ 
+-static void process_tcp4(void)
++static void process_tcp4(void *p1, void *p2, void *p3)
+ {
+ 	struct sockaddr_in addr4;
+ 	int ret;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr4, 0, sizeof(addr4));
+ 	addr4.sin_family = AF_INET;
+ 	addr4.sin_port = htons(MY_PORT);
+@@ -362,11 +366,15 @@ static void process_tcp4(void)
+ 	}
+ }
+ 
+-static void process_tcp6(void)
++static void process_tcp6(void *p1, void *p2, void *p3)
+ {
+ 	struct sockaddr_in6 addr6;
+ 	int ret;
+ 
++	ARG_UNUSED(p1);
++	ARG_UNUSED(p2);
++	ARG_UNUSED(p3);
++
+ 	(void)memset(&addr6, 0, sizeof(addr6));
+ 	addr6.sin6_family = AF_INET6;
+ 	addr6.sin6_port = htons(MY_PORT);
+-- 
+2.43.0
+

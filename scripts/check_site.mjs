@@ -63,7 +63,8 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
   /* The host's own network, and the connections it makes to the board. */
   else if (lan) {
     argv.push('--lan');
-    for (const d of lan.dial ?? []) argv.push('--lan-dial', `${d.at_ms}:${d.port}`);
+    for (const d of lan.dial ?? []) argv.push('--lan-dial', `${d.at_ms}:${d.port}${d.path ? `:${d.path}` : ''}`);
+    for (const ms of lan.ping ?? []) argv.push('--lan-ping', String(ms));
   }
   argv.push(wasm);
   return new Promise((resolve) => {
@@ -157,6 +158,8 @@ for (const b of manifest.builds) {
     const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
                             !!b.threads_expect, null, null, b.lan);
     if (again.out !== out) problems.push('the output differed on a second run on the LAN');
+    const lanLog = (text) => text.split('\n').filter((l) => l.includes('[lan] ')).join('\n');
+    if (lanLog(again.err) !== lanLog(err)) problems.push('the LAN\'s log differed on a second run');
   }
   /* And one that can also take a relay, through the one given. */
   if (b.lan && b.uplink && relay) {
@@ -181,6 +184,12 @@ for (const b of manifest.builds) {
   }
   for (const want of second?.expect ?? []) {
     if (!peerOut.includes(want)) problems.push(`missing from the ${second.label}'s output: ${JSON.stringify(want)}`);
+  }
+  /* What the LAN did, for a sample whose own output cannot say: a server
+   * does not print what it served, nor a filter what it dropped. The LAN
+   * logs to stderr, as [lan] lines. */
+  for (const want of b.lan_expect ?? []) {
+    if (!err.includes(`[lan] ${want}`)) problems.push(`missing from the LAN's log: ${JSON.stringify(want)}`);
   }
   /* The thread table goes to stderr, so the output stays what the
    * application printed. */
