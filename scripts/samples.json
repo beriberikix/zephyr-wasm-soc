@@ -512,10 +512,8 @@
     {
       "path": "zephyr/samples/modules/cmsis_dsp/moving_average",
       "entry": "sample.modules.cmsis_dsp.moving_average",
-      "note": "Needs the cmsis-dsp module, which is not imported.",
-      "status": "build-fails",
-      "cause": "module-missing",
-      "detail": "'arm_math.h' file not found"
+      "note": "Passes now that west.yml imports the cmsis-dsp module. CMSIS-DSP builds its portable C here, not the Arm SIMD paths.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/lvgl/accelerometer_chart",
@@ -575,9 +573,8 @@
     {
       "path": "zephyr/samples/modules/nanopb",
       "entry": "sample.modules.nanopb",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "FATAL ERROR: command exited with status 1: /usr/bin/cmake -DWEST_PYTHON=/home/user/zephyr-venv/bin/python3.12 -DWEST_TOPDIR=/home/user -DWEST_VERSION=1.5.0 -B/h"
+      "note": "Passes now that west.yml imports the nanopb module and grpcio-tools provides protoc for its generator.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/tflite-micro/hello_world",
@@ -1173,9 +1170,10 @@
     {
       "path": "zephyr/samples/subsys/portability/posix/eventfd",
       "entry": "sample.posix.eventfd",
-      "note": "Links now that the section generator defines _net_if_list_start/_end. Then prints nothing after the boot banner, and main is gone within six context switches. Not diagnosed.",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "note": "Its main(argc, argv) never ran: clang names that __main_argc_argv on wasm, and the kernel calls main(void), so the kernel's weak default ran instead. The arch now bridges the two. The first write() then traps: zvfs calls every file's write_offs(), which only shared memory fills, and eventfd fills write(). upstream/zephyr/0017 fixes that, and with it the sample passes.",
+      "status": "does-not-finish",
+      "cause": "d8b",
+      "detail": "RuntimeError: null function or function signature mismatch"
     },
     {
       "path": "zephyr/samples/subsys/portability/posix/philosophers",
@@ -1202,6 +1200,7 @@
     {
       "path": "zephyr/samples/subsys/sensing/simple",
       "entry": "sample.sensing.simple",
+      "note": "Its sensors are declared only in boards/native_sim.overlay, so here the sensing node has none. Both sensing_open_sensor() calls fail with -ENODEV, main goes on to use the handles they never set, and that reads out of bounds. The regex line is printed first, but by the deferred log thread, which never gets to run.",
       "status": "does-not-finish",
       "cause": "trap",
       "detail": "RuntimeError: memory access out of bounds"
@@ -1531,5 +1530,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 47
+  "score": 49
 }

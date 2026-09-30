@@ -26,8 +26,9 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-Four Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl` and
-`picolibc`, through Zephyr's own manifest so they stay at Zephyr's pins.
+Eight Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
+`picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp` and `nanopb`, through
+Zephyr's own manifest so they stay at Zephyr's pins.
 Nothing else is: the port needs no HAL, builds picolibc from its module as
 Zephyr's default C library (D11), and a full import is hundreds of megabytes
 of vendor code. Module code goes through the same section generator and
@@ -400,6 +401,26 @@ and `scripts/try_upstream.sh` shows every D8b entry passing with them. Clang's
 `K_THREAD_DEFINE()` that hides the mismatch. It also reports casts that differ
 only in pointer types, which wasm does not trap on, since its check compares
 value types and every pointer is an `i32`.
+
+One case is the port's to fix, because it comes from the toolchain rather
+than from Zephyr: `main`. Elsewhere `int main(void)` and
+`int main(int argc, char **argv)` are one symbol, and the kernel calls
+either through `extern int main(void)`. Clang on wasm gives them different
+symbols so that no call can mismatch: the first is `__original_main`, which
+is what the kernel's call names, and the second `__main_argc_argv` (plain
+`main` when freestanding). A sample written the second way,
+`posix/eventfd` after the Linux manpage, was never linked to the call at
+all. The kernel's weak default `main` ran instead, and the sample printed
+nothing. `arch/wasm/core/main.c` is a second weak default, which calls
+`main(0, {NULL})` if the application has one. The arch library is linked
+whole, ahead of the kernel's, so its default is the one used, and an
+application with `main(void)` still replaces it.
+
+That found a D8b in Zephyr's file layer (`upstream/zephyr/0017`):
+`zvfs_rw()` calls every file's `read_offs()` and `write_offs()`, which
+take an offset and only shared memory fills. Eventfd, sockets and the
+console fill `read()` and `write()`, the other members of the same unions,
+so on wasm every `read()` or `write()` on one of them traps.
 
 ### D8c. GPIO is Zephyr's own emulated controller, bridged
 
