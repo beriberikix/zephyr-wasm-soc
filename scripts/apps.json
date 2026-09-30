@@ -1068,7 +1068,10 @@
       "lan": {
         "ping": [1000, 2000]
       },
-      "max_time_ms": 10000,
+      "interactive": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
       "app": "zephyr/samples/net/pkt_filter",
       "args": [
         "-DSNIPPET=wasm-ethernet"
@@ -1092,7 +1095,10 @@
       "upstream": true,
       "endless": true,
       "lan": true,
-      "max_time_ms": 10000,
+      "interactive": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
       "app": "zephyr/samples/net/ethernet/vlan",
       "args": [
         "-DSNIPPET=wasm-ethernet"
