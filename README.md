@@ -157,7 +157,7 @@ zephyr-wasm/scripts/apply_patches.sh
 
 `west update` also fetches the modules the samples here use, and nothing
 else: FatFs and littlefs, LVGL, picolibc, mbedTLS and its PSA crypto,
-CMSIS-DSP and nanopb. `west.yml` imports them from Zephyr's manifest by
+CMSIS-DSP, nanopb and SyS-T. `west.yml` imports them from Zephyr's manifest by
 name. nanopb generates C from `.proto` files as it builds, which needs
 `pip install grpcio-tools` alongside Zephyr's own Python requirements.
 

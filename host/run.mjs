@@ -9,6 +9,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 
 import { Host, DEFAULT_SEED } from './core.mjs';
@@ -37,6 +38,7 @@ function parseArgs(argv) {
     else if (a === '--gpio') opts.gpio.push(parseGpioEvent(argv[++i]));
     else if (a === '--interactive') opts.interactive = true;
     else if (a === '--flash') opts.flashFile = argv[++i];
+    else if (a === '--semihost-dir') opts.semihostDir = argv[++i];
     else if (a === '--screenshot') opts.screenshot = argv[++i];
     else if (a === '--touch') opts.inputScript.push(...parseTouch(argv[++i]));
     else if (a === '--key') opts.inputScript.push(...parseKey(argv[++i]));
@@ -179,6 +181,10 @@ function usage() {
   --flash <file>     keep the simulated flash in this file: loaded before
                      boot if it exists, written back on reboot and at the
                      end. Without it the flash starts erased every run
+  --semihost-dir <dir>
+                     write the files the guest created through
+                     semihosting (a CTF trace, say) into this directory
+                     at the end. Without it they stay in memory
   --screenshot <file>
                      write the display's last frame as a binary PPM
   --touch <ms>:<x>,<y>
@@ -382,6 +388,22 @@ if (peer) {
 /* An open socket would keep Node running after the board has finished. */
 uplink?.close();
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
+
+/* What the guest wrote through semihosting, such as a CTF trace. Only names
+ * that stay inside the directory are written. */
+if (opts.semihostDir) {
+  const root = path.resolve(opts.semihostDir);
+  for (const [name, data] of host.semihostFiles()) {
+    const out = path.resolve(root, name);
+    if (!out.startsWith(root + path.sep)) {
+      process.stderr.write(`--semihost-dir: not writing ${name}, which is outside ${root}\n`);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, data);
+    process.stderr.write(`[semihost] ${name}: ${data.length} bytes\n`);
+  }
+}
 
 /* The display's last frame, as a PPM: the simplest image format there is,
  * and one every viewer and converter reads. */

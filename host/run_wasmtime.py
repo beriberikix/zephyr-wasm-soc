@@ -82,6 +82,11 @@ class Host:
         self.storage_image = (flash_file.read_bytes()
                               if flash_file is not None and flash_file.exists() else None)
         self.reboots = 0
+        # Semihosting: files the guest opens on the host, in memory as the
+        # Node host keeps them (DESIGN.md D8n).
+        self.sh_files: dict[str, bytearray] = {}
+        self.sh_fds: dict[int, dict] = {}
+        self.sh_next_fd = 3
 
         self.store = Store(Engine())
         self.module = Module.from_file(self.store.engine, str(path))
@@ -229,6 +234,87 @@ class Host:
         def uart_poll_in():
             return -1          # no input: this host is not interactive
 
+        # The same operations and results as host/core.mjs: see its semihost().
+        def semihost(op, args):
+            def word(i):
+                return struct.unpack("<i", self.mem.read(self.store, args + 4 * i, args + 4 * i + 4))[0]
+
+            def to_console(data: bytes):
+                sys.stdout.write(data.decode("utf-8", "replace"))
+                sys.stdout.flush()
+
+            if op == 0x03:                                   # WRITEC
+                to_console(self.mem.read(self.store, args, args + 1))
+                return 0
+            if op == 0x04:                                   # WRITE0
+                end = args
+                while self.mem.read(self.store, end, end + 1) != b"\0":
+                    end += 1
+                to_console(self.mem.read(self.store, args, end))
+                return 0
+            if op == 0x07:                                   # READC
+                return -1
+            if op == 0x01:                                   # OPEN
+                ptr, mode, length = word(0) & 0xFFFFFFFF, word(1), word(2)
+                path = self.mem.read(self.store, ptr, ptr + length).decode("utf-8", "replace")
+                if path == ":tt":
+                    fd = self.sh_next_fd
+                    self.sh_next_fd += 1
+                    self.sh_fds[fd] = {"path": path, "pos": 0, "append": False, "tty": True}
+                    return fd
+                kind = mode >> 2                             # 0 r, 1 w, 2 a
+                if kind == 0 and path not in self.sh_files:
+                    return -1
+                if kind == 1 or path not in self.sh_files:
+                    self.sh_files[path] = bytearray()
+                fd = self.sh_next_fd
+                self.sh_next_fd += 1
+                self.sh_fds[fd] = {"path": path, "pos": 0, "append": kind == 2, "tty": False}
+                return fd
+            if op == 0x02:                                   # CLOSE
+                return 0 if self.sh_fds.pop(word(0), None) is not None else -1
+            if op == 0x09:                                   # ISTTY
+                d = self.sh_fds.get(word(0))
+                return -1 if d is None else int(d["tty"])
+            if op == 0x05:                                   # WRITE
+                d = self.sh_fds.get(word(0))
+                ptr, length = word(1) & 0xFFFFFFFF, word(2)
+                if d is None:
+                    return length
+                data = self.mem.read(self.store, ptr, ptr + length)
+                if d["tty"]:
+                    to_console(data)
+                    return 0
+                f = self.sh_files[d["path"]]
+                at = len(f) if d["append"] else d["pos"]
+                if at > len(f):
+                    f.extend(b"\0" * (at - len(f)))
+                f[at:at + length] = data
+                d["pos"] = at + length
+                return 0
+            if op == 0x06:                                   # READ
+                d = self.sh_fds.get(word(0))
+                ptr, length = word(1) & 0xFFFFFFFF, word(2)
+                if d is None or d["tty"]:
+                    return length
+                f = self.sh_files[d["path"]]
+                chunk = bytes(f[d["pos"]:d["pos"] + length])
+                self.mem.write(self.store, chunk, ptr)
+                d["pos"] += len(chunk)
+                return length - len(chunk)
+            if op == 0x0A:                                   # SEEK
+                d = self.sh_fds.get(word(0))
+                if d is None:
+                    return -1
+                d["pos"] = word(1)
+                return 0
+            if op == 0x0C:                                   # FLEN
+                d = self.sh_fds.get(word(0))
+                return -1 if d is None or d["tty"] else len(self.sh_files[d["path"]])
+            if op == 0x13:                                   # ERRNO
+                return 0
+            return -1
+
         impls = {
             "console_write": (console_write, [I32, I32], []),
             "time_now_ns": (time_now_ns, [], [I64]),
@@ -251,6 +337,7 @@ class Host:
             "sensor_poll": (sensor_poll, [I32], [I32]),
             "eth_send": (eth_send, [I32, I32], []),
             "eth_recv": (eth_recv, [I32, I32], [I32]),
+            "semihost": (semihost, [I32, I32], [I32]),
         }
 
         # Imports are positional, so build the list in the order the module

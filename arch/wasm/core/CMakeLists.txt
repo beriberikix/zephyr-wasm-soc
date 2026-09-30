@@ -14,6 +14,7 @@ zephyr_library_sources(
 )
 zephyr_library_sources_ifdef(CONFIG_WASM_INSPECT inspect.c)
 zephyr_library_sources_ifdef(CONFIG_REBOOT reboot.c)
+zephyr_library_sources_ifdef(CONFIG_SEMIHOST semihost.c)
 zephyr_library_sources_ifdef(CONFIG_STATIC_INIT_GNU static_init.c)
 
 # Inspection asks the kernel how long a thread's timeout has left, and that

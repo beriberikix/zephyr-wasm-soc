@@ -8,7 +8,7 @@
  * compiler-rt writes it. Picolibc's strtoull() checks for overflow with a
  * 128-bit multiply, its printf() converts a double with 128-bit shifts, and
  * its strtod() widens a double to long double, which on wasm32 is IEEE
- * binary128.
+ * binary128. SyS-T's logging narrows a long double back to a double.
  */
 
 #include <stdint.h>
@@ -113,5 +113,62 @@ long double __extenddftf2(double a)
 		exp128 = 0;
 	}
 	out.u = ((tu_int)sign << 127) | ((tu_int)exp128 << 112) | ((tu_int)frac << 60);
+	return out.f;
+}
+
+/* long double to double: binary128 to binary64, rounded to nearest, ties to
+ * even, as compiler-rt's __trunctfdf2 does. SyS-T's printf-style records
+ * narrow a long double argument this way. Too large becomes infinity, too
+ * small a double subnormal or zero, and a NaN stays a quiet NaN. */
+double __trunctfdf2(long double a)
+{
+	union {
+		long double f;
+		tu_int u;
+	} in = { .f = a };
+	union {
+		double f;
+		uint64_t u;
+	} out;
+	const uint64_t sign = (uint64_t)(in.u >> 127) << 63;
+	const uint64_t exp = (uint64_t)(in.u >> 112) & 0x7fff;
+	const tu_int frac = in.u & (((tu_int)1 << 112) - 1);
+	const int64_t e = (int64_t)exp - 16383 + 1023;
+	uint64_t abs;
+
+	if (exp == 0x7fff) {
+		abs = UINT64_C(0x7ff) << 52;
+		if (frac != 0) {
+			abs |= (UINT64_C(1) << 51) | (uint64_t)(frac >> 60);
+		}
+	} else if (e >= 0x7ff) {
+		abs = UINT64_C(0x7ff) << 52;
+	} else if (e >= 1) {
+		const uint64_t rest = (uint64_t)frac & ((UINT64_C(1) << 60) - 1);
+		const uint64_t half = UINT64_C(1) << 59;
+
+		abs = ((uint64_t)e << 52) | (uint64_t)(frac >> 60);
+		if (rest > half || (rest == half && (abs & 1))) {
+			abs++;      /* may carry into the exponent, or up to infinity */
+		}
+	} else {
+		/* A double subnormal, or zero: the significand with its implicit
+		 * bit, shifted down to units of 2^-1074. */
+		const int shift = (int)(15421 - (int64_t)exp);
+
+		if (exp == 0 || shift >= 114) {
+			abs = 0;
+		} else {
+			const tu_int sig = frac | ((tu_int)1 << 112);
+			const tu_int rest = sig & (((tu_int)1 << shift) - 1);
+			const tu_int half = (tu_int)1 << (shift - 1);
+
+			abs = (uint64_t)(sig >> shift);
+			if (rest > half || (rest == half && (abs & 1))) {
+				abs++;
+			}
+		}
+	}
+	out.u = sign | abs;
 	return out.f;
 }

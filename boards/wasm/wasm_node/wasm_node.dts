@@ -108,6 +108,33 @@
 	};
 
 	/*
+	 * Three performance states for the CPU frequency subsystem, as
+	 * native_sim has: nominal, low power and ultra-low power, chosen by
+	 * load. There is no clock to slow; soc/wasm/cpu_freq.c records the
+	 * choice, and the policies and their samples run as they would on a
+	 * part that scales.
+	 */
+	performance-states {
+		pstate_0: pstate_0 {
+			compatible = "zephyr,generic-pstate";
+			load-threshold = <50>;
+			pstate-id = <0>;
+		};
+
+		pstate_1: pstate_1 {
+			compatible = "zephyr,generic-pstate";
+			load-threshold = <20>;
+			pstate-id = <1>;
+		};
+
+		pstate_2: pstate_2 {
+			compatible = "zephyr,generic-pstate";
+			load-threshold = <0>;
+			pstate-id = <2>;
+		};
+	};
+
+	/*
 	 * A nominal window into the single wasm linear memory. Nothing places
 	 * anything here: wasm-ld lays out the module and the heap follows it.
 	 * Zephyr wants a zephyr,sram node, so this is one.

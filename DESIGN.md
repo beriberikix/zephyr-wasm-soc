@@ -26,9 +26,9 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-Eight Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
-`picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp` and `nanopb`, through
-Zephyr's own manifest so they stay at Zephyr's pins.
+Nine Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
+`picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp`, `nanopb` and
+`mipi-sys-t`, through Zephyr's own manifest so they stay at Zephyr's pins.
 Nothing else is: the port needs no HAL, builds picolibc from its module as
 Zephyr's default C library (D11), and a full import is hundreds of megabytes
 of vendor code. Module code goes through the same section generator and
@@ -1108,6 +1108,38 @@ changes.
 - **No real traffic.** The LAN answers for the internet but never reaches
   it. That is D8l's job, and an entry with both runs on the LAN unless
   someone gives the page a relay.
+
+### D8n. Semihosting is one import, and the files stay in the host
+
+Semihosting is how an ARM, RISC-V or Xtensa target does I/O on the machine
+debugging it: the target traps with an operation number and a pointer to its
+arguments, and the debugger or QEMU opens, reads and writes files on its
+behalf. Zephyr's CTF tracing writes its trace this way
+(`tracing/pipeline`'s default backend), and `arch/common/semihost.c` already
+builds every operation's argument block. All an architecture supplies is
+`semihost_exec(op, args)`.
+
+Here that is the `semihost` import (`arch/wasm/core/semihost.c`), which
+needed nothing new in the guest beyond selecting `ARCH_HAS_SEMIHOST`. The
+host implements the operations Zephyr uses (open, close, read, write, seek,
+length, is-a-tty, and the console ones), with the ARM convention's results:
+a read or write returns how many bytes it did *not* transfer, and `:tt` is
+the console.
+
+The files live in the host's memory, not on disk. A run that writes a trace
+is then as repeatable as one that does not, both engines give the same
+answer (`run_wasmtime.py` implements the same operations), stepping back
+takes the files back too, and the page can do the same thing without a file
+system. `run.mjs --semihost-dir <dir>` writes them out at the end. A
+pipeline run's `tracing.bin` opens in upstream's own
+`scripts/tracing/trace_viewer.py`: 10,466 events across ten threads for 3 s
+of guest time.
+
+The SoC also has three P-states (`performance-states` in the board's
+devicetree, set by `soc/wasm/cpu_freq.c`), so the CPU frequency policies
+run as they do on native_sim. There is no clock to slow: setting a state
+records it. The policies, and the load measurement they choose by, are the
+real ones.
 
 ### D9. The link goes through the clang driver, which runs wasm-opt
 

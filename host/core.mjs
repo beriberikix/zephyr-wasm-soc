@@ -120,6 +120,13 @@ const FATAL_REASONS = [
   'kernel panic',
 ];
 
+/* Semihosting operations the guest may ask for (Zephyr's enum
+ * semihost_instr, the ARM and RISC-V numbering). */
+const SH = {
+  OPEN: 0x01, CLOSE: 0x02, WRITEC: 0x03, WRITE0: 0x04, WRITE: 0x05,
+  READ: 0x06, READC: 0x07, ISTTY: 0x09, SEEK: 0x0a, FLEN: 0x0c, ERRNO: 0x13,
+};
+
 export class Host {
   /**
    * @param platform  everything that is not wasm: see the list at the top.
@@ -198,6 +205,14 @@ export class Host {
      * driver, in the order they are due: { atNs, frame }, where atNs is on
      * the pair's shared timeline (host/pair.mjs). */
     this.ethQueue = [];
+    /* Semihosting (DESIGN.md D8n): the files the guest has opened on the
+     * host. They are kept here rather than on disk, so a run stays
+     * repeatable and the page can do the same; run.mjs --semihost-dir writes
+     * them out at the end. path -> { data, size }; fd -> { path, pos, append,
+     * tty }. */
+    this.shFiles = new Map();
+    this.shFds = new Map();
+    this.shNextFd = 3;
     /* The host's own network, when the board is plugged into it instead of
      * another board (host/lan.mjs). It runs on this board's clock. */
     this.lan = null;
@@ -328,6 +343,9 @@ export class Host {
       outBytes: this.outBytes,
       input: this.input.slice(),
       gpio: this.gpio.map((g) => ({ ...g })),
+      shFiles: new Map([...this.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }])),
+      shFds: new Map([...this.shFds].map(([k, d]) => [k, { ...d }])),
+      shNextFd: this.shNextFd,
       contexts,
       current,
       resumeSame: this.resumeSame,
@@ -350,6 +368,9 @@ export class Host {
     this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
     this.gpio = snap.gpio.map((g) => ({ ...g }));
+    this.shFiles = new Map([...snap.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }]));
+    this.shFds = new Map([...snap.shFds].map(([k, d]) => [k, { ...d }]));
+    this.shNextFd = snap.shNextFd;
     this.contexts = new Map();
     let current = null;
     for (const [buf, c] of snap.contexts) {
@@ -597,6 +618,8 @@ export class Host {
           self.platform.displayChanged?.();
         },
 
+        semihost(op, args) { return self.semihost(op, args >>> 0); },
+
         fatal(reason, arg) {
           const name = FATAL_REASONS[reason] ?? `reason ${reason}`;
           self.platform.writeErr(`\n*** fatal: ${name} (arg ${arg}) ***\n`);
@@ -606,6 +629,106 @@ export class Host {
         },
       },
     };
+  }
+
+  /* Semihosting: the host I/O that ARM, RISC-V and Xtensa targets reach
+   * through a debugger or QEMU, here one import. args points at the
+   * operation's block of 32-bit words, laid out as Zephyr's
+   * semihost_types.h has them, and the results follow the ARM convention:
+   * a write or read returns how many bytes it did NOT transfer. ":tt" is the
+   * console, as it is for QEMU. */
+  semihost(op, args) {
+    const mem = () => new Uint8Array(this.mem.buffer);
+    const word = (i) => new DataView(this.mem.buffer).getInt32(args + 4 * i, true);
+    const toConsole = (bytes) => {
+      this.outBytes += bytes.length;
+      this.platform.writeOut(bytes);
+    };
+    switch (op) {
+      case SH.WRITEC:
+        toConsole(mem().slice(args, args + 1));
+        return 0;
+      case SH.WRITE0: {
+        const m = mem();
+        let end = args;
+        while (m[end] !== 0) end++;
+        toConsole(m.slice(args, end));
+        return 0;
+      }
+      case SH.READC:
+        return this.input.length > 0 ? this.input.shift() : -1;
+      case SH.OPEN: {
+        const path = new TextDecoder().decode(mem().slice(word(0), word(0) + word(2)));
+        const mode = word(1);
+        const fd = this.shNextFd++;
+        if (path === ':tt') {
+          this.shFds.set(fd, { path, pos: 0, append: false, tty: true });
+          return fd;
+        }
+        const kind = mode >> 2;              // 0 r, 1 w, 2 a (Zephyr's semihost_open_mode)
+        let file = this.shFiles.get(path);
+        if (kind === 0 && !file) { this.shNextFd--; return -1; }
+        if (kind === 1 || !file) {
+          file = { data: new Uint8Array(256), size: 0 };
+          this.shFiles.set(path, file);
+        }
+        this.shFds.set(fd, { path, pos: 0, append: kind === 2, tty: false });
+        return fd;
+      }
+      case SH.CLOSE:
+        return this.shFds.delete(word(0)) ? 0 : -1;
+      case SH.ISTTY: {
+        const d = this.shFds.get(word(0));
+        return d ? (d.tty ? 1 : 0) : -1;
+      }
+      case SH.WRITE: {
+        const d = this.shFds.get(word(0));
+        const ptr = word(1) >>> 0, len = word(2);
+        if (!d) return len;
+        const bytes = mem().slice(ptr, ptr + len);
+        if (d.tty) { toConsole(bytes); return 0; }
+        const f = this.shFiles.get(d.path);
+        const at = d.append ? f.size : d.pos;
+        if (at + len > f.data.length) {
+          const grown = new Uint8Array(Math.max(at + len, f.data.length * 2));
+          grown.set(f.data.subarray(0, f.size));
+          f.data = grown;
+        }
+        f.data.set(bytes, at);
+        f.size = Math.max(f.size, at + len);
+        d.pos = at + len;
+        return 0;
+      }
+      case SH.READ: {
+        const d = this.shFds.get(word(0));
+        const ptr = word(1) >>> 0, len = word(2);
+        if (!d || d.tty) return len;
+        const f = this.shFiles.get(d.path);
+        const n = Math.max(0, Math.min(len, f.size - d.pos));
+        mem().set(f.data.subarray(d.pos, d.pos + n), ptr);
+        d.pos += n;
+        return len - n;
+      }
+      case SH.SEEK: {
+        const d = this.shFds.get(word(0));
+        if (!d) return -1;
+        d.pos = word(1);
+        return 0;
+      }
+      case SH.FLEN: {
+        const d = this.shFds.get(word(0));
+        return d && !d.tty ? this.shFiles.get(d.path).size : -1;
+      }
+      case SH.ERRNO:
+        return 0;
+      default:
+        return -1;
+    }
+  }
+
+  /* The files the guest wrote through semihosting, for whoever wants them. */
+  semihostFiles() {
+    return new Map([...this.shFiles].map(([k, f]) => [k, f.data.slice(0, f.size)]));
   }
 
   /* An Asyncify buffer is two words -- a cursor and an end -- followed by
