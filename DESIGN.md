@@ -1021,6 +1021,10 @@ and requires the same output, as it does for a pair.
   user and password, a small tree to list and read, and room to write that
   lasts for the run. Each run gets a new LAN, as it gets a new board, so a
   run on it stays repeatable;
+- an MQTT 3.1.1 broker on 1883, for `mqtt_publisher`: publishes at every
+  QoS with their acknowledgements, pings, and delivery to subscribers;
+- an MQTT-SN gateway on UDP 10000, for `mqtt_sn_publisher`, with the same
+  broker behind it: connect, register, subscribe, publish and ping;
 - dialling a board's port at a stated time and asking for a path, for a
   sample that is a server;
 - pinging the board at stated times, for a sample that watches what

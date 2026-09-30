@@ -1685,3 +1685,28 @@ sentinel and the thread analyzer look, lies inside the buffer for any
 stack no bigger than it. That is why the sentinel once reported an
 overflow on an idle test thread, and why the analyzer said main used
 100%. Score 79.
+
+### Tick 74 — one counting rule, and MQTT on the LAN
+
+Tick 70 left MQTT out because both publishers allow only named platforms.
+But those lists name `qemu_x86` (and `native_sim` for MQTT-SN), and the
+sweep has always counted an entry whose `platform_allow` names a simulator
+as runnable here (`SIMULATED` in `check_samples.py`), since upstream runs
+it without hardware itself. The demo had been stricter than the sweep. It
+now applies the same rule, and ROADMAP says so once. That brought three
+samples into reach, and one counts:
+- **`mqtt_publisher`** runs unmodified against an MQTT 3.1.1 broker on the
+  LAN (IPv6 is already off in its `prj.conf`). It connects, pings, and
+  publishes at QoS 0, 1 and 2, with PUBACK and PUBREC/PUBREL/PUBCOMP.
+- **`mqtt_sn_publisher`** trapped at boot: `process_thread` is a
+  `void f(void)` thread entry. With `upstream/zephyr/0015` it connects to
+  the LAN's MQTT-SN gateway, subscribes, registers `/uptime` and
+  publishes every 10 s.
+- **`ipv4_autoconf`** probed for 169.254.191.6 and announced it, and never
+  said so. Autoconf adds the address when the interface comes up, and here
+  the link is up during boot, before `main()` registers for the event. On
+  native_sim the TAP link comes up later. `upstream/zephyr/0016` registers
+  the handler at build time, and the sample prints its address, stamped
+  before its own "Run ipv4 autoconf client".
+
+check_lan now covers the broker and the gateway: 20 checks. Score 80.

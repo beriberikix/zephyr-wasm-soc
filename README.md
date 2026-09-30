@@ -71,10 +71,12 @@ log, including what did not work. `BRIEF.md` is the original task.
   into the second board.
 * The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
   the Linux host upstream's networking samples expect. It offers DHCP, DNS,
-  SNTP, TFTP, HTTP, a WebSocket echo, CoAP over TCP and FTP, and can ping
+  SNTP, TFTP, HTTP, a WebSocket echo, CoAP over TCP, FTP, an MQTT broker
+  and an MQTT-SN gateway, and can ping
   the board or ask a server on it for a page. `http_get`,
   `dumb_http_server`, `tftp_client`, `sntp_client`, `ftp_client`,
-  `prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan` run on it
+  `prometheus`, `mqtt_publisher`, `promiscuous_mode`, `pkt_filter` and
+  `vlan` run on it
   unmodified, with nothing leaving the page and the same output every
   run; what the network did shows as lines stamped `[lan <guest time>]`. `run.mjs --lan` in
   Node.
@@ -377,7 +379,7 @@ under wasmtime. The kernel is the same module in all three.
 | `--flash <file>` | keep the simulated flash in this file: loaded before boot if it exists, written back on reboot and at the end. Without it the flash starts erased every run. `host/run_wasmtime.py` takes the same option |
 | `--peer <wasm>` | run a second board linked to this one by Ethernet, on one clock; `--peer-out`, `--peer-delay` and `--peer-stdin` go with it |
 | `--uplink <ws-url>` | link the board's Ethernet to a real network through a wsproxy relay (see "A real network"). Implies `--paced` |
-| `--lan` | plug the board into the host's own network: lwIP at 192.0.2.2 with DHCP, DNS, SNTP, TFTP, HTTP, WebSocket, CoAP over TCP and FTP, on the board's clock (`DESIGN.md` D8m) |
+| `--lan` | plug the board into the host's own network: lwIP at 192.0.2.2 with DHCP, DNS, SNTP, TFTP, HTTP, WebSocket, CoAP over TCP, FTP, MQTT and MQTT-SN, on the board's clock (`DESIGN.md` D8m) |
 | `--lan-dial <ms>:<port>[:<path>]` | with `--lan`, connect to the board's port at a guest time and ask for the path, `/` unless given, for a sample that is a server |
 | `--lan-ping <ms>` | with `--lan`, ping the board at a guest time; the replies, or their absence, are in its `[lan …]` lines |
 
@@ -455,7 +457,7 @@ the vision: how much of Zephyr can run in a browser tab, as a way to learn it.
 and what the issue did not account for.
 
 Progress is measured in upstream Zephyr samples that pass their own
-acceptance criterion unmodified, which is 79 today. `scripts/apps.py score`
+acceptance criterion unmodified, which is 80 today. `scripts/apps.py score`
 is what counts it, from the samples sweep.
 
 ## Feedback

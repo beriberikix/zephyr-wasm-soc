@@ -1,0 +1,69 @@
+From 019fff1a5baf317473d73aa397ec06279a7f941c Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Wed, 30 Sep 2026 14:10:00 +0000
+Subject: [PATCH] samples: net: ipv4_autoconf: register the event handler at
+ build time
+
+main() registers the handler for NET_EVENT_IPV4_ADDR_ADD only once it
+runs, but IPv4 autoconf adds its address as soon as the interface is up.
+On a board whose Ethernet link is up during boot, that is before main(),
+so the event is missed and the sample never prints the address it was
+given, although the interface probes for it and announces it.
+
+Register the handler with NET_MGMT_REGISTER_EVENT_HANDLER(), which is in
+place from the start, as subsys/net/ip/ipv4_autoconf.c registers its own.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ samples/net/ipv4_autoconf/src/main.c | 19 +++++++++++--------
+ 1 file changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/samples/net/ipv4_autoconf/src/main.c b/samples/net/ipv4_autoconf/src/main.c
+index 7fecd8ce2f3..83325506d10 100644
+--- a/samples/net/ipv4_autoconf/src/main.c
++++ b/samples/net/ipv4_autoconf/src/main.c
+@@ -22,15 +22,16 @@ LOG_MODULE_REGISTER(net_ipv4_autoconf_sample, LOG_LEVEL_DBG);
+ 
+ #include "net_sample_common.h"
+ 
+-static struct net_mgmt_event_callback mgmt_cb;
+-
+-static void handler(struct net_mgmt_event_callback *cb,
+-		    uint64_t mgmt_event,
+-		    struct net_if *iface)
++static void handler(uint64_t mgmt_event, struct net_if *iface, void *info,
++		    size_t info_length, void *user_data)
+ {
+ 	int i = 0;
+ 	struct net_if_config *cfg;
+ 
++	ARG_UNUSED(info);
++	ARG_UNUSED(info_length);
++	ARG_UNUSED(user_data);
++
+ 	cfg = net_if_get_config(iface);
+ 	if (!cfg) {
+ 		return;
+@@ -58,14 +59,16 @@ static void handler(struct net_mgmt_event_callback *cb,
+ 	}
+ }
+ 
++/* Registered at build time rather than from main(): autoconf adds its
++ * address as soon as the interface is up, which can be before main() runs.
++ */
++NET_MGMT_REGISTER_EVENT_HANDLER(ipv4_autoconf_sample, NET_EVENT_IPV4_ADDR_ADD, handler, NULL);
++
+ int main(void)
+ {
+ 	LOG_INF("Run ipv4 autoconf client");
+ 
+ 	wait_for_network();
+ 
+-	net_mgmt_init_event_callback(&mgmt_cb, handler,
+-				     NET_EVENT_IPV4_ADDR_ADD);
+-	net_mgmt_add_event_callback(&mgmt_cb);
+ 	return 0;
+ }
+-- 
+2.43.0
+

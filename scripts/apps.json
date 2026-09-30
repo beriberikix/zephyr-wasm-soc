@@ -83,9 +83,10 @@
     "  Real peers follow the wall clock, so it is paced and not repeatable.",
     "lan: one board on the host's own network (host/lan.mjs): lwIP at",
     "  192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP, HTTP, WebSocket,",
-    "  CoAP over TCP and FTP (host/lan_services.mjs), on the board's clock, so",
-    "  the run is as repeatable as any other; check_site.mjs runs it twice and",
-    "  requires the same output. true, or an object with dial:",
+    "  CoAP over TCP, FTP, MQTT and MQTT-SN (host/lan_services.mjs), on the",
+    "  board's clock, so the run is as repeatable as any other; check_site.mjs",
+    "  runs it twice and requires the same output. true, or an object with",
+    "  dial:",
     "  [{\"at_ms\", \"port\", \"path\"}] for a sample that is a server (the LAN",
     "  connects at that guest time and asks for the path, \"/\" unless given)",
     "  and ping: [ms], times at which the LAN pings the board. Built with",
@@ -1078,6 +1079,34 @@
         "My example tunnel interface 3 (VirtualTest-1",
         "This interface 3/",
         "attached to 2/"
+      ],
+      "uses": [
+        "terminal"
+      ]
+    },
+    {
+      "name": "mqtt-pub",
+      "kind": "sample",
+      "title": "MQTT publisher",
+      "hint": "mqtt_publisher connects to an MQTT broker at 192.0.2.2 and, over and over, pings it and publishes a message at each quality of service: at most once, at least once (acknowledged with PUBACK) and exactly once (PUBREC, PUBREL, PUBCOMP). The broker is the page, playing a Linux host on a simulated network; its lines show what it received.",
+      "upstream": true,
+      "endless": true,
+      "lan": true,
+      "max_time_ms": 10000,
+      "app": "zephyr/samples/net/mqtt_publisher",
+      "args": [
+        "-DSNIPPET=wasm-ethernet"
+      ],
+      "expect": [
+        "MQTT client connected!",
+        "PINGRESP packet",
+        "PUBACK packet id:",
+        "PUBREC packet id:",
+        "PUBCOMP packet id:"
+      ],
+      "lan_expect": [
+        "MQTT zephyr_publisher connected",
+        "MQTT zephyr_publisher published 15 bytes to sensors at QoS 2"
       ],
       "uses": [
         "terminal"
