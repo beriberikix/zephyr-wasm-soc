@@ -14,7 +14,7 @@ import process from 'node:process';
 import { Host, DEFAULT_SEED } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
-import { Lan } from './lan.mjs';
+import { Lan, lanStamp } from './lan.mjs';
 import { startServices, httpGet } from './lan_services.mjs';
 import { describeWait, threadState } from './threads.mjs';
 
@@ -211,7 +211,7 @@ function usage() {
                      192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP,
                      HTTP, WebSocket (9001), CoAP over TCP (5683) and FTP,
                      on the board's clock, so runs stay repeatable. What it
-                     does goes to stderr as [lan] lines
+                     does goes to stderr as [lan <guest time>] lines
   --lan-dial <ms>:<port>[:<path>]
                      with --lan, connect to the board's port at a guest
                      time and ask for the path, / unless given, repeatable
@@ -356,7 +356,7 @@ if (opts.uplink) {
  * to stderr, so stdout stays what the board printed. */
 if (opts.lan) {
   const wasm = fs.readFileSync(new URL('./web/vendor/tcpip.wasm', import.meta.url));
-  host.lan = await Lan.create(wasm, (line) => process.stderr.write(`[lan] ${line}\n`));
+  host.lan = await Lan.create(wasm, (line, ns) => process.stderr.write(`[${lanStamp(ns)}] ${line}\n`));
   startServices(host.lan, { dial: opts.lanDial, ping: opts.lanPing });
 }
 if (peer) {

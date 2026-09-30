@@ -23,7 +23,7 @@
  *   coap_client_tcp's README sets up with aiocoap.
  * - FTP on 21, passive mode only, as Zephyr's FTP client uses it: any user
  *   and password, a small tree to list and read, and room to write, which
- *   lasts as long as the page does.
+ *   lasts for the run.
  * - Dialling: connect to a port on the board at a given time and send a
  *   request, for samples that are servers.
  * - Pinging: ICMP echo requests to the board at given times, so that a
@@ -537,7 +537,7 @@ const FTP_DATA_PORT = 50021;
  * directory. */
 export const FTP_FILES = {
   '/readme.txt': enc.encode(
-    'This is the FTP server of the page\'s simulated network: lwIP at\n' +
+    'This is the FTP server of the page\'s simulated network, at\n' +
     '192.0.2.2, on the board\'s own clock. Nothing here left the page.\n'),
   '/pub': null,
   '/pub/hello.txt': enc.encode('Hello from FTP on the page.\n'),
@@ -624,6 +624,10 @@ function ftp(lan) {
           return reply(`250 Directory is now ${cwd}`);
         case 'TYPE': case 'MODE': case 'STRU': return reply(`200 ${cmd} set to ${arg}`);
         case 'NOOP': return reply('200 OK');
+        /* Zephyr's client asks for UTF-8 names as it connects. */
+        case 'OPTS':
+          return /^utf8 on$/i.test(arg ?? '') ? reply('200 UTF8 set to on')
+            : reply(`501 OPTS ${arg} is not supported here`);
         case 'PASV':
           return reply(`227 Entering Passive Mode (${LAN_IP.join(',')},` +
                        `${FTP_DATA_PORT >> 8},${FTP_DATA_PORT & 0xff})`);
@@ -677,7 +681,7 @@ function ftp(lan) {
           return reply(`502 ${cmd} is not implemented here`);
       }
     };
-    reply('220 FTP on the page\'s simulated network, lwIP at 192.0.2.2');
+    reply('220 FTP on the page\'s simulated network, at 192.0.2.2');
     conn.onData = (data) => {
       line += dec.decode(data);
       let end;

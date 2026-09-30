@@ -18,8 +18,19 @@
 import { Host } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
-import { Lan } from './lan.mjs';
+import { Lan, lanStamp } from './lan.mjs';
 import { startServices, httpGet } from './lan_services.mjs';
+
+/* The core ends a run at its time limit with "gave up", which the sweep
+ * looks for. On the page the limit is the page's, and most builds that reach
+ * it never end by themselves, so it is said as the status line says it. */
+function pageWords(text) {
+  const limit = /\*\*\* gave up after (\d+) ms of guest time \*\*\*/.exec(text);
+  if (!limit) return text;
+  const ms = Number(limit[1]);
+  const at = ms < 60_000 ? `${ms / 1000} s` : `${ms / 60_000} minutes`;
+  return text.replace(limit[0], `*** stopped at the page's limit of ${at} of guest time ***`);
+}
 
 let pushInput = null;      // set by the core once a run starts
 let sensorReadings = null; // the page's latest tilt, for a host not yet made
@@ -57,7 +68,7 @@ const browserPlatform = {
   },
 
   writeErr(text) {
-    self.postMessage({ type: 'err', text });
+    self.postMessage({ type: 'err', text: pageWords(text) });
   },
 
   /* performance.now() is milliseconds as a float; the core wants nanoseconds
@@ -251,7 +262,7 @@ self.onmessage = async (event) => {
        * run.mjs puts it on stderr: the board's own output cannot say that a
        * page was served or a ping went unanswered. */
       host.lan = await Lan.create(await browserPlatform.loadModule('./vendor/tcpip.wasm'),
-        (line) => self.postMessage({ type: 'err', text: `[lan] ${line}\n`, line: true }));
+        (line, ns) => self.postMessage({ type: 'err', text: `[${lanStamp(ns)}] ${line}\n`, line: true }));
       startServices(host.lan, {
         dial: (opts.lan.dial ?? []).map((d) => ({ atMs: d.at_ms, port: d.port,
                                                   send: httpGet(d.path) })),
@@ -285,7 +296,7 @@ async function runPair(msg) {
       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       self.postMessage({ type: 'out', board, buf }, [buf]);
     },
-    writeErr(text) { self.postMessage({ type: 'err', board, text }); },
+    writeErr(text) { self.postMessage({ type: 'err', board, text: pageWords(text) }); },
     onState(state) { self.postMessage({ type: 'state', board, state }); },
     startInput: undefined,
     stopInput: undefined,

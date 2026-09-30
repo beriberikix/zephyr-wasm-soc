@@ -512,12 +512,16 @@ for (const b of manifest.builds) {
   }
 
   let ok = true;
-  /* What the LAN did is in the terminal too, as [lan] lines. */
-  for (const want of [...expect, ...(b.lan_expect ?? []).map((w) => `[lan] ${w}`)]) {
+  /* What the LAN did is in the terminal too, as lines stamped
+   * "[lan 00:00:02.000,300]": a wanted line is one of those holding it. */
+  const lanWants = (b.lan_expect ?? []).map((w) => ({ lan: w }));
+  for (const want of [...expect, ...lanWants]) {
     try {
       await page.waitForFunction(
-        (w) => window.zephyrOutput().includes(w), want,
-        { timeout: 60_000, polling: 250 });
+        (w) => (typeof w === 'string' ? window.zephyrOutput().includes(w)
+          : window.zephyrOutput().split('\n').some(
+            (l) => /\[lan \d\d:\d\d:\d\d\.\d{3},\d{3}\] /.test(l) && l.includes(w.lan))),
+        want, { timeout: 60_000, polling: 250 });
     } catch {
       ok = false;
       fail(b.name, `never printed ${JSON.stringify(want)}`, await page.evaluate(() => window.zephyrOutput()));

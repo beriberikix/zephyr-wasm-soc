@@ -76,7 +76,7 @@ log, including what did not work. `BRIEF.md` is the original task.
   `dumb_http_server`, `tftp_client`, `sntp_client`, `ftp_client`,
   `prometheus`, `promiscuous_mode`, `pkt_filter` and `vlan` run on it
   unmodified, with nothing leaving the page and the same output every
-  run; what the network did shows as `[lan]` lines. `run.mjs --lan` in
+  run; what the network did shows as lines stamped `[lan <guest time>]`. `run.mjs --lan` in
   Node.
 * A real network, through a relay you run: the board's Ethernet frames go
   over a WebSocket to any relay that speaks v86's wsproxy protocol, and
@@ -379,7 +379,7 @@ under wasmtime. The kernel is the same module in all three.
 | `--uplink <ws-url>` | link the board's Ethernet to a real network through a wsproxy relay (see "A real network"). Implies `--paced` |
 | `--lan` | plug the board into the host's own network: lwIP at 192.0.2.2 with DHCP, DNS, SNTP, TFTP, HTTP, WebSocket, CoAP over TCP and FTP, on the board's clock (`DESIGN.md` D8m) |
 | `--lan-dial <ms>:<port>[:<path>]` | with `--lan`, connect to the board's port at a guest time and ask for the path, `/` unless given, for a sample that is a server |
-| `--lan-ping <ms>` | with `--lan`, ping the board at a guest time; the replies, or their absence, are in the `[lan]` lines |
+| `--lan-ping <ms>` | with `--lan`, ping the board at a guest time; the replies, or their absence, are in its `[lan …]` lines |
 
 ## Continuous integration
 

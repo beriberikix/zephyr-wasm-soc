@@ -984,17 +984,23 @@ and requires the same output, as it does for a pair.
   normally does;
 - FTP on 21, passive mode only, which is all Zephyr's FTP client uses: any
   user and password, a small tree to list and read, and room to write that
-  lasts as long as the page;
+  lasts for the run. Each run gets a new LAN, as it gets a new board, so a
+  run on it stays repeatable;
 - dialling a board's port at a stated time and asking for a path, for a
   sample that is a server;
 - pinging the board at stated times, for a sample that watches what
   arrives (`promiscuous_mode`) or decides what may (`pkt_filter`).
 
-Where it answers in words, it says it is the LAN. What it does, it logs:
-`[lan]` lines on stderr under `run.mjs`, and in the terminal on the page,
-each on a line of its own. A server sample does not print what it served,
-nor a filter what it dropped, so `lan_expect` in `apps.json` checks the log
-for that (`prometheus`, `pkt_filter`).
+Where it answers in words, it says it is the LAN. What it does, it logs,
+on stderr under `run.mjs` and in the terminal on the page, each on a line of
+its own and stamped with the time on the board's clock in Zephyr's own
+format: `[lan 00:00:02.000,300] ping 192.0.2.1 seq 1: reply`. The stamp is
+there because the order alone misleads. A board's log lines are printed by
+its log thread a little after the time they carry, so the LAN's reply to a
+ping at 2.000,300 can print before the board's line about receiving it at
+2.000,100. A server sample does not print what it served, nor a filter what
+it dropped, so `lan_expect` in `apps.json` checks the log for that
+(`prometheus`, `pkt_filter`).
 
 **The board's side.** Two samples asked the Ethernet driver for things it
 had not claimed, and both are claims it can make by doing nothing:
