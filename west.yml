@@ -45,3 +45,5 @@ manifest:
           # build time, so the build also needs protoc (grpcio-tools).
           - cmsis-dsp
           - nanopb
+          # SyS-T, the MIPI trace format the logging/syst sample writes.
+          - mipi-sys-t

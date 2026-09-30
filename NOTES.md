@@ -1741,3 +1741,38 @@ CI had its own trouble on the way: a re-run sat in the toolchain step, which
 takes 25 s, for over an hour. The workflow now bounds its waits: apt
 retries a stalled fetch after 60 s, the toolchain and west steps have
 limits, and the job stops after two hours. Score 82.
+
+### Tick 76 — P-states, semihosting and SyS-T
+
+The pin stays where it is until v4.5.0, so this round went back to the
+samples that fail for want of something a SoC or a module would normally
+give them.
+- **`cpu_freq/on_demand` and `cpu_freq/pressure`** needed P-states. The
+  board now declares three (`zephyr,generic-pstate`, as native_sim declares
+  its own) and `soc/wasm/cpu_freq.c` sets them. There is no clock to slow;
+  the policies and their load measurement are the real ones, and all three
+  entries pass, the stub variant included.
+- **`tracing/pipeline`** traces over semihosting, which ARM, RISC-V and
+  Xtensa targets reach through a debugger or QEMU. Here it is one import
+  (DESIGN.md D8n): Zephyr's `arch/common/semihost.c` already builds each
+  operation, and the host keeps the files in memory, so a traced run is as
+  repeatable as any other and both engines agree. `run.mjs --semihost-dir`
+  writes them out, and the pipeline's `tracing.bin` opens in upstream's
+  `trace_viewer.py`: 10,466 events, ten threads.
+- **`logging/syst`** needed the `mipi-sys-t` module and two things from the
+  port. SyS-T tags a record with its caller's address through
+  `__builtin_return_address(0)`, which clang cannot give on wasm, where
+  code is not in memory; `cmake/modules_wasm.cmake` makes it 0 for that
+  library only, which decoders read as "no address". And it narrows a
+  `long double` to a `double`, which on wasm32 needs `__trunctfdf2`: the
+  port now has it, checked against GCC's conversion on four million random
+  values and the edge cases. Six of its eight entries pass. The two
+  `deferred_cpp` ones stop on a C++11 `static_assert` in cbprintf's C++
+  helpers under clang, which is the compiler's, not the port's.
+
+Looked at and left: `pm/latency` (its power states and their residencies
+are native_sim's overlay, tuned to the sample's timings), `sensing/simple`
+and `flow_meter` (native_sim overlays), fingerprint (an emulator on
+native_sim's second UART), `chre` (optional module, C++17 library), and
+dictionary logging and `smp_svr`'s DTLS entry, which upstream only builds.
+Score 86.

@@ -17,3 +17,5 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/run_wasm.cmake)
 
 # Third-party modules' own flags, where this toolchain needs them changed.
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/modules_wasm.cmake)
+
+zephyr_sources_ifdef(CONFIG_CPU_FREQ_PSTATE_SET_SOC cpu_freq.c)

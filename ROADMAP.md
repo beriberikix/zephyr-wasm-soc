@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **82**. 49 pass upstream's own criterion, and 33 more are counted
+today: **86**. 53 pass upstream's own criterion, and 33 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -53,7 +53,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 82, ten count only
+criterion, which is why it is spelled out: of the 86, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -101,12 +101,12 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | Plausible on this board | 230 | 144 |
 | Filtered out by upstream's own twister filter | 68 | |
 | **Runnable: what twister itself would run here** | **162** | **102** |
-| Pass upstream's own criterion | 70 | 47 |
+| Pass upstream's own criterion | 82 | 53 |
 | Build, but upstream only builds them | 13 | |
 | Run, with no criterion upstream | 5 | |
-| Run and fail their criterion | 3 | |
-| Do not finish | 25 | |
-| Do not build | 46 | |
+| Run and fail their criterion | 2 | |
+| Do not finish | 26 | |
+| Do not build | 34 | |
 
 Every entry is built with Zephyr's default C library, picolibc, as on any
 other board. Until the mDNS pair the board forced the minimal libc, and the
@@ -152,9 +152,9 @@ cause is in `samples.json`):
 | Cause | entries | what it is |
 |---|---:|---|
 | Wasm's indirect-call check | 24 | 11 applications, 7 of them zbus; D8b, below |
-| Other build errors | 19 | `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` (3) needs an SoC P-state API; `llext` (2) wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
+| Other build errors | 10 | `llext` (2) wants an ELF toolchain; `logging/syst`'s two `deferred_cpp` entries stop on a C++11 `static_assert` under clang; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
 | Kconfig refuses | 12 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
+| No such device | 7 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 1 | `get_bootargs` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
 | Fails its regex | 2 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5) |
@@ -212,7 +212,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 82. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 86. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -223,7 +223,8 @@ What comes next, in order, and why:
    the minimal libc's missing `strcasecmp`, 0013 for the CoAP-over-TCP
    client's first millisecond, 0014 and 0015 for `dumb_http_server_mt`'s
    and `mqtt_sn_publisher`'s thread entries, 0016 for `ipv4_autoconf`'s late
-   registration, and one for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
+   registration, 0017 for the file layer's `read` and `write`, which traps
+   `posix/eventfd`, and one for mbedTLS in `upstream/mbedtls/`. Sending them is a person's job,
    since Zephyr needs the submitter's own `Signed-off-by`.
 2. **Phase 5, the rest.** The bus, an accelerometer the page can tilt and a
    pressure sensor are done. Triggers and FIFO streaming wait on an upstream
@@ -266,7 +267,9 @@ turned input on for LVGL and a debugging build got the C stack it needs
 (DESIGN.md D8). An MQTT broker on the LAN took it to 80 with
 `mqtt_publisher`, once the demo counted entries by the sweep's rule.
 Importing the `cmsis-dsp` and `nanopb` modules took it to 82: both samples
-ran as they are.
+ran as they are. P-states on the SoC, semihosting through the host
+(DESIGN.md D8n) and the `mipi-sys-t` module took it to 86 with both
+`cpu_freq` samples, `tracing/pipeline` and `logging/syst`.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output

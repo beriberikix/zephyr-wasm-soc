@@ -2,3 +2,6 @@
 
 config SOC_NODE
 	select WASM
+	# The board declares performance states, and soc/wasm/cpu_freq.c sets
+	# them (the CPU frequency subsystem's SoC-specific setter).
+	select HAS_CPU_FREQ

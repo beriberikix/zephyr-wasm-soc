@@ -138,6 +138,13 @@ WASM_HOST_IMPORT(sensor_poll) int32_t wasm_host_sensor_poll(int32_t *ev);
 WASM_HOST_IMPORT(eth_send) void wasm_host_eth_send(const void *frame, uint32_t len);
 WASM_HOST_IMPORT(eth_recv) int32_t wasm_host_eth_recv(void *buf, uint32_t max);
 
+/* Semihosting: host I/O through one call, as a debugger or QEMU gives an ARM,
+ * RISC-V or Xtensa target. op is Zephyr's enum semihost_instr and args its
+ * argument block (arch/common/include/semihost_types.h). Files live in the
+ * host (DESIGN.md D8n). Does not suspend.
+ */
+WASM_HOST_IMPORT(semihost) int32_t wasm_host_semihost(int32_t op, void *args);
+
 /*
  * What the host is told about a thread.
  *
