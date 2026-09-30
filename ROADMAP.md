@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **80**. 47 pass upstream's own criterion, and 33 more are counted
+today: **82**. 49 pass upstream's own criterion, and 33 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -53,7 +53,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 80, ten count only
+criterion, which is why it is spelled out: of the 82, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -151,20 +151,19 @@ cause is in `samples.json`):
 
 | Cause | entries | what it is |
 |---|---:|---|
-| Wasm's indirect-call check | 23 | 10 applications, 7 of them zbus; D8b, below |
+| Wasm's indirect-call check | 24 | 11 applications, 7 of them zbus; D8b, below |
 | Other build errors | 19 | `logging/syst` (8 entries) needs the mipi-sys-t module, and then `__builtin_return_address`, which wasm lacks; `cpu_freq` (3) needs an SoC P-state API; `llext` (2) wants an ELF toolchain; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
-| Kconfig refuses | 13 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
+| Kconfig refuses | 12 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
 | No such device | 8 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 1 | `get_bootargs` |
 | Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
-| Module not imported | 1 | `cmsis_dsp` |
-| Fails its regex | 3 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5); `posix/eventfd`, which prints nothing after the banner (not diagnosed) |
-| Trap | 1 | `sensing/simple`, an out-of-bounds access |
+| Fails its regex | 2 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5) |
+| Trap | 1 | `sensing/simple`, whose sensors are declared only for native_sim: with none, `main` uses handles it never got |
 | Gives up | 1 | `dhcpv4_client`, waiting for a DHCP server one board does not have |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
 Wasm type-checks indirect calls, and before the sweep nobody knew what that
-cost. It costs ten applications:
+cost. It costs eleven applications, and ten of them are thread entries:
 - `basic/threads`;
 - seven zbus samples (`hello_world`, `benchmark`, `confirmed_channel`,
   `dyn_channel`, `msg_subscriber`, `runtime_obs_registration`, `work_queue`);
@@ -176,6 +175,11 @@ In all but the last, a thread entry is declared `void f(void)` (or
 `void f(void *)`) and handed to `K_THREAD_DEFINE`. In the last, the bug is not
 in the sample at all but in Zephyr's `zephyr_thread_wrapper`, which calls a
 `void (*)(void const *)` through a `void *(*)(void *)`.
+
+The eleventh, `posix/eventfd`, got this far once the port reached its
+`main(argc, argv)` (DESIGN.md D8b). The bug is in Zephyr's file layer: it
+calls every file's `write_offs()`, which only shared memory fills, and
+eventfd, sockets and the console fill `write()`.
 
 Each is a one-line fix upstream, and each is undefined behaviour on every
 target. Correcting zbus/hello_world's one signature makes it run in full here.
@@ -208,7 +212,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 80. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 82. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -261,6 +265,8 @@ samples took it to 79: `display/lvgl`, and `smf_calculator`, once the board
 turned input on for LVGL and a debugging build got the C stack it needs
 (DESIGN.md D8). An MQTT broker on the LAN took it to 80 with
 `mqtt_publisher`, once the demo counted entries by the sweep's rule.
+Importing the `cmsis-dsp` and `nanopb` modules took it to 82: both samples
+ran as they are.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output

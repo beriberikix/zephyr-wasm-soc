@@ -1710,3 +1710,34 @@ samples into reach, and one counts:
   before its own "Run ipv4 autoconf client".
 
 check_lan now covers the broker and the gateway: 20 checks. Score 80.
+
+### Tick 75 — main with arguments, and two modules
+
+The last of the sweep's leftovers.
+- **`posix/eventfd`** printed nothing after the banner because its `main`
+  never ran. It is `main(int argc, char *argv[])`, after the Linux
+  manpage, and clang on wasm names that `__main_argc_argv`, while the
+  kernel's `main()` call names `__original_main`. They were never joined,
+  and the kernel's weak default ran instead. `arch/wasm/core/main.c` is a
+  second weak default, linked ahead of the kernel's, that calls the
+  sample's `main(0, {NULL})`. It works under picolibc and under the minimal
+  libc, where freestanding clang names it plain `main`, and a `main(void)`
+  still replaces it. The sample then trapped at its first `write()`:
+  `zvfs_rw()` calls every file's `write_offs()`, and eventfd fills
+  `write()`. That is D8b in Zephyr's file layer, and it traps any
+  `read()` or `write()` on a socket too. `upstream/zephyr/0017` fixes it,
+  and with it the sample reads back 10 and prints "Finished". It counts
+  when Zephyr takes the fix.
+- **`sensing/simple`** declares its sensors in `boards/native_sim.overlay`
+  only, so on this board there are none. Both opens fail with `-ENODEV`,
+  `main` carries on with handles that were never set, and reads out of
+  bounds. That is the sample's, not the port's; the record now says so.
+- **`cmsis-dsp`** and **`nanopb`** are now imported, and both samples run
+  as they are: the moving-average table matches all 32 lines, and nanopb
+  gets its lucky number back. nanopb's build generates C from a `.proto`,
+  so CI installs `grpcio-tools`. Both are on the page.
+
+CI had its own trouble on the way: a re-run sat in the toolchain step, which
+takes 25 s, for over an hour. The workflow now bounds its waits: apt
+retries a stalled fetch after 60 s, the toolchain and west steps have
+limits, and the job stops after two hours. Score 82.

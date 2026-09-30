@@ -83,6 +83,8 @@ jobs:
           # Blobless and shallow: the tree is large and only one commit is used.
           west update --narrow -o=--filter=blob:none
           pip install --break-system-packages -r zephyr/scripts/requirements-base.txt
+          # nanopb's sample generates its C from a .proto file as it builds.
+          pip install --break-system-packages grpcio-tools
 
       - name: Apply the patches to Zephyr and picolibc
         run: ./zephyr-wasm/scripts/apply_patches.sh

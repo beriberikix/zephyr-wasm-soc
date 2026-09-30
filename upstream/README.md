@@ -28,6 +28,9 @@ two of them no compiler warning would find:
 - the LwM2M test's pointer is unprototyped, `void *(*)()`, which converts
   from anything.
 
+0017 is the first kind again, in the file layer every file goes through,
+and was found by `posix/eventfd` once the port reached its `main`.
+
 | Patch | Fixes | Here, unlocks |
 |---|---|---|
 | 0001 `portability: cmsis_rtos_v1` | `zephyr_thread_wrapper()` calls an `os_pthread` through a `void *(*)(void *)`: a library bug, not a sample one | `cmsis_rtos_v1/philosophers` (3 entries) |
@@ -40,6 +43,7 @@ two of them no compiler warning would find:
 | 0008 `net: sockets: can` | the same, in CAN sockets | nothing here: found by reading, since no CAN suite runs on this board |
 | 0009 `tests: net: lib: lwm2m: rd_client` | the stub keeps `void f(struct lwm2m_message *)` callbacks in a `void *(*)()` | `tests/net/lib/lwm2m/lwm2m_rd_client` |
 | 0010 `samples: net: sockets: echo_server` | its four thread entries are `void f(void)` | `net/sockets/echo_server`, as a peer for `echo_client` over the two-board link |
+| 0017 `lib: os: zvfs: call read and write through the member the vtable fills` | `zvfs_rw()` calls every file's `read_offs()` or `write_offs()`, which only shared memory fills. Eventfd, sockets and the console fill `read()` and `write()`, the other members of the same unions | `posix/eventfd`, whose first `write()` traps without it. Checked against the pin and upstream `main` on 30 September 2026 |
 
 Checked against Zephyr `e201b84b` (this workspace's pin) and upstream `main`
 at `1ee3b93` (27 September 2026): the series applies to both. checkpatch
@@ -142,7 +146,9 @@ A suggested split, by who maintains what:
 8. 0012 on its own, for the C library maintainers;
 9. 0013 on its own, for the CoAP maintainers;
 10. 0014, 0015 and 0016 with 0010, or on their own, for the networking
-    samples' maintainers.
+    samples' maintainers;
+11. 0017 on its own, for the maintainers of `lib/os/zvfs`, or with 0007
+    and 0008, which are the same kind of bug in the same unions.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main

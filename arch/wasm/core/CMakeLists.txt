@@ -7,6 +7,7 @@ zephyr_library_sources(
   cpu_idle.c
   fatal.c
   irq_manage.c
+  main.c
   prep_c.c
   switch.c
   thread.c

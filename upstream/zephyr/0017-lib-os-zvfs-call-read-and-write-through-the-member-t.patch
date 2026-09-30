@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Wed, 30 Sep 2026 18:00:00 +0000
+Subject: [PATCH] lib: os: zvfs: call read and write through the member the
+ vtable fills
+
+zvfs_rw() calls every file's read_offs() or write_offs(), which take an
+offset. Only shared memory fills those. Every other vtable -- eventfd,
+sockets, the console -- fills read and write, which share the unions with
+them and take no offset, so the call goes through a function pointer of
+the wrong type. That is undefined behaviour which happens to work where
+the extra argument is simply ignored, and traps on a target that checks
+the type of an indirect call, such as WebAssembly: there,
+samples/subsys/portability/posix/eventfd stops at its first write().
+
+Call read_offs() and write_offs() only for the file types that support
+pread() and pwrite(), which are the ones that fill them, and read() and
+write() otherwise.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ lib/os/zvfs/zvfs_fdtable.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/lib/os/zvfs/zvfs_fdtable.c b/lib/os/zvfs/zvfs_fdtable.c
+index fbf55c77a1b..001e995137c 100644
+--- a/lib/os/zvfs/zvfs_fdtable.c
++++ b/lib/os/zvfs/zvfs_fdtable.c
+@@ -361,19 +361,28 @@ static ssize_t zvfs_rw(int fd, void *buf, size_t sz, bool is_write, const size_t
+ 	/* If there is no specified from_offset, then use the current offset of the fd */
+ 	off = (from_offset == NULL) ? &fdtable[fd].offset : from_offset;
+ 
++	/*
++	 * Only the file types that support pread() / pwrite() fill read_offs and
++	 * write_offs. The others fill read and write, which share the unions but
++	 * take no offset, so call them through the member they filled.
++	 */
+ 	if (is_write) {
+ 		if (fdtable[fd].vtable->write_offs == NULL) {
+ 			res = -1;
+ 			errno = EIO;
+-		} else {
++		} else if (prw) {
+ 			res = fdtable[fd].vtable->write_offs(fdtable[fd].obj, buf, sz, *off);
++		} else {
++			res = fdtable[fd].vtable->write(fdtable[fd].obj, buf, sz);
+ 		}
+ 	} else {
+ 		if (fdtable[fd].vtable->read_offs == NULL) {
+ 			res = -1;
+ 			errno = EIO;
+-		} else {
++		} else if (prw) {
+ 			res = fdtable[fd].vtable->read_offs(fdtable[fd].obj, buf, sz, *off);
++		} else {
++			res = fdtable[fd].vtable->read(fdtable[fd].obj, buf, sz);
+ 		}
+ 	}
+ 	if (res > 0 && prw && from_offset == NULL) {
+-- 
+2.43.0
+

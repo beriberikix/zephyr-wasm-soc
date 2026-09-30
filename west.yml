@@ -40,3 +40,8 @@ manifest:
           # two modules: the TLS library, and the crypto it is built on.
           - mbedtls
           - tf-psa-crypto
+          # Libraries whose samples upstream runs on any board: DSP filters,
+          # and protocol buffers. nanopb generates its C from a .proto at
+          # build time, so the build also needs protoc (grpcio-tools).
+          - cmsis-dsp
+          - nanopb

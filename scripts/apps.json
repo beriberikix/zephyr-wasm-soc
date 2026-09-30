@@ -290,6 +290,31 @@
       ]
     },
     {
+      "name": "dsp",
+      "app": "zephyr/samples/modules/cmsis_dsp/moving_average",
+      "kind": "sample",
+      "title": "CMSIS-DSP moving average",
+      "hint": "Runs a ten-tap moving-average FIR filter from Arm's CMSIS-DSP library over a ramp, in plain C here rather than Arm's SIMD.",
+      "upstream": true,
+      "max_time_ms": 10000,
+      "expect": [
+        "Input[00]:  0  0  0  0  0  0  0  0  0  0 | Output[00]:   0.00",
+        "Input[31]: 22 23 24 25 26 27 28 29 30 31 | Output[31]:  26.50"
+      ]
+    },
+    {
+      "name": "nanopb",
+      "app": "zephyr/samples/modules/nanopb",
+      "kind": "sample",
+      "title": "Protocol buffers (nanopb)",
+      "hint": "Encodes a message with nanopb, decodes it again, and prints what came back. The C for the message was generated from a .proto file at build time.",
+      "upstream": true,
+      "max_time_ms": 10000,
+      "expect": [
+        "Your lucky number was 13!"
+      ]
+    },
+    {
       "name": "metairq",
       "app": "zephyr/samples/kernel/metairq_dispatch",
       "kind": "sample",
