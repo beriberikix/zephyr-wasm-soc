@@ -51,13 +51,26 @@ const TICK_NS = 50_000_000n;
 
 const WASI_EBADF = 8;
 
+/* How a line of the LAN's log is labelled: the time on the board's clock,
+ * as Zephyr's own log prints it, so the two can be lined up. The board's
+ * log lines are printed by its log thread some time after the stamp they
+ * carry, so a LAN line can come first and still be the later event. */
+export function lanStamp(ns) {
+  const us = ns / 1000n;
+  const pad = (n, w) => String(n).padStart(w, '0');
+  const s = us / 1_000_000n;
+  return `lan ${pad(s / 3600n, 2)}:${pad((s / 60n) % 60n, 2)}:${pad(s % 60n, 2)}.` +
+         `${pad((us / 1000n) % 1000n, 3)},${pad(us % 1000n, 3)}`;
+}
+
 /* The identifier on the LAN's pings: fixed, so a run repeats. */
 const PING_ID = 0x4c41;
 
 export class Lan {
   /**
    * @param bytes  tcpip.wasm
-   * @param log    called with a line about what the LAN did, for stderr
+   * @param log    called with a line about what the LAN did and the time
+   *               on the board's clock it did it, for stderr or the page
    * @param at     { ip, mac }: the LAN's own address, 192.0.2.2 unless a
    *               check wants a second stack to talk to it
    */
@@ -67,7 +80,8 @@ export class Lan {
   }
 
   constructor(module, log, { ip = LAN_IP, mac = LAN_MAC } = {}) {
-    this.log = log;
+    /* Each line goes with the time on the board's clock it happened at. */
+    this.log = (line) => log(line, this.clockNs);
     this.clockNs = 0n;
     this.emitted = [];       // frames lwIP sent during the current call
     this.later = [];         // what waits until lwIP has returned

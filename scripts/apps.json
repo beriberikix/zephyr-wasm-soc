@@ -94,8 +94,9 @@
     "  the page a relay.",
     "lan_expect: substrings the LAN's own log must show, for a sample whose",
     "  output cannot say what happened: a server does not print what it",
-    "  served, nor a filter what it dropped. The log is the [lan] lines,",
-    "  on stderr under run.mjs and in the terminal on the page."
+    "  served, nor a filter what it dropped. The log is the lines stamped",
+    "  [lan 00:00:02.000,300] with the time on the board's clock, on stderr",
+    "  under run.mjs and in the terminal on the page."
   ],
   "builds": [
     {
@@ -1035,7 +1036,7 @@
       "name": "promisc",
       "kind": "sample",
       "title": "Promiscuous mode",
-      "hint": "promiscuous_mode turns on promiscuous mode and logs every frame that arrives. The page plays a Linux host at 192.0.2.2 on a simulated network, and pings the board at 1, 2 and 3 s: an ARP request (42 bytes), then three echo requests (98 bytes). The sample reads the IP header where the Ethernet header is, so it calls every frame \"unknown address family\", as it does on any Ethernet board.",
+      "hint": "promiscuous_mode turns on promiscuous mode and logs every frame that arrives. The page plays a Linux host at 192.0.2.2 on a simulated network, and pings the board at 1, 2 and 3 s: an ARP request (42 bytes), then three echo requests (98 bytes). The sample reads the IP header where the Ethernet header is, so it calls every frame \"unknown address family\", as it does on any Ethernet board. The page's own lines start `[lan` and the time on the board's clock; the board logs a frame a little after the time it prints, so a ping's reply can come first.",
       "upstream": true,
       "endless": true,
       "lan": {
@@ -1062,7 +1063,7 @@
       "name": "pkt-filter",
       "kind": "sample",
       "title": "Packet filter",
-      "hint": "pkt_filter installs packet filter rules, one of which drops IPv4 from 192.0.2.2. That is the page, playing a Linux host on a simulated network, and it pings the board at 1 and 2 s: the board answers the ARP request but not the pings. Type `net filter` to see the rules.",
+      "hint": "pkt_filter installs packet filter rules. Its IPv4 rule lets a packet in only if the sender is not on its blocklist, which `net filter` shows as `ip src block[192.0.2.2,…]`, so IPv4 from 192.0.2.2 is dropped. That is the page, playing a Linux host on a simulated network, and it pings the board at 1 and 2 s: the board answers the ARP request but not the pings. Type `net filter` to see the rules.",
       "upstream": true,
       "endless": true,
       "lan": {
@@ -1115,7 +1116,7 @@
       "name": "prometheus",
       "kind": "sample",
       "title": "Prometheus metrics",
-      "hint": "The prometheus sample serves a request counter at /metrics on port 80. The page plays a Linux host at 192.0.2.2 on a simulated network, which leases the board its address by DHCP and, 2 s in, asks for /metrics as a Prometheus server would; the reply is in its log line.",
+      "hint": "The prometheus sample serves a request counter at /metrics on port 80. The page plays a Linux host at 192.0.2.2 on a simulated network, which leases the board its address by DHCP and, 2 s in, asks for /metrics as a Prometheus server would. Its log line shows the answer's status and size, not the metrics themselves.",
       "upstream": true,
       "endless": true,
       "lan": {
@@ -1147,7 +1148,7 @@
       "name": "ftp",
       "kind": "sample",
       "title": "FTP client",
-      "hint": "ftp_client adds FTP commands to the shell. The page plays a Linux host at 192.0.2.2 on a simulated network, with an FTP server that takes any user and password. Click the output and try `net ftp connect anonymous guest 192.0.2.2`, then `net ftp ls`, `net ftp get readme.txt`, `net ftp cd pub` and `net ftp get hello.txt`. What you put there stays until the page reloads.",
+      "hint": "ftp_client adds FTP commands to the shell. The page plays a Linux host at 192.0.2.2 on a simulated network, with an FTP server that takes any user and password. Click the output and try `net ftp connect anonymous guest 192.0.2.2`, then `net ftp ls`, `net ftp get readme.txt`, `net ftp cd pub` and `net ftp get hello.txt`. What you put there lasts for the rest of the run.",
       "upstream": true,
       "interactive": true,
       "clock": "paced",

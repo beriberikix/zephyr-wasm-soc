@@ -80,6 +80,15 @@ function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads,
   });
 }
 
+/* The LAN's log lines, which run.mjs writes to stderr as
+ * "[lan 00:00:02.000,300] what happened", with what happened only. */
+function lanLines(text) {
+  return text.split('\n').flatMap((l) => {
+    const m = /\[lan \d\d:\d\d:\d\d\.\d{3},\d{3}\] (.*)$/.exec(l);
+    return m ? [m[1]] : [];
+  });
+}
+
 /* The number of distinct colours in a binary PPM, as written by
  * run.mjs --screenshot. */
 async function distinctColours(file) {
@@ -158,8 +167,9 @@ for (const b of manifest.builds) {
     const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
                             !!b.threads_expect, null, null, b.lan);
     if (again.out !== out) problems.push('the output differed on a second run on the LAN');
-    const lanLog = (text) => text.split('\n').filter((l) => l.includes('[lan] ')).join('\n');
-    if (lanLog(again.err) !== lanLog(err)) problems.push('the LAN\'s log differed on a second run');
+    if (lanLines(again.err).join('\n') !== lanLines(err).join('\n')) {
+      problems.push('the LAN\'s log differed on a second run');
+    }
   }
   /* And one that can also take a relay, through the one given. */
   if (b.lan && b.uplink && relay) {
@@ -189,7 +199,9 @@ for (const b of manifest.builds) {
    * does not print what it served, nor a filter what it dropped. The LAN
    * logs to stderr, as [lan] lines. */
   for (const want of b.lan_expect ?? []) {
-    if (!err.includes(`[lan] ${want}`)) problems.push(`missing from the LAN's log: ${JSON.stringify(want)}`);
+    if (!lanLines(err).some((l) => l.includes(want))) {
+      problems.push(`missing from the LAN's log: ${JSON.stringify(want)}`);
+    }
   }
   /* The thread table goes to stderr, so the output stays what the
    * application printed. */

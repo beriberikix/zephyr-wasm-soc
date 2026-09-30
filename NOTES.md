@@ -1596,3 +1596,43 @@ yet on the page:
 Seeing what the LAN did mattered for three of these, so its log now shows
 on the page as `[lan]` lines, each on a line of its own, as `run.mjs` puts
 them on stderr. Score 77.
+
+### Tick 71 — a browser round on the new network builds
+
+A Claude-in-Chrome run on the live site (3db2586) went through the five
+new builds, the older network builds and a short regression pass. 11 of 13
+rows passed. What it found, and what each turned out to be:
+- **FTP: `mkdir test` was gone after Stop then Run.** The hint said what
+  you put there lasts until the page reloads, and that was wrong. Each run
+  gets a new LAN, and so a new tree, which is also what keeps a run
+  repeatable. The hint and D8m now say it lasts for the run.
+- **The web server's line ended in `HTTP/1.0 200 OK`.** That is correct:
+  the test plan expected 1.1, and dumb_http_server answers 1.0.
+- **`[lan]` lines came before board lines with earlier timestamps.** The
+  terminal is in guest-time order. The board's LOG lines are printed by its
+  log thread after the time they carry, so the LAN's reply at 1.000,400
+  prints before the board's "Recv" stamped 1.000,100. Unstamped, the LAN's
+  lines could not be lined up with the board's, so each now carries the
+  board-clock time it happened at, in Zephyr's format:
+  `[lan 00:00:01.000,400] ping 192.0.2.1 seq 0: reply`. The checks match
+  on the text after the stamp.
+- **The packet filter's table** lists the rule naming 192.0.2.2 as `OK …
+  ip src block[…]`. A blocklist test passes a packet whose sender is not
+  listed (`npf_ip_src_addr_unmatch`), so 192.0.2.2 matches no rule and is
+  dropped. The hint now says so.
+- **FTP answered Zephyr's `OPTS UTF8 ON` with 502**, which looked like an
+  error during connect. It now says 200, as real servers do. The greeting
+  and `readme.txt` no longer mention lwIP, which a Zephyr reader need not
+  know about.
+- **"`*** gave up after 10000 ms of guest time ***`"** read like a failure
+  for a build that never ends by itself. The sweep matches that wording
+  in Node, so only the page rewords it: "stopped at the page's limit of
+  10 s of guest time", as its status line says.
+- **The Prometheus hint** now says the log shows the answer's status and
+  size, not the metrics.
+- **Left as they are:**
+  - the IPv6 address logged twice, and `DHCPv4 state` shown twice
+    (tick 68);
+  - the static address printed before DHCP (the samples' `net_config`);
+  - the web server's banner before the boot banner (deferred logging);
+  - `net iface` being long on a board with three interfaces.

@@ -866,7 +866,7 @@ What happened to each:
       - FTP, passive mode, with a tree that can be written to;
       - pings to the board, and dials that ask for a path.
 
-      What it does shows on the page as `[lan]` lines, and `lan_expect`
+      What it does shows on the page as `[lan …]` lines, and `lan_expect`
       checks them for samples whose own output cannot say. The Ethernet
       driver now claims promiscuous mode and VLANs, both of which it
       already did by doing nothing. New builds: `ftp_client`, typed into;
