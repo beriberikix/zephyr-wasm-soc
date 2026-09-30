@@ -1775,3 +1775,4 @@ are native_sim's overlay, tuned to the sample's timings), `sensing/simple`
 and `flow_meter` (native_sim overlays), fingerprint (an emulator on
 native_sim's second UART), `chre` (optional module, C++17 library), and
 dictionary logging and `smp_svr`'s DTLS entry, which upstream only builds.
+Score 86.
