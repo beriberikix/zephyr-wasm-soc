@@ -71,6 +71,20 @@ jobs:
       - name: Apply the patches to Zephyr and picolibc
         run: ./zephyr-wasm/scripts/apply_patches.sh
 
+      # A full C++ standard library: picolibc, libc++, libc++abi and
+      # compiler-rt's builtins for wasm32 (DESIGN.md D13). Only builds that
+      # ask for one use it. It is built from pinned sources, so it is cached on
+      # what it is built from, and the script itself skips a matching build.
+      - name: Restore the wasm32 sysroot
+        uses: actions/cache@v4
+        with:
+          path: wasm-sysroot
+          key: wasm-sysroot-${{ hashFiles('zephyr-wasm/scripts/build_sysroot.sh', 'zephyr-wasm/patches/picolibc/*.patch', 'zephyr-wasm/west.yml') }}
+
+      - name: Build the wasm32 sysroot
+        timeout-minutes: 30
+        run: ./zephyr-wasm/scripts/build_sysroot.sh
+
       # One at a time: building several at once has raced on a generated
       # header, and a sweep that reports failures it caused is worse than a
       # slow one. Exits non-zero if anything did worse than recorded.

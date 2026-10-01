@@ -26,9 +26,19 @@ set(LINKER   wasm-ld)
 set(BINTOOLS wasm)
 
 # No libc comes with this toolchain for wasm32. Picolibc is built from
-# Zephyr's module instead (DESIGN.md D11), which needs neither of these.
-set(TOOLCHAIN_HAS_NEWLIB   OFF CACHE BOOL "True if toolchain supports newlib")
-set(TOOLCHAIN_HAS_PICOLIBC OFF CACHE BOOL "True if toolchain supports picolibc")
-set(TOOLCHAIN_HAS_LIBCXX   OFF CACHE BOOL "True if toolchain supports libc++")
+# Zephyr's module instead (DESIGN.md D11). A full C++ standard library needs
+# a picolibc and libc++ built together, which scripts/build_sysroot.sh puts
+# in a sysroot (D13); if it has been built, the toolchain has both, and the
+# board keeps every build that does not need them on the module.
+set(WASM_SYSROOT "${ZEPHYR_BASE}/../wasm-sysroot" CACHE PATH "wasm32 sysroot from scripts/build_sysroot.sh")
+get_filename_component(WASM_SYSROOT "${WASM_SYSROOT}" ABSOLUTE)
+if(EXISTS "${WASM_SYSROOT}/lib/libc.a" AND EXISTS "${WASM_SYSROOT}/lib/libc++.a")
+  set(wasm_sysroot ON)
+else()
+  set(wasm_sysroot OFF)
+endif()
+set(TOOLCHAIN_HAS_NEWLIB   OFF            CACHE BOOL "True if toolchain supports newlib")
+set(TOOLCHAIN_HAS_PICOLIBC ${wasm_sysroot} CACHE BOOL "True if toolchain supports picolibc" FORCE)
+set(TOOLCHAIN_HAS_LIBCXX   ${wasm_sysroot} CACHE BOOL "True if toolchain supports libc++" FORCE)
 
 message(STATUS "Found toolchain: wasm-clang (${WASM_LLVM_PATH}, lld at ${WASM_LLD_PATH})")

@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Thu, 1 Oct 2026 19:00:00 +0000
+Subject: [PATCH] libm: build every long double source with CMake
+
+The CMake build lists the long double sources in newlib/libm/ld by hand,
+and six that the meson build compiles are missing: s_finitel.c,
+s_fpclassifyl.c, s_getpayloadl.c, s_issignalingl.c, s_scalbl.c and
+s_significandl.c. picolibc's own <math.h> calls __fpclassifyl for
+fpclassify(), isnan() and friends on a long double, so a CMake-built
+library that a long double reaches -- libc++'s, for one -- does not link.
+
+Add them, so both builds provide the same functions.
+---
+ newlib/libm/ld/CMakeLists.txt | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/newlib/libm/ld/CMakeLists.txt b/newlib/libm/ld/CMakeLists.txt
+index 38a8a5b35..4fc05ec36 100644
+--- a/newlib/libm/ld/CMakeLists.txt
++++ b/newlib/libm/ld/CMakeLists.txt
+@@ -80,12 +80,16 @@ picolibc_sources(
+   s_cosl.c
+   s_fabsl.c
+   s_fdiml.c
++  s_finitel.c
+   s_fmal.c
+   s_fmaxl.c
+   s_fminl.c
++  s_fpclassifyl.c
+   s_frexpl.c
++  s_getpayloadl.c
+   s_isinfl.c
+   s_isnanl.c
++  s_issignalingl.c
+   s_llrintl.c
+   s_llroundl.c
+   s_logbl.c
+@@ -93,9 +97,11 @@ picolibc_sources(
+   s_lroundl.c
+   s_rintl.c
+   s_roundl.c
++  s_scalbl.c
+   s_scalbln.c
+   s_scalbnl.c
+   s_signbitl.c
++  s_significandl.c
+   s_sincosl.c
+   s_sinl.c
+   s_tanl.c
+-- 
+2.43.0
+

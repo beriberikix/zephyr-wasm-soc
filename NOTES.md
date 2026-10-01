@@ -1836,3 +1836,37 @@ building, unless the fixture is one this board has: its display
 thermometer the board files attach (`sensor_ambient_temp`). `accel_trig` is
 now filtered, nothing that passes changed, and twister would run 102
 applications here, not 103. Score 92.
+
+### Tick 79 — a C++ standard library
+
+`cpp/hello_world` sets `REQUIRES_FULL_LIBCPP`, and Zephyr answers that only
+with the toolchain's own picolibc: the module is refused, because libc++ has
+to be built against the C library it is linked with. On other architectures
+the Zephyr SDK provides both. Nothing does for wasm32 and picolibc;
+apt.llvm.org's wasm32 libc++ is built for WASI's libc.
+
+So `scripts/build_sysroot.sh` builds them (DESIGN.md D13): picolibc from the
+module checkout, with the same options Zephyr gives the module; libc++ and
+libc++abi from LLVM 21.1.8's source, after libc++'s own picolibc cache; and
+compiler-rt's builtins. Picolibc's meson build refuses wasm32 as a CPU
+family, so it is its CMake build, the one Zephyr uses for the module.
+
+The order things failed in, which is the order they were fixed:
+- libc++'s `regex.cpp`: newlib's ctype masks are `char`, wasm32's `char` is
+  signed, and a negative constant narrows in a braced list.
+  `-Wno-c++11-narrowing`, for libc++ only.
+- `file(GENERATE)` refused a definition limited to C++ in the offsets
+  generator's response file, so the C++-only defines are compile options.
+- The offsets generator compiles outside Zephyr's include path and needed
+  the sysroot's headers.
+- The link wanted `__multf3`, `__addtf3`, `__unordtf2` and
+  `__floatuntitf`: binary128 `long double`, which libc++'s formatting
+  reaches. Hence compiler-rt's builtins in the sysroot.
+- Then `__fpclassifyl`, which picolibc's `<math.h>` calls and its CMake build
+  does not compile. `patches/picolibc/0002` adds it and the five other
+  `long double` sources meson builds and CMake left out.
+
+With the toolchain declaring a picolibc, Zephyr would move every C build to
+it; the board keeps the module as the default unless a full C++ library is
+required, so no other build changed. `cpp/hello_world` prints "Hello, C++
+world! wasm_node" through `std::cout` and passes. Score 93.
