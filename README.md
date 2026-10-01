@@ -153,6 +153,7 @@ git clone <this repo> zephyr-wasm
 west init -l zephyr-wasm
 west update
 zephyr-wasm/scripts/apply_patches.sh
+zephyr-wasm/scripts/build_sysroot.sh    # only for samples that need a full C++ library
 ```
 
 `west update` also fetches the modules the samples here use, and nothing
@@ -161,11 +162,19 @@ CMSIS-DSP, nanopb and SyS-T. `west.yml` imports them from Zephyr's manifest by
 name. nanopb generates C from `.proto` files as it builds, which needs
 `pip install grpcio-tools` alongside Zephyr's own Python requirements.
 
+`build_sysroot.sh` builds picolibc, libc++, libc++abi and compiler-rt's
+builtins for wasm32 into `wasm-sysroot/` beside the workspace, which is what
+a sample with `CONFIG_REQUIRES_FULL_LIBCPP` needs (`DESIGN.md` D13). It uses
+the clang in `/usr/lib/llvm-21` unless `WASM_LLVM_PATH` names another, and
+downloads the matching LLVM source unless `LLVM_TARBALL` names a copy. It does
+nothing if the sysroot is already built from the same sources. Everything
+else builds without it.
+
 The Zephyr tree is otherwise read-only. Seven patches are needed and each is
 explained in `patches/README.md`; most of them are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists. One more, under `patches/picolibc/`, is to
-picolibc.
+picolibc, and so is a second, which only the sysroot needs.
 
 ## Building and running
 
@@ -388,7 +397,8 @@ under wasmtime. The kernel is the same module in all three.
 ## Continuous integration
 
 `.github/workflows/pages.yml` starts from a bare Ubuntu runner, installs the
-toolchain, clones Zephyr, applies the patches, builds everything
+toolchain, clones Zephyr, applies the patches, builds the wasm32 sysroot (or
+restores it from the cache), builds everything
 `scripts/apps.json` names, runs each one and checks it printed what that file
 says it should, checks two runs are byte-identical, runs the page itself in
 Chromium, and only then publishes. It is the reproducibility check for

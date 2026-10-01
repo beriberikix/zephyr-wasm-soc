@@ -67,6 +67,12 @@ function(zephyr_constants_library)
       list(APPEND include_flags --flag=-I${dir})
     endif()
   endforeach()
+  # The sysroot's C library, which a build with a full C++ library uses and
+  # names as a compile option (cmake/sysroot_wasm.cmake), not an include
+  # directory, so that libc++'s headers can come first.
+  if(CONFIG_PICOLIBC_USE_TOOLCHAIN)
+    list(APPEND include_flags --flag=-isystem${WASM_SYSROOT}/include)
+  endif()
 
   set(rsp ${CMAKE_CURRENT_BINARY_DIR}/${lib_name}_offsets.rsp)
   file(GENERATE OUTPUT ${rsp} CONTENT

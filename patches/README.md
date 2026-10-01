@@ -2,7 +2,7 @@
 
 The Zephyr tree is treated as read-only. Everything this port needs lives in
 the module, with the exceptions recorded here. The numbered patches in this
-directory are to Zephyr; `picolibc/` holds one to that module, described at
+directory are to Zephyr; `picolibc/` holds two to that module, described at
 the end. Apply them all with `scripts/apply_patches.sh`, which is idempotent.
 
 ## 0001-toolchain-gen-absolute-sym-for-wasm.patch
@@ -128,3 +128,17 @@ The patch leaves the entry out on wasm. Nothing is lost: Zephyr never runs
 the fini array on any architecture, so on every target an `atexit()` handler
 is registered and never called. This is the one change picolibc needs for
 wasm32, and it belongs upstream in picolibc.
+
+## picolibc/0002-libm-build-every-long-double-source-with-CMake.patch
+
+Picolibc has two builds, meson and CMake, and Zephyr uses the CMake one. Its
+list of `long double` sources in `newlib/libm/ld` is written out by hand, and
+six files the meson build compiles are missing from it, `s_fpclassifyl.c`
+among them. Picolibc's own `<math.h>` calls `__fpclassifyl` for
+`fpclassify()`, `isnan()` and friends on a `long double`, so anything that
+reaches one through the CMake-built library fails to link. libc++ does, when
+it formats a `long double`, which on wasm32 is binary128.
+
+The patch adds the six, so both builds provide the same functions. C builds
+from the module do not change: nothing they link calls these. It belongs
+upstream in picolibc, and is not specific to wasm.

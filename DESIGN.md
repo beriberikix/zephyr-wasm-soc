@@ -30,7 +30,8 @@ Nine Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
 `picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp`, `nanopb` and
 `mipi-sys-t`, through Zephyr's own manifest so they stay at Zephyr's pins.
 Nothing else is: the port needs no HAL, builds picolibc from its module as
-Zephyr's default C library (D11), and a full import is hundreds of megabytes
+Zephyr's default C library (D11) and from the same checkout for the sysroot
+a full C++ library needs (D13), and a full import is hundreds of megabytes
 of vendor code. Module code goes through the same section generator and
 link-map check as everything else (D6).
 
@@ -1269,6 +1270,61 @@ under the entry's hint. What they contain so far:
   sleep, so no power state's residency is met, and `sensing/simple` drops
   the line upstream checks for.
 
+### D13. A full C++ library comes from a sysroot
+
+Zephyr's own C++ support is a minimal library that provides `new`, `delete`
+and little else. A sample that wants the standard library (`std::cout`,
+containers, `<string>`) sets `CONFIG_REQUIRES_FULL_LIBCPP`, and on every
+other architecture the Zephyr SDK answers it with a C++ library built
+against the SDK's own picolibc. Zephyr insists on that pairing: with a full
+C++ library, `PICOLIBC_SUPPORTED` no longer accepts the module and only the
+toolchain's picolibc will do, because libc++ has to be compiled against the
+C library it will be linked with. Nothing ships either for wasm32 and
+picolibc. apt.llvm.org's wasm32 libc++ is built for WASI's C library, a
+different ABI.
+
+So `scripts/build_sysroot.sh` builds what the SDK would have, into
+`wasm-sysroot/` beside the workspace (or `$WASM_SYSROOT`):
+- **picolibc,** from the module checkout west already made, with the
+  port's patches, configured as Zephyr configures the module for this board:
+  no thread-local storage, `errno` through `z_errno_wrap`, Zephyr's own
+  `malloc`, the same printf options.
+- **libc++ and libc++abi,** from the LLVM release that matches CI's clang,
+  after libc++'s own picolibc configuration: no threads, exceptions,
+  filesystem, wide characters or random device, with RTTI. Zephyr builds
+  C++ without exceptions on every target, and wasm has no threads.
+- **compiler-rt's builtins,** because libc++ formats a `long double`, which
+  on wasm32 is binary128, and that needs the soft-float routines. The port's
+  own four (D11) are linked first and win where both have one.
+
+The script stamps the result with the picolibc commit and diff, the LLVM
+release and its own hash, and does nothing when the stamp matches. CI caches
+it on the same inputs.
+
+The toolchain declares `TOOLCHAIN_HAS_PICOLIBC` and `TOOLCHAIN_HAS_LIBCXX`
+when the sysroot is there, as the SDK's does, and
+`cmake/sysroot_wasm.cmake` adds its headers and libraries to builds that
+choose the toolchain's picolibc. The C++ library is Zephyr's
+`EXTERNAL_LIBCPP` rather than `LIBCXX_LIBCPP`, which also wants
+`TOOLCHAIN_VARIANT_COMPILER` to say `llvm`; saying so here would change
+other defaults, `SIZE_OPTIMIZATIONS` among them, for every build.
+
+**C builds do not move.** Once the toolchain declares a picolibc, Zephyr
+would default every build to it. The board's `Kconfig.defconfig` keeps the
+module as the default unless a full C++ library is required, so only those
+builds use the sysroot, and every existing build is unchanged. Without a
+sysroot such a build stops at configure time and says to run the script.
+
+Two things the sysroot needed that no C build had:
+- picolibc's CMake build leaves out six `long double` sources its meson
+  build compiles, `__fpclassifyl` among them, and libc++ calls it.
+  `patches/picolibc/0002` adds them.
+- libc++ takes newlib's ctype masks as `char`. wasm32's `char` is signed,
+  so its regex table narrows a negative constant, which is an error in
+  C++11. The script builds libc++ with `-Wno-c++11-narrowing`; the bits
+  are the same once truncated back to `char`, which is how they are
+  compared.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
@@ -1324,3 +1380,7 @@ than Zephyr, and `scripts/apply_patches.sh` applies it to that module. Clang's
 wasm backend refuses the `.fini_array` entry picolibc uses to register its
 `atexit()` runner; Zephyr never runs that array on any target, so the patch
 leaves it out on wasm (D11).
+
+**picolibc/0002-libm-build-every-long-double-source-with-CMake.patch** adds
+six `long double` sources picolibc's CMake build left out and its meson build
+does not. Only the sysroot's libc++ reaches them (D13).

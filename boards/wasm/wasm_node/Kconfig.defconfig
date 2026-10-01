@@ -24,4 +24,18 @@ config ZTEST_STACK_SIZE
 config INPUT
 	default y if LVGL
 
+# A full C++ standard library comes from the wasm32 sysroot
+# scripts/build_sysroot.sh builds (DESIGN.md D13): its picolibc, and libc++
+# as an external C++ library, since Zephyr's own LLVM choice is tied to a
+# toolchain variant this one is not. Everything else keeps picolibc from the
+# module, as before the sysroot existed; Zephyr would otherwise move every
+# build to the toolchain's copy once the toolchain says it has one.
+choice PICOLIBC_SOURCE
+	default PICOLIBC_USE_MODULE if !REQUIRES_FULL_LIBCPP
+endchoice
+
+choice LIBCPP_IMPLEMENTATION
+	default EXTERNAL_LIBCPP if REQUIRES_FULL_LIBCPP && "$(TOOLCHAIN_HAS_PICOLIBC)" = "y"
+endchoice
+
 endif # BOARD_WASM_NODE

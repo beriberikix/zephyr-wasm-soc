@@ -183,9 +183,7 @@
     {
       "path": "zephyr/samples/cpp/hello_world",
       "entry": "sample.cpp.helloworld",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'string.h' file not found"
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/data_structures/min-heap",
@@ -578,7 +576,7 @@
     {
       "path": "zephyr/samples/modules/tflite-micro/hello_world",
       "entry": "sample.tensorflow.helloworld",
-      "note": "Needs the tflite-micro module, which is not imported, and a full C++ library (REQUIRES_FULL_LIBCPP), which this toolchain does not have for wasm32.",
+      "note": "Needs the tflite-micro module, which is not imported. The full C++ library it also needs comes from the wasm32 sysroot (DESIGN.md D13).",
       "status": "build-fails",
       "cause": "other",
       "detail": "'tensorflow/lite/micro/micro_mutable_op_resolver.h' file not found"
@@ -1506,5 +1504,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 59
+  "score": 60
 }
