@@ -24,6 +24,8 @@ import os
 import pathlib
 import sys
 
+import sweeplib
+
 HERE = pathlib.Path(__file__).resolve().parent
 APPS = HERE / "apps.json"
 
@@ -223,10 +225,12 @@ def main() -> int:
 
     if args.command == "list":
         # A third column carries any build arguments, space-separated. They
-        # are only ever an upstream entry's own extra_configs: the LVGL demos
-        # app picks its demo that way.
+        # are only ever an upstream entry's own extra_configs (the LVGL demos
+        # app picks its demo that way), a pair's addresses, and this board's
+        # own files for the application (sweeplib.board_files()).
         for b in (u for entry in builds for u in units(entry)):
-            print(f"{b['name']}\t{b['app']}\t{' '.join(b.get('args', []))}")
+            args = sweeplib.with_board_files(b['app'], b.get('args', []))
+            print(f"{b['name']}\t{b['app']}\t{' '.join(args)}")
         return 0
 
     if args.command == "score":
@@ -249,7 +253,10 @@ def main() -> int:
         },
         "score": score(builds),
         "builds": [dict(b, boards=[dict(u, path=f"m/{u['name']}.wasm") for u in units(b)])
-                   if "boards" in b else dict(b, path=f"m/{b['name']}.wasm")
+                   if "boards" in b else
+                   dict(b, path=f"m/{b['name']}.wasm",
+                        **({"board_files": list(sweeplib.board_files(b["app"]))}
+                           if sweeplib.board_files(b["app"]) else {}))
                    for b in builds],
     }
     json.dump(out, sys.stdout, indent=2)

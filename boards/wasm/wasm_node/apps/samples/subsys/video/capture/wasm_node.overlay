@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * A camera for the sample: upstream's software video generator, which
+ * native_sim's entry gets from the video-sw-generator snippet. This is that
+ * snippet's devicetree, as this board's own.
+ */
+
+/ {
+	chosen {
+		zephyr,camera = &video_sw_generator;
+	};
+
+	video_sw_generator: video-sw-generator {
+		compatible = "zephyr,video-sw-generator";
+	};
+};

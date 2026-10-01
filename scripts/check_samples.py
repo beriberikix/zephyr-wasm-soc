@@ -353,6 +353,9 @@ def run_one(sample: dict, keep: bool) -> dict:
     build_dir = TOP / f"build-sample-{name.replace('/', '_')}"
     shutil.rmtree(build_dir, ignore_errors=True)
     ok, err, log = sweeplib.build(app, build_dir, build_args(entry))
+    # Said in the record, so the score says which passes needed them.
+    if sweeplib.board_files(app):
+        result["board_files"] = True
     if upstream_filter(entry, build_dir) is False:
         # Twister asks this after CMake and before compiling, so whether the
         # compile then worked is beside the point.

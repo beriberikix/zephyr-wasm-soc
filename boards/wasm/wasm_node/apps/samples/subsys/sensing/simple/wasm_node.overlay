@@ -1,0 +1,66 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The sensors the sample's sensing tree is built from, as native_sim's
+ * overlay declares them: two bmi160 accelerometer-gyros and a hinge angle
+ * derived from them. The board's own bmi160 on the emulated I2C bus is the
+ * base; the lid's is on an emulated SPI bus added here, as native_sim has
+ * one. Both are upstream's bmi160 emulator.
+ */
+
+#include <zephyr/sensing/sensing_sensor_types.h>
+
+/ {
+	soc {
+		spi0: spi@200 {
+			compatible = "zephyr,spi-emul-controller";
+			status = "okay";
+			reg = <0x200 4>;
+			clock-frequency = <50000000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			bmi160_spi: bmi@3 {
+				compatible = "bosch,bmi160";
+				spi-max-frequency = <50000000>;
+				reg = <0x3>;
+			};
+		};
+	};
+
+	sensing: sensing-node {
+		compatible = "zephyr,sensing";
+		status = "okay";
+
+		base_accel_gyro: base-accel-gyro {
+			compatible = "zephyr,sensing-phy-3d-sensor";
+			status = "okay";
+			sensor-types = <SENSING_SENSOR_TYPE_MOTION_ACCELEROMETER_3D
+					SENSING_SENSOR_TYPE_MOTION_GYROMETER_3D>;
+			friendly-name = "Base Accel Gyro Sensor";
+			minimal-interval = <625>;
+			underlying-device = <&accel0>;
+		};
+
+		lid_accel_gyro: lid-accel-gyro {
+			compatible = "zephyr,sensing-phy-3d-sensor";
+			status = "okay";
+			sensor-types = <SENSING_SENSOR_TYPE_MOTION_ACCELEROMETER_3D
+					SENSING_SENSOR_TYPE_MOTION_GYROMETER_3D>;
+			friendly-name = "Lid Accel Gyro Sensor";
+			minimal-interval = <625>;
+			underlying-device = <&bmi160_spi>;
+		};
+
+		hinge_angle: hinge-angle {
+			compatible = "zephyr,sensing-hinge-angle";
+			status = "okay";
+			sensor-types = <SENSING_SENSOR_TYPE_MOTION_HINGE_ANGLE>;
+			friendly-name = "Hinge Angle Sensor";
+			reporters = <&base_accel_gyro &lid_accel_gyro>;
+			reporters-index = <0 0>;
+			minimal-interval = <100000>;
+			stream-mode;
+		};
+	};
+};

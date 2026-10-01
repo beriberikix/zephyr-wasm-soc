@@ -28,10 +28,59 @@ RUN_TROUBLE_RE = re.compile(
     r"(RuntimeError: [^\n]*|\*\*\* (?:fatal|gave up|asyncify buffer overflow)[^\n]*)")
 
 
+# This board's own files for an application, as upstream keeps native_sim's
+# in the application's boards/ directory (DESIGN.md D12). They describe the
+# devices a sample needs and set the options this board needs for it, and
+# they are the only thing that may be added: an overlay and a Kconfig
+# fragment, never source. APP_FILES/<path under the west topdir's zephyr/>/.
+APP_FILES = MODULE / "boards" / "wasm" / "wasm_node" / "apps"
+BOARD_FILES = ("wasm_node.overlay", "wasm_node.conf")
+
+
+def board_files(app: str) -> dict[str, pathlib.Path]:
+    """The board files this port supplies for app, by name; empty if none."""
+    if not app.startswith("zephyr/"):
+        return {}
+    where = APP_FILES / app[len("zephyr/"):]
+    if not where.is_dir():
+        return {}
+    other = sorted(p.name for p in where.iterdir() if p.name not in BOARD_FILES)
+    if other:
+        raise SystemExit(f"{where}: only {' and '.join(BOARD_FILES)} may be supplied for an "
+                         f"application, not {', '.join(other)}")
+    return {name: where / name for name in BOARD_FILES if (where / name).exists()}
+
+
+def with_board_files(app: str, args) -> list[str]:
+    """args with this board's files for app added the way Zephyr finds them.
+
+    An application's boards/<board>.overlay replaces its app.overlay, unless
+    the build names DTC_OVERLAY_FILE itself; boards/<board>.conf is merged
+    after prj.conf and before any EXTRA_CONF_FILE. These do the same.
+    """
+    out = list(args)
+    files = board_files(app)
+    overlay = files.get("wasm_node.overlay")
+    if overlay and not any(a.startswith("-DDTC_OVERLAY_FILE=") for a in out):
+        out.append(f"-DDTC_OVERLAY_FILE={overlay}")
+    conf = files.get("wasm_node.conf")
+    if conf:
+        for i, a in enumerate(out):
+            if a.startswith("-DEXTRA_CONF_FILE="):
+                out[i] = f"-DEXTRA_CONF_FILE={conf};{a.split('=', 1)[1]}"
+                break
+        else:
+            out.append(f"-DEXTRA_CONF_FILE={conf}")
+    return out
+
+
 def build(app: str, build_dir: pathlib.Path, extra_args=()) -> tuple[bool, str, str]:
-    """Build app into build_dir. Returns (ok, the first error line or '', log)."""
+    """Build app into build_dir. Returns (ok, the first error line or '', log).
+
+    This board's files for app, if it has any, are added (board_files())."""
     built = subprocess.run(
-        [str(MODULE / "scripts" / "build.sh"), str(build_dir), app, *extra_args],
+        [str(MODULE / "scripts" / "build.sh"), str(build_dir), app,
+         *with_board_files(app, extra_args)],
         cwd=TOP, capture_output=True, text=True)
     log = built.stdout + built.stderr
     if built.returncode == 0:

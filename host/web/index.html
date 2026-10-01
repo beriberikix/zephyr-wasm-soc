@@ -1003,8 +1003,17 @@ function showSelected() {
   }
   showHint(build.hint);
   const overridesEl = document.getElementById('overrides');
-  overridesEl.hidden = !build.overrides;
-  overridesEl.textContent = build.overrides ? `Built with: ${build.overrides}` : '';
+  /* What the build was given beyond upstream's own files, said in words:
+   * a pair's settings, and this board's own files for the sample, as
+   * upstream keeps native_sim's. */
+  const notes = [];
+  if (build.overrides) notes.push(`Built with: ${build.overrides}`);
+  if (build.board_files?.length) {
+    notes.push(`With this board's own ${build.board_files.join(' and ')} for the sample, ` +
+               'as upstream keeps native_sim\'s');
+  }
+  overridesEl.hidden = notes.length === 0;
+  overridesEl.textContent = notes.join('. ');
   uplinkRowEl.hidden = !build.uplink;
   showLesson(build);
   statusEl.textContent = 'Ready.';

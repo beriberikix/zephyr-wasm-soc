@@ -1,0 +1,16 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * A flow meter on the board's gpio_emul controller, as native_sim's overlay
+ * puts one on its own. Pin 6 is free: 0-3 are the LEDs, 4-5 the buttons.
+ * The sample makes its own pulses through gpio_emul.
+ */
+
+/ {
+	flow_meter_0: flow_meter {
+		compatible = "zephyr,flow-meter";
+		pulse-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+		pulses-per-liter = <450>;
+		status = "okay";
+	};
+};

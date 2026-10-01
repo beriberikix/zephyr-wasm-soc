@@ -198,6 +198,23 @@
       ]
     },
     {
+      "name": "power",
+      "app": "zephyr/samples/subsys/pm/latency",
+      "kind": "sample",
+      "title": "Power states",
+      "hint": "Sleeps for 1.1, 1.2 and 1.3 s, and the kernel picks a deeper power state for each longer sleep. Then latency constraints rule the deeper states out, one by one. The sample's own hooks print each state as it is entered.",
+      "upstream": true,
+      "endless": true,
+      "max_time_ms": 25000,
+      "expect": [
+        "Entering RUNTIME_IDLE{0}",
+        "Entering SUSPEND_TO_IDLE{0}",
+        "Entering STANDBY{0}",
+        "Updating latency constraint: 10ms",
+        "Finished, we should now enter STANDBY"
+      ]
+    },
+    {
       "name": "accel",
       "app": "zephyr/samples/sensor/accel_polling",
       "kind": "sample",

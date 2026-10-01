@@ -25,9 +25,9 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "filtered_entries": 68,
-    "runnable_entries": 162,
-    "runnable_apps": 102
+    "filtered_entries": 67,
+    "runnable_entries": 163,
+    "runnable_apps": 103
   },
   "samples": [
     {
@@ -221,9 +221,8 @@
     {
       "path": "zephyr/samples/drivers/biometrics/fingerprint",
       "entry": "sample.drivers.biometrics.fingerprint",
-      "status": "build-fails",
-      "cause": "compile",
-      "detail": "/home/user/zephyr/samples/drivers/biometrics/fingerprint/app.overlay:14 (column 1): parse error: undefined node label 'uart1'"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/drivers/crypto",
@@ -753,9 +752,8 @@
     {
       "path": "zephyr/samples/sensor/flow_meter",
       "entry": "sample.sensor.flow_meter",
-      "status": "build-fails",
-      "cause": "devicetree",
-      "detail": "use of undeclared identifier '__device_dts_ord_DT_N_NODELABEL_flow_meter_0_P_pulse_gpios_IDX_0_PH_ORD'"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/sensor/lsm6dso",
@@ -809,9 +807,8 @@
     {
       "path": "zephyr/samples/sensor/thermometer",
       "entry": "sample.sensor.thermometer",
-      "status": "filtered",
-      "cause": "upstream filter",
-      "detail": "dt_alias_exists(\"ambient-temp0\")"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/bindesc/hello_bindesc",
@@ -1091,8 +1088,8 @@
     {
       "path": "zephyr/samples/subsys/pm/latency",
       "entry": "sample.power.latency",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/portability/cmsis_rtos_v1/philosophers",
@@ -1183,9 +1180,8 @@
       "path": "zephyr/samples/subsys/sensing/simple",
       "entry": "sample.sensing.simple",
       "note": "Its sensors are declared only in boards/native_sim.overlay, so here the sensing node has none. Both sensing_open_sensor() calls fail with -ENODEV, main goes on to use the handles they never set, and that reads out of bounds. The regex line is printed first, but by the deferred log thread, which never gets to run.",
-      "status": "does-not-finish",
-      "cause": "trap",
-      "detail": "RuntimeError: memory access out of bounds"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/settings",
@@ -1300,9 +1296,8 @@
     {
       "path": "zephyr/samples/subsys/video/capture",
       "entry": "sample.video.capture.shell",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "No camera chosen in devicetree. Missing \"--shield\" or \"--snippet video-sw-generator\" flag?"
+      "board_files": true,
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/zbus/async_listeners",
@@ -1510,5 +1505,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 53
+  "score": 59
 }

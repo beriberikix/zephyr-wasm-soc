@@ -1,0 +1,20 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * An ambient thermometer for the sample: upstream's adt7420 on the board's
+ * emulated I2C bus, where its emulator answers, as the other boards'
+ * overlays put a real one on theirs.
+ */
+
+/ {
+	aliases {
+		ambient-temp0 = &adt7420;
+	};
+};
+
+&i2c0 {
+	adt7420: adt7420@48 {
+		compatible = "adi,adt7420";
+		reg = <0x48>;
+	};
+};
