@@ -1812,3 +1812,6 @@ its first power state and never another: the log thread's one-second
 wake-up after each message fell inside every 1.1 to 1.3 s sleep, so no
 state's residency was ever met. `sensing/simple` dropped 28 messages at
 start-up, the one upstream checks for among them.
+
+The board files also unfiltered one entry, `thermometer`, so twister would
+now run 103 applications here, not 102. Score 92.

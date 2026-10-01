@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **86**. 53 pass upstream's own criterion, and 33 more are counted
+today: **92**. 59 pass upstream's own criterion, and 33 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -54,7 +54,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 86, ten count only
+criterion, which is why it is spelled out: of the 92, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -111,14 +111,14 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 68 | |
-| **Runnable: what twister itself would run here** | **162** | **102** |
-| Pass upstream's own criterion | 82 | 53 |
+| Filtered out by upstream's own twister filter | 67 | |
+| **Runnable: what twister itself would run here** | **163** | **103** |
+| Pass upstream's own criterion | 88 | 59 |
 | Build, but upstream only builds them | 13 | |
 | Run, with no criterion upstream | 5 | |
-| Run and fail their criterion | 2 | |
-| Do not finish | 26 | |
-| Do not build | 34 | |
+| Run and fail their criterion | 1 | |
+| Do not finish | 25 | |
+| Do not build | 31 | |
 
 Every entry is built with Zephyr's default C library, picolibc, as on any
 other board. Until the mDNS pair the board forced the minimal libc, and the
@@ -165,12 +165,11 @@ cause is in `samples.json`):
 |---|---:|---|
 | Wasm's indirect-call check | 24 | 11 applications, 7 of them zbus; D8b, below |
 | Other build errors | 10 | `llext` (2) wants an ELF toolchain; `logging/syst`'s two `deferred_cpp` entries stop on a C++11 `static_assert` under clang; `cpp/hello_world` and `tflite-micro` need a full C++ library; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
-| Kconfig refuses | 12 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
-| No such device | 7 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
+| Kconfig refuses | 11 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
+| No such device | 6 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 1 | `get_bootargs` |
-| Overlay does not parse | 4 | x86- or board-specific devicetree overlays |
-| Fails its regex | 2 | `power.latency`; `sensor/accel_trig`, which gets no trigger (Phase 5) |
-| Trap | 1 | `sensing/simple`, whose sensors are declared only for native_sim: with none, `main` uses handles it never got |
+| Overlay does not parse | 3 | x86- or board-specific devicetree overlays |
+| Fails its regex | 1 | `sensor/accel_trig`, which gets no trigger (Phase 5) |
 | Gives up | 1 | `dhcpv4_client`, waiting for a DHCP server one board does not have |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
@@ -224,7 +223,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 86. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 92. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -281,7 +280,10 @@ turned input on for LVGL and a debugging build got the C stack it needs
 Importing the `cmsis-dsp` and `nanopb` modules took it to 82: both samples
 ran as they are. P-states on the SoC, semihosting through the host
 (DESIGN.md D8n) and the `mipi-sys-t` module took it to 86 with both
-`cpu_freq` samples, `tracing/pipeline` and `logging/syst`.
+`cpu_freq` samples, `tracing/pipeline` and `logging/syst`. This board's own
+files for a sample, as upstream keeps native_sim's, took it to 92 with
+`flow_meter`, `fingerprint`, `thermometer`, `sensing/simple`, `pm/latency`
+and `video/capture`.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
