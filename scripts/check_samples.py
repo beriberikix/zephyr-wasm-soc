@@ -60,6 +60,17 @@ SIMULATION = "custom"
 # hardware or a host peer this port does not have yet.
 SUPPORTED = {"gpio", "entropy", "flash", "nvs", "eeprom"}   # as wasm_node.yaml
 
+# Twister runs an entry that names a harness fixture only where that fixture
+# is declared present, as a bench with the hardware attached would declare
+# it. These are what this board has:
+# - fixture_display: the host's display (wasm,host-display), which the page
+#   draws and check_site.mjs screenshots;
+# - sensor_ambient_temp: the emulated adt7420 its board files attach for
+#   sensor/thermometer (DESIGN.md D12).
+# Anything else, a sensor with its interrupt wired (accel_trig) for one, is
+# not here, and the entry is filtered as twister would filter it.
+FIXTURES = {"fixture_display", "sensor_ambient_temp"}
+
 # Harnesses that judge by console output or not at all. The rest need
 # hardware or a peer on the other end: net, bluetooth, sensor, pytest...
 RUNNABLE_HARNESS = {None, "console", "none", "shell"}
@@ -349,6 +360,12 @@ def run_one(sample: dict, keep: bool) -> dict:
     result = {"path": app, "entry": name}
     if sample.get("note"):
         result["note"] = sample["note"]
+
+    fixture = (entry.get("harness_config") or {}).get("fixture")
+    if fixture and fixture not in FIXTURES:
+        # Twister skips it before building anything, and so does this.
+        result.update(status="filtered", cause="fixture", detail=fixture)
+        return result
 
     build_dir = TOP / f"build-sample-{name.replace('/', '_')}"
     shutil.rmtree(build_dir, ignore_errors=True)

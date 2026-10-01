@@ -18,8 +18,10 @@ The number is computed, not claimed. `scripts/check_samples.py` reads every
 on a board with no hardware, builds each one exactly as twister would (with
 the entry's own `extra_args` and `extra_configs`), runs it, and judges the
 output by the entry's own `harness_config` using twister's rules: a console
-regex, a ztest verdict, or a scripted shell session. An application counts once
-if any of its entries passes. `scripts/samples.json` holds the result for every
+regex, a ztest verdict, or a scripted shell session. An entry that needs a
+twister fixture runs only if this board has it, as on a bench: the display,
+and the thermometer `sensor/thermometer`'s board files attach. An application
+counts once if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
 adds `basic/blinky`, `basic/button`, `input/draw_touch_events`, two LVGL
@@ -111,12 +113,12 @@ What was tried, out of 650 upstream applications and 1268 entries:
 | | entries | applications |
 |---|---:|---:|
 | Plausible on this board | 230 | 144 |
-| Filtered out by upstream's own twister filter | 67 | |
-| **Runnable: what twister itself would run here** | **163** | **103** |
+| Filtered out by upstream's own twister filter, or a fixture | 68 | |
+| **Runnable: what twister itself would run here** | **162** | **102** |
 | Pass upstream's own criterion | 88 | 59 |
 | Build, but upstream only builds them | 13 | |
 | Run, with no criterion upstream | 5 | |
-| Run and fail their criterion | 1 | |
+| Run and fail their criterion | 0 | |
 | Do not finish | 25 | |
 | Do not build | 31 | |
 
@@ -169,7 +171,6 @@ cause is in `samples.json`):
 | No such device | 6 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 1 | `get_bootargs` |
 | Overlay does not parse | 3 | x86- or board-specific devicetree overlays |
-| Fails its regex | 1 | `sensor/accel_trig`, which gets no trigger (Phase 5) |
 | Gives up | 1 | `dhcpv4_client`, waiting for a DHCP server one board does not have |
 
 **D8b is the largest thing between a sample that builds and one that runs.**
@@ -605,7 +606,12 @@ What happened to each:
       and bmp581 emulators have none. The icm4268x emulator, the natural
       `stream0`, has no FIFO either. This is upstream emulator work: an
       emulator that raises its INT line through `gpio_emul` would make all
-      three run. It is the next thing to propose there.
+      three run. It is the next thing to propose there. Raising the pin from
+      this board's sensor bridge would not be enough: the bmi160 driver then
+      reads `INT_STATUS1` for its data-ready bit, which the emulator never
+      sets. And `accel_trig` needs twister's `fixture_sensor_accel_int`, an
+      accelerometer with its interrupt wired, so it would not count here
+      even then; it is now recorded as filtered for want of the fixture.
 - [ ] **The accelerometer chart on the page.** It runs, reads the tilt and
       draws it, but slower than real time: under Node, 3 s of guest time
       take about 10 s, with a first frame that takes several seconds. A

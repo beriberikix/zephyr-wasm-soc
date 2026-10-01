@@ -25,9 +25,9 @@
       "harness remote needs hardware or a peer": 1,
       "harness robot needs hardware or a peer": 1
     },
-    "filtered_entries": 67,
-    "runnable_entries": 163,
-    "runnable_apps": 103
+    "filtered_entries": 68,
+    "runnable_entries": 162,
+    "runnable_apps": 102
   },
   "samples": [
     {
@@ -718,8 +718,9 @@
       "path": "zephyr/samples/sensor/accel_trig",
       "entry": "sample.sensor.accel_trig",
       "note": "sensor_trigger_set() returns -ENOSYS (-88): the bmi160 has no int-gpios here, because no upstream sensor emulator drives an interrupt pin. Needs emulator work upstream.",
-      "status": "fails",
-      "cause": "regex-mismatch"
+      "status": "filtered",
+      "cause": "fixture",
+      "detail": "fixture_sensor_accel_int"
     },
     {
       "path": "zephyr/samples/sensor/accel_trig",
