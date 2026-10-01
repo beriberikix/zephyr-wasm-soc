@@ -198,16 +198,20 @@
       ]
     },
     {
-      "name": "flow",
-      "app": "zephyr/samples/sensor/flow_meter",
+      "name": "power",
+      "app": "zephyr/samples/subsys/pm/latency",
       "kind": "sample",
-      "title": "Flow meter",
-      "hint": "Counts a flow meter's pulses on a GPIO pin and reports the volume until a litre has passed. The sample makes the pulses itself, through Zephyr's emulated GPIO controller.",
+      "title": "Power states",
+      "hint": "Sleeps for 1.1, 1.2 and 1.3 s, and the kernel picks a deeper power state for each longer sleep. Then latency constraints rule the deeper states out, one by one. The sample's own hooks print each state as it is entered.",
       "upstream": true,
-      "max_time_ms": 30000,
+      "endless": true,
+      "max_time_ms": 25000,
       "expect": [
-        "1 L volume threshold armed",
-        "Volume threshold reached! Total volume: 1.000000 L"
+        "Entering RUNTIME_IDLE{0}",
+        "Entering SUSPEND_TO_IDLE{0}",
+        "Entering STANDBY{0}",
+        "Updating latency constraint: 10ms",
+        "Finished, we should now enter STANDBY"
       ]
     },
     {

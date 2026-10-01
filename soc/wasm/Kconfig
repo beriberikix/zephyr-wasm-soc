@@ -5,7 +5,3 @@ config SOC_NODE
 	# The board declares performance states, and soc/wasm/cpu_freq.c sets
 	# them (the CPU frequency subsystem's SoC-specific setter).
 	select HAS_CPU_FREQ
-	# System power management: the kernel's idle thread asks the policy for a
-	# state, and an application or SoC sets it. The board declares no power
-	# states of its own; an application's board files may (DESIGN.md D12).
-	select HAS_PM

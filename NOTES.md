@@ -1791,16 +1791,19 @@ says so.
 
 Six samples count with them:
 - **`flow_meter`**: a meter on `gpio0` pin 6. The sample pulses the
-  emulated pin itself and reads a litre. It is on the page, which also
-  checks the page's new note.
+  emulated pin itself and reads a litre.
 - **`fingerprint`**: upstream's biometrics emulator, as native_sim has.
 - **`thermometer`**: an adt7420 on `i2c0`, whose emulator reads 0.0 °C.
 - **`video/capture`**: the software video generator as the camera, which
   native_sim's entry gets from a snippet.
 - **`sensing/simple`**: a second bmi160 on an emulated SPI bus, and the
   sample's sensing tree over both, with the base on the board's own bmi160.
-- **`pm/latency`**: native_sim's three power states. That needed the SoC to
-  select `HAS_PM` and `wasm,cpu` to include `cpu.yaml`.
+- **`pm/latency`**: native_sim's three power states, and `wasm,cpu` now
+  includes `cpu.yaml` so the CPU can list them. It is on the page, which
+  shows the new note under its hint. A first try had the SoC select
+  `HAS_PM`; the sample selects it itself, as on native_sim, and the SoC's
+  select switched system PM on for `pm/device_pm`, which then wanted PM
+  hooks nothing provides. It is gone.
 
 Both of the last two also needed immediate logging, and that was the
 interesting part. native_sim logs immediately by default (`LOG_MODE_IMMEDIATE

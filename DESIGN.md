@@ -1260,8 +1260,9 @@ under the entry's hint. What they contain so far:
   the software video generator as `zephyr,camera`, and for `sensing/simple`
   a second bmi160 on an emulated SPI bus with the sample's sensing tree.
 - **Power states** for `pm/latency`, as native_sim's overlay declares them.
-  The SoC selects `HAS_PM`, and `wasm,cpu` includes `cpu.yaml` so a CPU can
-  list `cpu-power-states`.
+  The sample brings its own PM hooks and selects `HAS_PM` itself, as on
+  native_sim, whose SoC does not; the board's part was letting `wasm,cpu`
+  include `cpu.yaml`, so a CPU can list `cpu-power-states`.
 - **Immediate logging,** for the two samples whose timings assume it.
   native_sim logs immediately by default (`LOG_MODE_IMMEDIATE if
   ARCH_POSIX`). Deferred, `pm/latency`'s log thread wakes inside every
