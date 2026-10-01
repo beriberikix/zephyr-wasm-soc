@@ -1815,3 +1815,24 @@ start-up, the one upstream checks for among them.
 
 The board files also unfiltered one entry, `thermometer`, so twister would
 now run 103 applications here, not 102. Score 92.
+
+### Tick 78 — fixtures
+
+The next thing on Phase 5 was a sensor interrupt: the board's sensor bridge
+already sets what the emulated bmi160 reads, and could raise its interrupt
+pin on `gpio_emul` too. It would not have worked. When the pin fires, the
+bmi160 driver reads `INT_STATUS1` for its data-ready bit, and upstream's
+emulator answers every unknown register from a plain array, so the bit is
+never set and the handler never runs. No upstream sensor emulator drives an
+interrupt pin at all; that stays upstream emulator work (ROADMAP Phase 5).
+
+Looking at `accel_trig` closely found something else: its entry names
+`fixture: fixture_sensor_accel_int`. Twister runs a fixture entry only where
+the fixture is declared present, as a bench with the hardware attached
+would, and `check_samples.py` had ignored fixtures, so it counted
+`accel_trig` as runnable and failing. It now filters such an entry before
+building, unless the fixture is one this board has: its display
+(`fixture_display`, seven LVGL demos and three display samples) and the
+thermometer the board files attach (`sensor_ambient_temp`). `accel_trig` is
+now filtered, nothing that passes changed, and twister would run 102
+applications here, not 103. Score 92.
