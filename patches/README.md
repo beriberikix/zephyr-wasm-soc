@@ -115,6 +115,25 @@ presented as equivalent.
 This is the fourth patch caused by the same underlying thing, that Zephyr
 expects a linker that can order and group sections.
 
+## 0008-cbprintf-cxx-long-double-check-on-wasm.patch
+
+Every log call packs its arguments with cbprintf, and the packing macro
+asserts at compile time that no argument is a `long double` unless
+`CBPRINTF_PACKAGE_LONGDOUBLE` is set. The assertion only matters where a
+`long double` is aligned more strictly than a `double`. In C it tests the
+argument with `_Generic`. In C++ it calls a template function, which is not a
+constant expression, so on those targets every log call in C++ fails to
+compile.
+
+Zephyr already handles this with a list in `cbprintf_internal.h`: on
+x86_64, riscv and aarch64, the C++ test is skipped. wasm32's `long double` is
+binary128 with 16-byte alignment, the same case, and the patch adds `__wasm__`
+to the list. Without it, CHRE and `logging/syst`'s deferred C++ variants do
+not compile.
+
+It is another per-architecture list with no hook for an architecture outside
+the tree. Upstream could make the function `constexpr` and drop the list.
+
 ## picolibc/0001-exitprocs-no-fini-array-on-wasm.patch
 
 Picolibc registers the function that runs `atexit()` handlers by putting a

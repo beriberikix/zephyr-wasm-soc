@@ -26,9 +26,10 @@ of the list stands.
 ### D1. Workspace layout
 The module repo `zephyr-wasm/` is both the west manifest repo and the Zephyr
 module. Zephyr is pinned in `west.yml` to main commit `e201b84b` (v4.4.99).
-Nine Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
-`picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp`, `nanopb` and
-`mipi-sys-t`, through Zephyr's own manifest so they stay at Zephyr's pins.
+Eleven Zephyr modules are imported, `fatfs`, `littlefs`, `lvgl`,
+`picolibc`, `mbedtls`, `tf-psa-crypto`, `cmsis-dsp`, `nanopb`,
+`mipi-sys-t`, and from Zephyr's optional group `tflite-micro` and `chre`,
+through Zephyr's own manifest so they stay at Zephyr's pins.
 Nothing else is: the port needs no HAL, builds picolibc from its module as
 Zephyr's default C library (D11) and from the same checkout for the sysroot
 a full C++ library needs (D13), and a full import is hundreds of megabytes
@@ -1384,3 +1385,10 @@ leaves it out on wasm (D11).
 **picolibc/0002-libm-build-every-long-double-source-with-CMake.patch** adds
 six `long double` sources picolibc's CMake build left out and its meson build
 does not. Only the sysroot's libc++ reaches them (D13).
+
+**0008-cbprintf-cxx-long-double-check-on-wasm.patch** adds `__wasm__` to the
+architectures on which cbprintf's C++ build skips its `long double` check.
+That check is not a constant expression in C++, and wherever a `long double`
+is aligned more strictly than a `double`, the assertion that uses it does
+not compile. Zephyr already lists x86_64, riscv and aarch64 for the same
+reason.

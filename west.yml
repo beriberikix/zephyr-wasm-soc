@@ -15,6 +15,11 @@ manifest:
   self:
     path: zephyr-wasm
 
+  # Zephyr's manifest leaves its optional modules out. Two of them are in
+  # the allowlist below, so the group is turned back on; the allowlist still
+  # decides which projects there are.
+  group-filter: [+optional]
+
   remotes:
     - name: upstream
       url-base: https://github.com/zephyrproject-rtos
@@ -47,3 +52,9 @@ manifest:
           - nanopb
           # SyS-T, the MIPI trace format the logging/syst sample writes.
           - mipi-sys-t
+          # Two C++ libraries upstream's samples use, from Zephyr's optional
+          # modules: TensorFlow Lite for Microcontrollers and Android's
+          # Context Hub runtime. Both need a full C++ library, which comes
+          # from the wasm32 sysroot (DESIGN.md D13).
+          - tflite-micro
+          - chre

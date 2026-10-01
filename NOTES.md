@@ -1870,3 +1870,32 @@ With the toolchain declaring a picolibc, Zephyr would move every C build to
 it; the board keeps the module as the default unless a full C++ library is
 required, so no other build changed. `cpp/hello_world` prints "Hello, C++
 world! wasm_node" through `std::cout` and passes. Score 93.
+
+### Tick 80 — TensorFlow Lite Micro and CHRE
+
+The sysroot was built for these two. Both are in Zephyr's optional group,
+which its manifest leaves out, so the port's manifest turns the group back
+on (`group-filter: [+optional]`) and names the two in its allowlist; nothing
+else in the group comes with them. They add 48 MB and 15 MB to a checkout.
+
+TensorFlow Lite Micro's `hello_world` ran as it is: the sine model's table
+matches upstream's regex on the first build.
+
+CHRE did not compile. Every log call in it stopped on a static assertion in
+cbprintf: a `long double` argument may not be packed unless
+`CBPRINTF_PACKAGE_LONGDOUBLE` is set, and that only matters where a
+`long double` is aligned more strictly than a `double`. In C++, the test for
+"is this argument a `long double`" is a template function, not a constant
+expression. Zephyr skips it on x86_64, riscv and aarch64 for exactly this
+reason, in a list in `cbprintf_internal.h`. wasm32's binary128
+`long double` is the same case, so `patches/0008` adds `__wasm__` to the list.
+The same assertion was what stopped `logging/syst`'s two deferred C++ entries,
+recorded in the cause table as a clang quirk. It was this.
+
+Then the link: `z_wasm_fatal_error`, which `ARCH_EXCEPT` calls, was declared
+without C linkage, so C++ code that reached a fatal error looked for a
+mangled name. `exception.h` now has the `extern "C"` block every arch header
+needs. Nothing in C++ had called it before.
+
+CHRE then ran its echo nanoapp through to "Exiting EventLoop", every line
+upstream checks for. Score 95: 62 from the sweep, 33 from the demo.
