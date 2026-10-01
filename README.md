@@ -158,7 +158,8 @@ zephyr-wasm/scripts/build_sysroot.sh    # only for samples that need a full C++ 
 
 `west update` also fetches the modules the samples here use, and nothing
 else: FatFs and littlefs, LVGL, picolibc, mbedTLS and its PSA crypto,
-CMSIS-DSP, nanopb and SyS-T. `west.yml` imports them from Zephyr's manifest by
+CMSIS-DSP, nanopb, SyS-T, and two of Zephyr's optional modules, TensorFlow
+Lite Micro and CHRE. `west.yml` imports them from Zephyr's manifest by
 name. nanopb generates C from `.proto` files as it builds, which needs
 `pip install grpcio-tools` alongside Zephyr's own Python requirements.
 
@@ -170,7 +171,7 @@ downloads the matching LLVM source unless `LLVM_TARBALL` names a copy. It does
 nothing if the sysroot is already built from the same sources. Everything
 else builds without it.
 
-The Zephyr tree is otherwise read-only. Seven patches are needed and each is
+The Zephyr tree is otherwise read-only. Eight patches are needed and each is
 explained in `patches/README.md`; most of them are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists. One more, under `patches/picolibc/`, is to

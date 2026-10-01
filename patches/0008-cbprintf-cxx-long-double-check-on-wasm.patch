@@ -1,0 +1,14 @@
+diff --git a/include/zephyr/sys/cbprintf_internal.h b/include/zephyr/sys/cbprintf_internal.h
+index 98a207304f8..4113d2f10c3 100644
+--- a/include/zephyr/sys/cbprintf_internal.h
++++ b/include/zephyr/sys/cbprintf_internal.h
+@@ -678,7 +678,8 @@ extern "C" {
+  * @return 1 if @p x is a long double, 0 otherwise.
+  */
+ #ifdef __cplusplus
+-#if defined(__x86_64__) || defined(__riscv) || defined(__aarch64__)
++#if defined(__x86_64__) || defined(__riscv) || defined(__aarch64__) || \
++	defined(__wasm__)
+ #define Z_CBPRINTF_IS_LONGDOUBLE(x) 0
+ #else
+ #define Z_CBPRINTF_IS_LONGDOUBLE(x) z_cbprintf_cxx_is_longdouble(x)

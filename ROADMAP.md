@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **93**. 60 pass upstream's own criterion, and 33 more are counted
+today: **95**. 62 pass upstream's own criterion, and 33 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -56,7 +56,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 93, ten count only
+criterion, which is why it is spelled out: of the 95, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -166,8 +166,8 @@ cause is in `samples.json`):
 | Cause | entries | what it is |
 |---|---:|---|
 | Wasm's indirect-call check | 24 | 11 applications, 7 of them zbus; D8b, below |
-| Other build errors | 9 | `llext` (2) wants an ELF toolchain; `logging/syst`'s two `deferred_cpp` entries stop on a C++11 `static_assert` under clang; `tflite-micro` needs its module; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
-| Kconfig refuses | 11 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
+| Other build errors | 6 | `llext` (2) wants an ELF toolchain; `debug.fuzz` wants native_sim's `irq_ctrl.h`; the ztest benchmark wants per-arch assembly; dictionary logging and a Bluetooth monitor UART |
+| Kconfig refuses | 10 | options the board cannot satisfy, e.g. the x86-only `minimal` variants |
 | No such device | 6 | a devicetree node this board has no driver for (`__device_dts_ord_N`): auxdisplay, EEPROM on a bus, ... |
 | Link | 1 | `get_bootargs` |
 | Overlay does not parse | 3 | x86- or board-specific devicetree overlays |
@@ -224,7 +224,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 93. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 95. Phases 5 and 6 have started; 7 has not. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -251,8 +251,6 @@ What comes next, in order, and why:
 4. **Someone learning Zephyr tries the lesson.** It is built and checked,
    but whether it teaches is a question only its audience can answer, and
    what they get stuck on should decide the second lesson.
-5. **More of C++.** The standard library is there (below); `tflite-micro`
-   waits on importing its module, and is the next sample it could count.
 
 The C library spike that was first on this list is done: picolibc builds,
 three more samples pass, and C++ constructors run (below, "Two levers"). So
@@ -285,7 +283,11 @@ files for a sample, as upstream keeps native_sim's, took it to 92 with
 `flow_meter`, `fingerprint`, `thermometer`, `sensing/simple`, `pm/latency`
 and `video/capture`. A wasm32 sysroot with picolibc and libc++, as the
 Zephyr SDK provides for other architectures (DESIGN.md D13), took it to 93
-with `cpp/hello_world`.
+with `cpp/hello_world`. Importing two of Zephyr's optional C++ modules took
+it to 95: TensorFlow Lite Micro's `hello_world` ran as it is, and CHRE did
+once cbprintf's `long double` check skipped wasm as it skips the other
+targets whose `long double` is 16-byte aligned (`patches/0008`). The same
+patch let `logging/syst`'s deferred C++ variants build.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -995,7 +997,9 @@ and the two largest groups are not in any phase.
       LLVM release CI's clang comes from (DESIGN.md D13). A build that sets
       `REQUIRES_FULL_LIBCPP` uses it, and nothing else does. `cpp/hello_world`
       prints through `std::cout` and passes. It needed one picolibc patch,
-      six `long double` sources its CMake build left out.
+      six `long double` sources its CMake build left out. With it, the
+      optional `tflite-micro` and `chre` modules are imported and both
+      samples pass.
 - [ ] **Propose the D8b signature fixes upstream.** Prepared and checked;
       waiting on someone to send them. `upstream/zephyr/` holds six patches,
       one per maintainer area:

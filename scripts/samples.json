@@ -502,9 +502,8 @@
     {
       "path": "zephyr/samples/modules/chre",
       "entry": "sample.modules.chre",
-      "status": "build-fails",
-      "cause": "kconfig",
-      "detail": "Aborting due to Kconfig warnings"
+      "note": "Runs as it is once the chre module is imported, with the full C++ library from the wasm32 sysroot (DESIGN.md D13) and the long double fix in patches/0008.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/modules/cmsis_dsp/moving_average",
@@ -576,10 +575,8 @@
     {
       "path": "zephyr/samples/modules/tflite-micro/hello_world",
       "entry": "sample.tensorflow.helloworld",
-      "note": "Needs the tflite-micro module, which is not imported. The full C++ library it also needs comes from the wasm32 sysroot (DESIGN.md D13).",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "'tensorflow/lite/micro/micro_mutable_op_resolver.h' file not found"
+      "note": "Runs as it is once the tflite-micro module is imported, with the full C++ library from the wasm32 sysroot (DESIGN.md D13).",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/net/dhcpv4_client",
@@ -1023,53 +1020,49 @@
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.deferred_cpp",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "static assertion expression is not an integral constant expression"
+      "note": "The deferred C++ variants stopped on cbprintf's long double check, which C++ cannot evaluate where long double is aligned wider than double, wasm32 among them. patches/0008 puts wasm on the list of architectures that skip it.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.immediate_cpp",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.deferred_cpp",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
-      "status": "build-fails",
-      "cause": "other",
-      "detail": "static assertion expression is not an integral constant expression"
+      "note": "The deferred C++ variants stopped on cbprintf's long double check, which C++ cannot evaluate where long double is aligned wider than double, wasm32 among them. patches/0008 puts wasm on the list of architectures that skip it.",
+      "status": "passes"
     },
     {
       "path": "zephyr/samples/subsys/logging/syst",
       "entry": "sample.logging.syst.catalog.immediate_cpp",
-      "note": "Needs the mipi-sys-t module, which is not imported, so as recorded the build stops on mipi_syst.h. Imported (tried), it stops on __builtin_return_address, which clang does not implement for wasm and which Zephyr's SyS-T configuration uses for location addresses; the deferred_cpp variants also hit a static assertion.",
+      "note": "Passes with the mipi-sys-t module imported and __builtin_return_address, which clang does not implement for wasm, defined to 0 for that library (cmake/modules_wasm.cmake).",
       "status": "passes"
     },
     {
@@ -1504,5 +1497,5 @@
       "detail": "CONFIG_ARCH_HAS_USERSPACE"
     }
   ],
-  "score": 60
+  "score": 62
 }
