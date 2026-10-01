@@ -1776,3 +1776,36 @@ and `flow_meter` (native_sim overlays), fingerprint (an emulator on
 native_sim's second UART), `chre` (optional module, C++17 library), and
 dictionary logging and `smp_svr`'s DTLS entry, which upstream only builds.
 Score 86.
+
+### Tick 77 — the board's own files for a sample
+
+Upstream puts what a sample needs on native_sim in the sample's
+`boards/native_sim.overlay` and `.conf`. The question was whether this board
+may have the same, and the answer was yes: overlays and Kconfig fragments,
+never source (ROADMAP.md, "A board's own files for a sample"). They live in
+`boards/wasm/wasm_node/apps/<path>/`, and `sweeplib.py` applies them as
+Zephyr applies a board's own (DESIGN.md D12): the overlay in place of
+`app.overlay`, the conf after `prj.conf`. Anything else in that directory is
+refused, the sample record marks each entry built with them, and the page
+says so.
+
+Six samples count with them:
+- **`flow_meter`**: a meter on `gpio0` pin 6. The sample pulses the
+  emulated pin itself and reads a litre. It is on the page, which also
+  checks the page's new note.
+- **`fingerprint`**: upstream's biometrics emulator, as native_sim has.
+- **`thermometer`**: an adt7420 on `i2c0`, whose emulator reads 0.0 °C.
+- **`video/capture`**: the software video generator as the camera, which
+  native_sim's entry gets from a snippet.
+- **`sensing/simple`**: a second bmi160 on an emulated SPI bus, and the
+  sample's sensing tree over both, with the base on the board's own bmi160.
+- **`pm/latency`**: native_sim's three power states. That needed the SoC to
+  select `HAS_PM` and `wasm,cpu` to include `cpu.yaml`.
+
+Both of the last two also needed immediate logging, and that was the
+interesting part. native_sim logs immediately by default (`LOG_MODE_IMMEDIATE
+if ARCH_POSIX`), and both samples assume it. Deferred, `pm/latency` entered
+its first power state and never another: the log thread's one-second
+wake-up after each message fell inside every 1.1 to 1.3 s sleep, so no
+state's residency was ever met. `sensing/simple` dropped 28 messages at
+start-up, the one upstream checks for among them.

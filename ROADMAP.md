@@ -39,7 +39,8 @@ way to watch an LED, press a button or a screen, or give a board a peer, so
 the demo's own checks judge them.
 
 **What "unmodified" means for a pair.** The source is never touched. A single
-board is built only as upstream's own test entry builds it. A pair's boards
+board is built only as upstream's own test entry builds it, with this board's
+own files for the sample where it has them (below). A pair's boards
 may also be given build arguments that put two boards on one network, and
 nothing else:
 - the link itself (`-DSNIPPET=wasm-ethernet`);
@@ -57,6 +58,17 @@ criterion, which is why it is spelled out: of the 86, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
+
+**A board's own files for a sample.** Upstream keeps what a sample needs on
+native_sim in the sample's `boards/native_sim.overlay` and `.conf`: the
+devices it uses there, and options that board needs for it. This board has
+the same, in `boards/wasm/wasm_node/apps/<path>/wasm_node.overlay` and
+`.conf`, applied exactly as Zephyr applies a board's own (DESIGN.md D12).
+They may be an overlay and a Kconfig fragment and nothing else: never
+source, which `scripts/sweeplib.py` refuses. The sample record marks every
+entry built with them, and the page says so. Six samples count with them:
+`flow_meter`, `fingerprint`, `thermometer`, `sensing/simple`, `pm/latency`
+and `video/capture`.
 
 **And for a board on a real network.** Its peer is a relay (`DESIGN.md`
 D8l), and it is built as upstream ships it with the link turned on, and

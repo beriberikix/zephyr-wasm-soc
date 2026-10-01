@@ -1231,6 +1231,43 @@ Two more came from the samples that picolibc let through:
   refused every thread. The arch defaults `DYNAMIC_THREAD_STACK_SIZE` to the
   buffer size, as x86 raises it for its own reasons.
 
+### D12. A sample may be given this board's files, as native_sim's are
+
+Upstream describes what a sample needs on a particular board in that
+sample's `boards/` directory: `boards/native_sim.overlay` declares the
+devices it needs there, and `boards/native_sim.conf` sets the options that
+board needs for it. Twister and the build apply them automatically when
+building for that board, and nowhere else. On any other board the sample
+finds only what the board's own devicetree has, so many samples that run
+on native_sim are filtered out here, or build and find no device.
+
+This board has the same: `boards/wasm/wasm_node/apps/<path>/wasm_node.overlay`
+and `wasm_node.conf`, where `<path>` is the application's path under
+`zephyr/`. `scripts/sweeplib.py` applies them the way Zephyr applies a
+board's own: the overlay replaces the application's `app.overlay`, unless
+the build names `DTC_OVERLAY_FILE` itself, and the conf file is merged after
+`prj.conf` and before any `EXTRA_CONF_FILE`. Both sweeps and `stage_site.sh`
+use it, so a sample is built the same way wherever it runs. If this board
+were upstream, these would be `samples/<x>/boards/wasm_node.*`, unchanged.
+
+The rule is the one native_sim's files follow: an overlay and a Kconfig
+fragment, and nothing else. `sweeplib.board_files()` refuses any other file
+in such a directory, so source cannot slip in. The sample record marks
+every entry built with them (`"board_files": true`), and the page says so
+under the entry's hint. What they contain so far:
+- **Devices upstream emulates,** placed on the board's buses: a flow meter
+  on `gpio0`, the biometrics emulator, an adt7420 thermometer on `i2c0`,
+  the software video generator as `zephyr,camera`, and for `sensing/simple`
+  a second bmi160 on an emulated SPI bus with the sample's sensing tree.
+- **Power states** for `pm/latency`, as native_sim's overlay declares them.
+  The SoC selects `HAS_PM`, and `wasm,cpu` includes `cpu.yaml` so a CPU can
+  list `cpu-power-states`.
+- **Immediate logging,** for the two samples whose timings assume it.
+  native_sim logs immediately by default (`LOG_MODE_IMMEDIATE if
+  ARCH_POSIX`). Deferred, `pm/latency`'s log thread wakes inside every
+  sleep, so no power state's residency is met, and `sensing/simple` drops
+  the line upstream checks for.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.

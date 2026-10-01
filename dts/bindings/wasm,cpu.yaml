@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 description: WebAssembly execution environment
 compatible: "wasm,cpu"
-include: base.yaml
+# Zephyr's common CPU properties, cpu-power-states among them.
+include: cpu.yaml

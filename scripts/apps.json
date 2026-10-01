@@ -198,6 +198,19 @@
       ]
     },
     {
+      "name": "flow",
+      "app": "zephyr/samples/sensor/flow_meter",
+      "kind": "sample",
+      "title": "Flow meter",
+      "hint": "Counts a flow meter's pulses on a GPIO pin and reports the volume until a litre has passed. The sample makes the pulses itself, through Zephyr's emulated GPIO controller.",
+      "upstream": true,
+      "max_time_ms": 30000,
+      "expect": [
+        "1 L volume threshold armed",
+        "Volume threshold reached! Total volume: 1.000000 L"
+      ]
+    },
+    {
       "name": "accel",
       "app": "zephyr/samples/sensor/accel_polling",
       "kind": "sample",
