@@ -339,8 +339,9 @@ under risks and then never schedules it. Everything above the kernel stands on
 the kernel, so this comes first.
 
 - [x] **Run the rest of `tests/kernel`.** Done, and it was worth doing: 25
-      suites and 441 passing cases, against one suite before. 16 pass
-      outright, 4 finish with failures, 5 do not finish.
+      suites and 441 passing cases, against one suite before. 16 passed
+      outright at first, 4 finished with failures and 5 did not finish;
+      now 22 pass (below).
       `scripts/kernel_tests.json` records each one and
       `scripts/check_kernel.py` re-runs them, so it stays true.
 
@@ -357,17 +358,20 @@ the kernel, so this comes first.
       - `DEVICE_API_IS()` on an extended class is wrong, which patch 0007
         says it would be. Now demonstrated by `tests/kernel/device` rather
         than predicted.
-- [ ] **The two suites that do not finish for unknown reasons**:
-      `threads/thread_apis` and `sched/schedule_api`. There were three.
-      `mem_heap/k_heap_api` passes all 23 cases now that iterable sections
-      are in upstream's order, because ztest now runs the cases in upstream's
-      order too. In link order, a case that ran earlier left the heap's
-      spinlock held. Which case that was is still unknown; upstream's order
-      simply never exposes it.
-- [ ] **Timer accuracy.** `common`, `timer/timer_api` and
-      `tickless/tickless_concept` all fail on how long something took, which
-      is one question wearing three hats: a slice ends at the next safepoint
-      rather than on the tick.
+- [x] **The two suites that do not finish for unknown reasons**, and
+      **timer accuracy.** Both had port causes, and the theory for the
+      second was wrong. `common`, `timer/timer_api`,
+      `tickless/tickless_concept` and `sched/schedule_api` were put down to
+      a time slice ending at the next safepoint rather than on the tick.
+      All four measure with `k_busy_wait()`, and the busy-wait replaced the
+      kernel timer's alarm with its own, so a timer due during the wait
+      fired only after it. The wait now stops at the kernel's deadline
+      too, and takes the interrupt there (`DESIGN.md` D8d).
+      `threads/thread_apis` trapped where an essential thread aborts
+      itself: the kernel panics after the thread is already dead and then
+      switches away, which needs the fatal path to return, as arm64's
+      does. 22 of 25 suites now pass, and the other three are patch 0007
+      and D8b.
 - [x] **The manifest and the score**, as above. The score is now the
       samples sweep; see the measure.
 - [ ] **Twister.** It builds for this board but cannot find the module's SoC,

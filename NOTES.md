@@ -1899,3 +1899,38 @@ needs. Nothing in C++ had called it before.
 
 CHRE then ran its echo nanoapp through to "Exiting EventLoop", every line
 upstream checks for. Score 95: 62 from the sweep, 33 from the demo.
+
+### Tick 81 — the kernel suites, and a busy-wait that took the alarm
+
+Phase 0 had five suites marked as open: two that did not finish for
+reasons not found, and three that failed on timing. The timing ones had a
+theory, that a time slice ends at the next safepoint rather than on the tick.
+Nobody had tested it.
+
+The first suite read, `common`'s `test_ms_time_duration`, says what was
+wrong. It starts a 100 ms timer, busy-waits 101 ms, and expects the timer to
+have fired. `arch_busy_wait` cannot spin against virtual time, so it sets the
+host's alarm to its own deadline and waits. The host has one alarm, and the
+kernel's timer had it. The wait replaced it, the host moved the clock to
+101 ms, and the wait returned with the timer interrupt pending, before
+anything took it. Hardware takes it while spinning.
+
+The wait now stops at the earlier of its own deadline and the kernel's,
+which the timer driver records in `z_wasm_timer_alarm_ns`, dispatches what is
+pending when interrupts are unmasked, and gives the alarm back at the end.
+`common`, `timer/timer_api`, `tickless/tickless_concept` and
+`sched/schedule_api` all pass with it: every one of them measured with
+`k_busy_wait()`. The safepoint theory was wrong.
+
+`threads/thread_apis` trapped on `unreachable` in
+`test_essential_thread_abort_self`. An essential thread that aborts itself
+is marked dead, then panics; the test's handler returns, `z_fatal_error`
+finds the thread already dead and returns, and the kernel's own path
+switches away. That needs `ARCH_EXCEPT` to return, as arm64's `svc` does.
+Here it ended in `CODE_UNREACHABLE`, which in wasm is a trap. It now
+returns; a thread that can be aborted is still switched away from inside
+`z_fatal_error` and never comes back. 41 cases pass. Upstream's own comment
+on the case says x86 and SPARC cannot do this yet.
+
+22 of 25 kernel suites pass, up from 17. The other three are patch 0007's
+`DEVICE_API_IS()` approximation and the two D8b suites.
