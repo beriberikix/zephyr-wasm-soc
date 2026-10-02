@@ -490,6 +490,18 @@ idle, which returned at once, and forever, for a bit it could not take.
 CI never saw it, because its scripted reading came 1.5 s in. The
 accelerometer entry now sends one at 0 ms as well.
 
+**A busy-wait takes interrupts.** `k_busy_wait()` cannot spin against
+virtual time, so `arch_busy_wait()` asks the host to move the clock to its
+deadline. The host has one alarm, and the kernel's timer is using it. The
+wait used to replace it with its own deadline, so a timer that fell due
+during the wait fired only after the wait returned, where hardware takes it
+while spinning. Now the wait stops at whichever comes first, the kernel's
+deadline (`z_wasm_timer_alarm_ns`, recorded by the timer driver) or its own,
+and takes whatever is pending each time; with interrupts masked it only
+waits, as a CPU with them locked would. The kernel's alarm goes back at the
+end. Four kernel suites that had been put down to time slices ending at
+safepoints passed once this was fixed (section 4a).
+
 ### D5b. Pacing: waiting afterwards, not deciding beforehand
 
 A sample that blinks once a second is correct under virtual time and
@@ -1349,19 +1361,22 @@ All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
 
 `scripts/kernel_tests.json` records how each of Zephyr's own kernel suites
 does here and `scripts/check_kernel.py` re-runs them, so this stops being a
-number taken once. At the time of writing, 25 suites and 441 passing cases:
-16 pass outright, 4 finish with failures, and 5 do not finish.
+number taken once. Of 25 suites, 22 pass outright, one finishes with
+failures, and two do not finish. Each of the three has a known cause, and
+none is the port's to fix:
+- `device` fails exactly the four cases that exercise `DEVICE_API_IS()` on an
+  extended class, which is patch 0007's documented approximation
+  demonstrated rather than predicted.
+- `mutex/mutex_api` and `pending` are D8b above: their thread entries have
+  the wrong signature, and `upstream/zephyr/` has the fix.
 
-The four that fail cluster into two causes and one unknown. `device` fails
-exactly the four cases that exercise `DEVICE_API_IS()` on an extended class,
-which is patch 0007's documented approximation demonstrated rather than
-predicted. `common` and `timer/timer_api` both fail on timer duration
-accuracy, and `tickless/tickless_concept` on slice length: a slice ends at
-the next safepoint rather than on the tick, so slicing works but its timing
-is approximate.
-
-Of the five that do not finish, two are D8b above and are not the port's to
-fix. The other three are open.
+Timing was blamed for four more, on the theory that a time slice ends at the
+next safepoint rather than on the tick. It was not that. `common`,
+`timer/timer_api`, `tickless/tickless_concept` and `sched/schedule_api` all
+measure with `k_busy_wait()`, and the busy-wait was taking the kernel's alarm
+(D8d, "A busy-wait takes interrupts"). `threads/thread_apis` trapped because
+the fatal path could not return when the kernel needed it to
+(`arch/wasm/core/fatal.c`).
 
 ## 5. Changes to the Zephyr tree
 

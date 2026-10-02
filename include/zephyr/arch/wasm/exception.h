@@ -23,10 +23,10 @@ struct arch_esf {
 
 extern void z_wasm_fatal_error(unsigned int reason, const struct arch_esf *esf);
 
+/* It may return, as arm64's does: see z_wasm_fatal_error(). */
 #define ARCH_EXCEPT(reason_p)                                   \
 	do {                                                    \
 		z_wasm_fatal_error((reason_p), NULL);           \
-		CODE_UNREACHABLE;                               \
 	} while (false)
 
 #ifdef __cplusplus

@@ -99,17 +99,15 @@
     },
     {
       "path": "common",
-      "status": "fails",
-      "passes": 77,
-      "failures": 1,
-      "note": "test_ms_time_duration: a k_timer with a millisecond duration reports no expiry. Timer resolution under virtual time, not yet diagnosed."
+      "status": "passes",
+      "passes": 78,
+      "note": "Passes since arch_busy_wait stopped replacing the kernel timer's alarm with its own: test_ms_time_duration's timer falls due during a busy-wait, and fires there now, as on hardware."
     },
     {
       "path": "timer/timer_api",
-      "status": "fails",
-      "passes": 95,
-      "failures": 6,
-      "note": "Timer duration and period accuracy. Same area as the common failure and probably the same cause."
+      "status": "passes",
+      "passes": 101,
+      "note": "Passes since the busy-wait fix (see common): its duration and period checks busy-wait across timer expiries."
     },
     {
       "path": "device",
@@ -120,10 +118,9 @@
     },
     {
       "path": "tickless/tickless_concept",
-      "status": "fails",
-      "passes": 1,
-      "failures": 1,
-      "note": "test_tickless_slice: the time slice does not land within one tick of its nominal length. Slicing works -- tests/timeslice proves it -- but its timing is approximate, because a slice ends at the next safepoint rather than on the tick."
+      "status": "passes",
+      "passes": 2,
+      "note": "Passes since the busy-wait fix (see common). The slice was never late; the busy-wait that measured it hid the tick."
     },
     {
       "path": "mutex/mutex_api",
@@ -139,15 +136,15 @@
     },
     {
       "path": "threads/thread_apis",
-      "status": "does-not-finish",
-      "passes": 13,
-      "note": "Traps after 13 cases. Not yet diagnosed."
+      "status": "passes",
+      "passes": 41,
+      "note": "Passes since z_wasm_fatal_error may return: an essential thread that aborts itself panics after it is already dead, and the kernel switches away only once the fatal path returns."
     },
     {
       "path": "sched/schedule_api",
-      "status": "does-not-finish",
-      "passes": 11,
-      "note": "test_time_slicing_preemptible fails, then test_lock_preemptible panics. Not yet diagnosed."
+      "status": "passes",
+      "passes": 21,
+      "note": "Passes since the busy-wait fix (see common): test_time_slicing_preemptible busy-waits through each slice, and a slice that ended inside the wait was taken only after it."
     },
     {
       "path": "mem_heap/k_heap_api",
