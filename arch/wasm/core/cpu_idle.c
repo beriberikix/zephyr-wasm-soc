@@ -78,16 +78,40 @@ void arch_cpu_atomic_idle(unsigned int key)
 	z_wasm_irq_masked = key;
 }
 
+int64_t z_wasm_timer_alarm_ns = INT64_MAX;
+
 void arch_busy_wait(uint32_t usec_to_wait)
 {
 	/* Busy waiting against virtual time would never finish, because
 	 * virtual time only advances when the host is idle. Ask the host to
 	 * advance instead.
+	 *
+	 * On hardware the CPU takes interrupts while it spins, so a timer that
+	 * falls due during the wait has fired by the time it ends. The host has
+	 * one alarm, and the kernel's timer is using it, so the wait stops at
+	 * whichever comes first, the kernel's deadline or its own, and takes
+	 * what is pending each time it does. Masked, it only waits, as a CPU
+	 * with interrupts locked would. The kernel's alarm goes back at the end.
 	 */
 	int64_t deadline = wasm_host_time_now_ns() + (int64_t)usec_to_wait * 1000;
+	int64_t now;
 
-	while (wasm_host_time_now_ns() < deadline) {
-		wasm_host_set_alarm_ns(deadline);
+	while ((now = wasm_host_time_now_ns()) < deadline) {
+		int64_t wake = deadline;
+
+		if (z_wasm_irq_masked == 0U && z_wasm_timer_alarm_ns > now &&
+		    z_wasm_timer_alarm_ns < wake) {
+			wake = z_wasm_timer_alarm_ns;
+		}
+		wasm_host_set_alarm_ns(wake);
 		wasm_host_wait_for_event();
+
+		if (z_wasm_irq_masked == 0U && z_wasm_irq_active() != 0U) {
+			z_wasm_irq_dispatch();
+			if (!arch_is_in_isr()) {
+				z_reschedule_unlocked();
+			}
+		}
 	}
+	wasm_host_set_alarm_ns(z_wasm_timer_alarm_ns);
 }

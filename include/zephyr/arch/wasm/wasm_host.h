@@ -201,4 +201,10 @@ extern struct wasm_switch_block z_wasm_switch_block;
 extern volatile uint32_t z_wasm_irq_pending;
 extern volatile uint32_t z_wasm_irq_masked;
 
+/* The deadline the system timer last gave the host, INT64_MAX for none. The
+ * host keeps a single alarm, and a busy-wait borrows it; this is how the wait
+ * knows when the kernel's own deadline falls and puts it back afterwards.
+ */
+extern int64_t z_wasm_timer_alarm_ns;
+
 #endif /* ZEPHYR_INCLUDE_ARCH_WASM_WASM_HOST_H_ */

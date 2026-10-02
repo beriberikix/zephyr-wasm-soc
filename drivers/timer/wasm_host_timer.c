@@ -59,6 +59,7 @@ void sys_clock_set_timeout(uint32_t ticks, bool idle)
 		/* Nothing to wake for. Leaving no alarm set is what lets the
 		 * host decide the run is over.
 		 */
+		z_wasm_timer_alarm_ns = INT64_MAX;
 		wasm_host_set_alarm_ns(INT64_MAX);
 		return;
 	}
@@ -76,6 +77,7 @@ void sys_clock_set_timeout(uint32_t ticks, bool idle)
 	int64_t at = last_announced_ns +
 		     ((int64_t)sys_clock_elapsed() + (int64_t)ticks) * NSEC_PER_TICK;
 
+	z_wasm_timer_alarm_ns = at;
 	wasm_host_set_alarm_ns(at);
 }
 
