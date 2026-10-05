@@ -168,10 +168,9 @@ static int uart_wasm_host_irq_is_pending(const struct device *dev)
 	return uart_wasm_host_irq_tx_ready(dev) || uart_wasm_host_irq_rx_ready(dev);
 }
 
-static int uart_wasm_host_irq_update(const struct device *dev)
+static void uart_wasm_host_irq_update(const struct device *dev)
 {
 	ARG_UNUSED(dev);
-	return 1;
 }
 
 static void uart_wasm_host_irq_callback_set(const struct device *dev,

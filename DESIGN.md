@@ -1180,18 +1180,39 @@ nothing names it. For a build that has to be read, add
 version of this note said the link called wasm-ld directly so that names
 survived. It did not, and nothing noticed until a trap needed naming.
 
-### D10. The UART is polled
+### D10. The UART takes interrupts
 
-Nothing lets the host interrupt the guest: the only mechanism is the pending
-word, and that is read at safepoints. An interrupt-driven UART would have
-nothing to fire it, so the driver implements `poll_in` and `poll_out` only.
-That costs nothing in practice, because a shell thread blocks between
-characters.
+It began polled, on the reasoning that nothing let the host interrupt the
+guest. That stopped being true with the pending word: the host sets a bit
+and the guest takes it at its next safepoint, and GPIO, input, sensors and
+Ethernet all interrupt that way. The UART now does too
+(`CONFIG_UART_INTERRUPT_DRIVEN`), on line 5. Zephyr's Bluetooth transport,
+H4, needs it, which is why it came first in Phase 7.
 
-Input also forced a change in the host. It reads stdin through Node's event
-loop, which never got a turn because the Asyncify driver is a synchronous
-loop. It now yields whenever the guest idles, which is when input can matter
-and never on a hot path.
+Three things make a host UART look like one on a board:
+- **Arrival.** The host raises the line when bytes arrive for the board,
+  once per arrival rather than for as long as they wait, so a guest that
+  never reads cannot be stormed. Bytes join the queue from the page, stdin
+  and a pair's script, so the run loop compares how many have arrived with
+  how many it last raised for.
+- **A byte of look-ahead.** `uart_irq_rx_ready()` must say whether a byte is
+  waiting without taking it, and the host's import only takes. The driver
+  reads one ahead and keeps it, so the ABI did not change.
+- **An empty transmitter.** The host takes every byte as it is written, so
+  the transmit FIFO is always empty, and an enabled TX-empty interrupt fires
+  at once and keeps firing, as on hardware. The driver raises its own line
+  for that (`z_wasm_irq_raise()`), on enable and at the end of each ISR while
+  transmit stays enabled, which is how upstream's `uart_emul` behaves too.
+
+Once the UART can interrupt, Zephyr builds every shell interrupt-driven, as
+on every real board (`SHELL_BACKEND_SERIAL_INTERRUPT_DRIVEN` defaults to y).
+The shell builds on the page changed mode with it and type and answer as
+before.
+
+Input also forced a change in the host early on. It reads stdin through
+Node's event loop, which never got a turn because the Asyncify driver is a
+synchronous loop. It yields whenever the guest idles, which is when input
+can matter and never on a hot path.
 
 ### D11. The C library is picolibc, built from its module
 

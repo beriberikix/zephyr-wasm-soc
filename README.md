@@ -37,7 +37,8 @@ log, including what did not work. `BRIEF.md` is the original task.
 * Two runs in virtual time produce byte-identical output.
 * Two equal-priority threads that never yield are time-sliced against each
   other, through safepoints inserted after linking.
-* `samples/subsys/shell/shell_module` runs interactively over a polled UART.
+* `samples/subsys/shell/shell_module` runs interactively over an interrupt-driven
+  UART, and `samples/drivers/uart/echo_bot` echoes what is typed into it.
 * Flash and EEPROM, as upstream's simulators, with NVS, ZMS and settings on
   top. `sys_reboot()` is a warm reboot that keeps the flash, and the flash
   survives the run too: in a file under Node, in IndexedDB in a browser.

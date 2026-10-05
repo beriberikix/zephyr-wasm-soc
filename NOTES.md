@@ -2007,3 +2007,28 @@ halt, and the run ends with the reason and exit code 1.
 entry sets `ignore_faults`, as twister does, so a sample cannot pass with a
 thread dead. No sample sets it, and the thread-signature samples stay
 recorded as they were.
+
+### Tick 84 — the UART takes interrupts
+
+Phase 7 starts with what H4, Zephyr's UART transport for Bluetooth, needs:
+`CONFIG_UART_INTERRUPT_DRIVEN`. The driver's comment said the host cannot
+interrupt the guest, which stopped being true when the pending word came in;
+four other devices interrupt through it already.
+
+The UART is line 5. The host raises it when bytes arrive, once per arrival:
+bytes reach its queue from the page, stdin and a pair's script, so the run
+loop counts how many have arrived against how many it last raised for. A
+guest that never reads is told once, not stormed. The driver needs to say
+whether a byte is waiting without taking it, and the import only takes, so
+it reads one ahead. The transmitter is always empty, since the host takes
+every byte at once, so an enabled TX interrupt fires at once and keeps
+firing; the driver raises its own line for that, as upstream's `uart_emul`
+does.
+
+Once the board advertises interrupt support, every shell builds
+interrupt-driven, as on any real board. The shell sample answers typed
+commands the same as before.
+
+`drivers/uart/echo_bot` echoes what is typed. Its upstream harness is a
+keyboard, which twister cannot drive, so it is not in the sweep; the demo
+types into it and counts it as it counts `basic/button`. Score 96.
