@@ -1,0 +1,18 @@
+diff --git a/scripts/pylib/twister/twisterlib/runner.py b/scripts/pylib/twister/twisterlib/runner.py
+index b0546281b27..f23b365e955 100644
+--- a/scripts/pylib/twister/twisterlib/runner.py
++++ b/scripts/pylib/twister/twisterlib/runner.py
+@@ -1060,6 +1060,13 @@ class ProjectBuilder(FilterBuilder):
+ 
+         elf_file = self.instance.get_elf_file()
+         with open(elf_file, "rb") as elf_fp:
++            if elf_fp.read(4) != b'\x7fELF':
++                # Not every image is an ELF file: a WebAssembly one has no
++                # symbol table to read. Its cases are found in its output.
++                logger.debug(f"{elf_file} is not an ELF file; "
++                             "test cases come from the output")
++                return
++            elf_fp.seek(0)
+             elf = ELFFile(elf_fp)
+ 
+             for section in elf.iter_sections():

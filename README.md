@@ -171,7 +171,7 @@ downloads the matching LLVM source unless `LLVM_TARBALL` names a copy. It does
 nothing if the sysroot is already built from the same sources. Everything
 else builds without it.
 
-The Zephyr tree is otherwise read-only. Eight patches are needed and each is
+The Zephyr tree is otherwise read-only. Nine patches are needed and each is
 explained in `patches/README.md`; most of them are the same underlying
 gap, which is that several places in Zephyr assume an architecture is in-tree
 or assume a linker script exists. One more, under `patches/picolibc/`, is to

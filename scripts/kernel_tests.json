@@ -157,8 +157,9 @@
       "extra_args": [
         "-DCONF_FILE=sentinel.conf"
       ],
-      "status": "untried",
-      "note": "Upstream's kernel.common.stack_sentinel entry: a thread overflows its stack, and the sentinel must catch it from a timer interrupt and from a swap."
+      "status": "does-not-finish",
+      "note": "Upstream's kernel.common.stack_sentinel entry. Its first two cases raise a CPU exception by calling an illegal address and dividing by zero, and in wasm both are traps, which unwind to the host and cannot be caught. With those two raised in software instead (a scratch copy, not committed), every other case passes, both stack sentinel checks among them: from a timer interrupt and from a swap.",
+      "passes": 0
     }
   ]
 }
