@@ -55,6 +55,13 @@ function(wasm_add_asyncify_step)
   set(wasm_out ${PROJECT_BINARY_DIR}/zephyr.wasm)
   set(linked $<TARGET_FILE:${logical_target_for_zephyr_elf}>)
 
+  # The steps below run after the link, so only when it re-runs. Make a change
+  # to the scripts that do them relink, or an incremental build keeps output
+  # instrumented by the old ones.
+  set_property(TARGET ${logical_target_for_zephyr_elf} APPEND PROPERTY LINK_DEPENDS
+    ${WASM_MODULE_DIR}/scripts/check_sections_wasm.py
+    ${WASM_MODULE_DIR}/scripts/instrument_safepoints.py)
+
   # First, before anything is built on top of the link: every iterable list
   # must be laid out in upstream's order and between its bounds, or it is
   # silently shorter than it should be. See DESIGN.md D6.
