@@ -93,6 +93,7 @@ export class Pair {
     const s = this.seen[i];
     const b = this.boards[i];
     return this.on[i] && s.idle && s.next === null && b.input.length === 0 &&
+           b.typing.length === 0 &&
            (b.externalIrqs & b.enabledLines()) === 0;
   }
 

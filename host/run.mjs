@@ -348,7 +348,7 @@ if (opts.peer) {
   });
   /* Typed into the second board: queued where its UART reads from, where
    * the bytes wait for its shell. */
-  if (opts.peerStdin) peer.input.push(...fs.readFileSync(opts.peerStdin));
+  if (opts.peerStdin) peer.type(fs.readFileSync(opts.peerStdin));
 }
 
 const host = new Host(nodePlatform, opts);
@@ -371,16 +371,18 @@ if (opts.lan) {
   host.lan = await Lan.create(wasm, (line, ns) => process.stderr.write(`[${lanStamp(ns)}] ${line}\n`));
   startServices(host.lan, { dial: opts.lanDial, ping: opts.lanPing });
 }
+/* Piped input is read whole and queued, as the second board's is. Arriving
+ * through the event loop, it would land at whatever guest time the run had
+ * reached by then, and an unpaced run gets a long way in a moment. And once
+ * it has all arrived nothing more can, so the run is no longer waiting for
+ * a person: it ends when the board falls quiet, which an interrupt-driven
+ * shell does, having no timer of its own to keep time moving. From a
+ * terminal, keys still arrive as they are typed. */
+if (opts.interactive && !process.stdin.isTTY) {
+  host.type(fs.readFileSync(0));
+  host.opts.interactive = false;
+}
 if (peer) {
-  /* Piped input to the first board is read whole and queued, as the
-   * second board's is. Arriving through the event loop, it would land at
-   * whatever guest time the pair had reached by then, and a pair run
-   * unpaced gets a long way in a moment. From a terminal, keys still
-   * arrive as they are typed. */
-  if (opts.interactive && !process.stdin.isTTY) {
-    host.input.push(...fs.readFileSync(0));
-    host.opts.interactive = false;
-  }
   const pair = new Pair([host, peer], {
     delayNs: BigInt(Math.round((opts.peerDelayMs ?? 0) * 1e6)),
     paced: opts.clock === 'paced',

@@ -176,6 +176,12 @@ export class Host {
      * an interrupt storm. */
     this.uartTaken = 0;
     this.uartRaisedAt = 0;
+    /* Lines to type, a line at a time, each when the guest is next idle:
+     * after the shell has started and is waiting, as a person or twister's
+     * harness would. Queued all at once at boot, an interrupt-driven shell
+     * took them in before shell_start() flushed its input, and a long burst
+     * overran its 64-byte ring. See type(). */
+    this.typing = [];
     /* Physical pin levels, per port. Outputs are what the guest last drove;
      * inputs are what the host is holding the pins at. A button wired active
      * low with a pull-up sits at 1 until something presses it, which is the
@@ -260,6 +266,24 @@ export class Host {
   /* The next frame, on this board's own clock, or null. */
   nextFrameNs() {
     return this.ethQueue.length > 0 ? this.ethQueue[0].atNs - this.epochNs : null;
+  }
+
+  /* Type these bytes into the guest's UART, a line at a time, each line
+   * when the guest is next idle with nothing left to read. */
+  type(bytes) {
+    let line = [];
+    for (const b of bytes) {
+      line.push(b);
+      if (b === 0x0a) { this.typing.push(line); line = []; }
+    }
+    if (line.length > 0) this.typing.push(line);
+  }
+
+  /* The next typed line, if the guest is ready for it. */
+  typeNextLine() {
+    if (this.typing.length === 0 || this.input.length > 0) return false;
+    this.input.push(...this.typing.shift());
+    return true;
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -360,6 +384,7 @@ export class Host {
       externalIrqs: this.externalIrqs,
       outBytes: this.outBytes,
       input: this.input.slice(),
+      typing: this.typing.map((line) => line.slice()),
       uartTaken: this.uartTaken,
       uartRaisedAt: this.uartRaisedAt,
       gpio: this.gpio.map((g) => ({ ...g })),
@@ -387,6 +412,7 @@ export class Host {
     this.externalIrqs = snap.externalIrqs;
     this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
+    this.typing = snap.typing.map((line) => line.slice());
     this.uartTaken = snap.uartTaken;
     this.uartRaisedAt = snap.uartRaisedAt;
     this.gpio = snap.gpio.map((g) => ({ ...g }));
@@ -1416,6 +1442,8 @@ export class Host {
       /* Idle: the same context resumes once something it can take is
        * pending. */
       const pending = this.deliverableIrqs();
+      /* Idle, and everything typed so far has been read: the next line. */
+      if (pending === 0 && this.typeNextLine()) return true;
       if (this.opts.pair) {
         /* One board of a pair: the pair's clock decides how far it may go
          * (host/pair.mjs). Jump to the next event if that is within the
