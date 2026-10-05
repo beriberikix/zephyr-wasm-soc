@@ -1426,6 +1426,12 @@ not ELF, and takes the cases from the console output its harness parses
 anyway. `scripts/twister.sh` runs twister with the module and toolchain
 arguments every build needs.
 
+**0010-thread-info-stack-pointer-on-wasm.patch** adds wasm to the list in
+`subsys/debug/thread_info.c` of where each architecture keeps a thread's
+saved stack pointer, for `CONFIG_DEBUG_THREAD_INFO`. Without it the file
+ends in a `#warning`, which twister's warnings-as-errors build refuses, so
+`philosophers` did not build under twister.
+
 **0008-cbprintf-cxx-long-double-check-on-wasm.patch** adds `__wasm__` to the
 architectures on which cbprintf's C++ build skips its `long double` check.
 That check is not a constant expression in C++, and wherever a `long double`

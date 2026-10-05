@@ -38,7 +38,12 @@ const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
 
 /* Thrown out of an import to stop a guest that will not stop by itself. See
  * checkDeadline(). */
-class GaveUp extends Error {}
+class GaveUp extends Error {
+  constructor(message, atMaxTime = false) {
+    super(message);
+    this.atMaxTime = atMaxTime; /* the guest-time limit, not a hang */
+  }
+}
 
 /* Thrown out of the reboot import, through the guest's frames, to the run
  * loop. The instance it leaves in a mess is discarded, so there is nothing
@@ -844,7 +849,7 @@ export class Host {
    */
   checkDeadline() {
     if (this.timeNs > this.deadlineNs) {
-      throw new GaveUp(`gave up after ${this.opts.maxTimeMs} ms of guest time`);
+      throw new GaveUp(`gave up after ${this.opts.maxTimeMs} ms of guest time`, true);
     }
     /* Virtual time only advances when the kernel idles or reports progress,
      * so bound the wall clock as well, generously -- but only the time since
@@ -1130,6 +1135,14 @@ export class Host {
         return true;
       }
       if (!(err instanceof GaveUp)) throw err;
+      /* With --stop-at-max-time, reaching the limit is the run being
+       * stopped, as twister stops a native_sim run that never ends, and the
+       * output is the verdict. A guest that hangs is still an error. */
+      if (err.atMaxTime && this.opts.stopAtMaxTime) {
+        this.platform.writeErr(`\n*** stopped after ${this.opts.maxTimeMs} ms of guest time ***\n`);
+        this.exitCode = 0;
+        return false;
+      }
       this.platform.writeErr(`\n*** ${err.message} ***\n`);
       this.exitCode = 2;
       return false;

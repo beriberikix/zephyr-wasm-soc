@@ -12,7 +12,7 @@ function(wasm_add_run_target)
   add_custom_target(run
     COMMAND ${WASM_NODE_EXECUTABLE} ${WASM_MODULE_DIR}/host/run.mjs
             $<$<BOOL:${CONFIG_WASM_RUN_REALTIME}>:--realtime>
-            --max-time ${CONFIG_WASM_RUN_MAX_TIME_MS}
+            --max-time ${CONFIG_WASM_RUN_MAX_TIME_MS} --stop-at-max-time
             ${PROJECT_BINARY_DIR}/zephyr.wasm
     DEPENDS ${logical_target_for_zephyr_elf}
     WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
