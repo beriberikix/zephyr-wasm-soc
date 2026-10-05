@@ -43,6 +43,12 @@ function parseArgs(argv) {
     else if (a === '--touch') opts.inputScript.push(...parseTouch(argv[++i]));
     else if (a === '--key') opts.inputScript.push(...parseKey(argv[++i]));
     else if (a === '--accel') opts.inputScript.push(parseAccel(argv[++i]));
+    else if (a === '--type-at') {
+      /* Typing waits until this much guest time has passed, for a check
+       * whose answer needs the board to have finished setting up. */
+      opts.inputScript.push({ atNs: BigInt(Math.round(Number(argv[++i]) * 1e6)), typeStart: true });
+      opts.typeHeld = true;
+    }
     else if (a === '--peer') opts.peer = argv[++i];
     else if (a === '--peer-out') opts.peerOut = argv[++i];
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);

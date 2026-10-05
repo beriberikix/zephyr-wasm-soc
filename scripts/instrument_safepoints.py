@@ -24,6 +24,13 @@ through them: taking an interrupt here may switch threads.
 
 Functions that implement the check are skipped, since instrumenting them would
 recurse.
+
+A function that makes no calls may keep its stack frame below
+`__stack_pointer` without moving it: LLVM reads the global, subtracts the frame
+and uses that, because nothing it calls could need the space. A safepoint makes
+it a caller after the fact, and an interrupt taken there would put its own
+frames on top of that one. So in such a function each safepoint call is wrapped
+in a move of the stack pointer past the frame and back (DESIGN.md D8e).
 """
 from __future__ import annotations
 
@@ -40,6 +47,9 @@ FUNC_ID = r"(\$[^\s()]+|\(;\d+;\)|\d+)"
 FUNC_RE = re.compile(r"^\s*\(func\s+" + FUNC_ID)
 LOOP_RE = re.compile(r"^(\s*)loop(\s|$)")
 EXPORT_RE = re.compile(r'^\s*\(export\s+"([^"]+)"\s+\(func\s+' + FUNC_ID + r"\)\)")
+# wasm-ld makes __stack_pointer the first global, and a debug build names it.
+SP_GLOBALS = ("0", "$__stack_pointer")
+FRAME_CONST_RE = re.compile(r"^\s*i32\.const\s+(\d+)\s*$")
 
 
 def func_id(token: str) -> str:
@@ -80,12 +90,52 @@ def read_exports(lines: list[str]) -> dict[str, str]:
     return exports
 
 
+def unpublished_frames(lines: list[str]) -> dict[str, int]:
+    """Functions that read the stack pointer and never write it, and their frames.
+
+    The frame is the constant LLVM subtracts from the pointer it read. A
+    function that reads it and never writes it some other way is reported
+    rather than guessed at.
+    """
+    frames: dict[str, int] = {}
+    current, reads, writes, frame = "", False, False, None
+
+    def close():
+        if current and reads and not writes:
+            if frame is None:
+                raise SystemExit(f"instrument_safepoints: function {current} reads the "
+                                 "stack pointer without writing it, and not in the "
+                                 "pattern recognised here; see DESIGN.md D8e")
+            frames[current] = frame
+
+    for i, line in enumerate(lines):
+        m = FUNC_RE.match(line)
+        if m:
+            close()
+            current, reads, writes, frame = func_id(m.group(1)), False, False, None
+            continue
+        t = line.strip()
+        if t in (f"global.get {g}" for g in SP_GLOBALS):
+            reads = True
+            if frame is None and i + 2 < len(lines):
+                c = FRAME_CONST_RE.match(lines[i + 1])
+                if c and lines[i + 2].strip() == "i32.sub":
+                    frame = int(c.group(1))
+        elif t in (f"global.set {g}" for g in SP_GLOBALS):
+            writes = True
+    close()
+    return frames
+
+
 def instrument(lines: list[str], target_idx: str,
                skip_idx: set[str]) -> tuple[list[str], int, int]:
     out: list[str] = []
     current = ""
     inserted = 0
     skipped = 0
+    frames = unpublished_frames(lines)
+    sp = next((g for g in SP_GLOBALS if any(l.strip() == f"global.get {g}" for l in lines)),
+              SP_GLOBALS[0])
 
     for line in lines:
         m = FUNC_RE.match(line)
@@ -99,7 +149,19 @@ def instrument(lines: list[str], target_idx: str,
         if current in skip_idx:
             skipped += 1
             continue
-        out.append(f"{lm.group(1)}  call {target_idx}\n")
+        pad = lm.group(1) + "  "
+        frame = frames.get(current)
+        if frame:
+            # Publish the frame for the length of the call, so what the
+            # safepoint runs is stacked below it, then give it back.
+            frame = (frame + 15) & ~15
+            out.extend(f"{pad}{ins}\n" for ins in (
+                f"global.get {sp}", f"i32.const {frame}", "i32.sub", f"global.set {sp}"))
+            out.append(f"{pad}call {target_idx}\n")
+            out.extend(f"{pad}{ins}\n" for ins in (
+                f"global.get {sp}", f"i32.const {frame}", "i32.add", f"global.set {sp}"))
+        else:
+            out.append(f"{pad}call {target_idx}\n")
         inserted += 1
 
     return out, inserted, skipped

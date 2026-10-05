@@ -65,6 +65,10 @@ const QUIESCENT_ROUNDS = 2;
  * believing the guest can recover from them (DESIGN.md D14). */
 const MAX_TRAPS = 100;
 
+/* Zephyr's shell prompt on a UART (CONFIG_SHELL_PROMPT_UART). Typing waits
+ * for it, as twister's shell harness does; see type(). */
+const SHELL_PROMPT = Array.from('uart:~$ ', (ch) => ch.charCodeAt(0));
+
 /* The default entropy seed. Any fixed value would do; this one is only
  * memorable. Both hosts use the same generator and the same seed, so a build
  * that prints random numbers prints the same ones under Node and under
@@ -182,6 +186,11 @@ export class Host {
      * took them in before shell_start() flushed its input, and a long burst
      * overran its 64-byte ring. See type(). */
     this.typing = [];
+    /* The last bytes the guest wrote, as long as the prompt, and whether it
+     * has printed one at all and since the last line was typed. */
+    this.outTail = [];
+    this.shellSeen = false;
+    this.promptSince = false;
     /* Physical pin levels, per port. Outputs are what the guest last drove;
      * inputs are what the host is holding the pins at. A button wired active
      * low with a pull-up sits at 1 until something presses it, which is the
@@ -279,11 +288,29 @@ export class Host {
     if (line.length > 0) this.typing.push(line);
   }
 
-  /* The next typed line, if the guest is ready for it. */
+  /* The next typed line, if the guest is ready for it. A board with a
+   * shell is ready when it has printed its prompt since the last line,
+   * which is what twister's shell harness waits for: idle alone is not
+   * enough, because a command waiting on the network is idle too, and lines
+   * typed then pile up in the shell's 64-byte ring until it overflows. A
+   * board without one, echo_bot say, is ready when it has read the last. */
   typeNextLine() {
     if (this.typing.length === 0 || this.input.length > 0) return false;
+    if (this.opts.typeHeld) return false;
+    if (this.shellSeen && !this.promptSince) return false;
     this.input.push(...this.typing.shift());
+    this.promptSince = false;
     return true;
+  }
+
+  notePrompt(c) {
+    this.outTail.push(c);
+    if (this.outTail.length > SHELL_PROMPT.length) this.outTail.shift();
+    if (this.outTail.length === SHELL_PROMPT.length &&
+        this.outTail.every((b, i) => b === SHELL_PROMPT[i])) {
+      this.shellSeen = true;
+      this.promptSince = true;
+    }
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -385,6 +412,9 @@ export class Host {
       outBytes: this.outBytes,
       input: this.input.slice(),
       typing: this.typing.map((line) => line.slice()),
+      outTail: this.outTail.slice(),
+      shellSeen: this.shellSeen,
+      promptSince: this.promptSince,
       uartTaken: this.uartTaken,
       uartRaisedAt: this.uartRaisedAt,
       gpio: this.gpio.map((g) => ({ ...g })),
@@ -413,6 +443,9 @@ export class Host {
     this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
     this.typing = snap.typing.map((line) => line.slice());
+    this.outTail = snap.outTail.slice();
+    this.shellSeen = snap.shellSeen;
+    this.promptSince = snap.promptSince;
     this.uartTaken = snap.uartTaken;
     this.uartRaisedAt = snap.uartRaisedAt;
     this.gpio = snap.gpio.map((g) => ({ ...g }));
@@ -496,6 +529,7 @@ export class Host {
 
         uart_poll_out(c) {
           self.outBytes++;
+          self.notePrompt(c & 0xff);
           self.platform.writeOut(new Uint8Array([c & 0xff]));
         },
 
@@ -1063,7 +1097,8 @@ export class Host {
         this.setGpioInput(pin.port, pin.pin, pin.level);
       } else {
         this.opts.inputScript.shift();
-        if (input.sensors) this.pushSensor(input.sensors);
+        if (input.typeStart) this.opts.typeHeld = false;
+        else if (input.sensors) this.pushSensor(input.sensors);
         else this.pushInput(input.events);
       }
       return true;

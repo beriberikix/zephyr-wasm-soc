@@ -74,7 +74,11 @@
     "  set, and the page shows it. start_after_ms powers a board on after the",
     "  other, as a client is plugged in after its server; the first board is",
     "  the one that starts first. ci_link_frames_at_least is how many frames",
-    "  the browser check wants each way (default 100).",
+    "  the browser check wants each way (default 100). ci_stdin_at_ms holds",
+    "  the first board's typing until that much guest time has passed",
+    "  (run.mjs --type-at), for a command whose answer needs the board to",
+    "  have finished setting up. Otherwise a line is typed as soon as the",
+    "  shell's prompt shows, as twister's shell harness types.",
     "uplink: one board on a real network, through a relay that speaks v86's",
     "  wsproxy protocol (host/uplink.mjs). Built with -DSNIPPET=wasm-ethernet",
     "  and nothing else; the relay's DHCP gives it an address. The page",
@@ -556,6 +560,7 @@
             "terminal"
           ],
           "ci_stdin": "net iface\n",
+          "ci_stdin_at_ms": 1000,
           "expect": [
             "(Ethernet)",
             "192.0.2.1"
