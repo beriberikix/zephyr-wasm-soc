@@ -426,8 +426,9 @@ the kernel, so this comes first.
       pointer or with the wrong signature, or a division by zero, used to
       end the board with a JavaScript stack trace. The trap unwinds only the
       running thread's frames, so the host now enters the guest again on
-      that thread's behalf, Zephyr reports `CPU exception` and aborts the
-      thread, and the rest of the board carries on, as on hardware.
+      that thread's behalf and Zephyr handles a `CPU exception` as on
+      hardware: the default handler halts the board with the reason, and a
+      handler that returns has the thread aborted while the rest carry on.
       `tests/kernel/fatal/exception` passes as it is, which makes 23 of 26
       kernel suites. A halt no longer ends in a stack trace either. The
       sweep now fails any run that reports a fault, as twister does, so a

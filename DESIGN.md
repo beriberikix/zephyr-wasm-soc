@@ -1349,9 +1349,10 @@ Two things the sysroot needed that no C build had:
 
 On hardware, a call through a bad pointer, an integer division by zero or an
 undefined instruction raises a CPU exception. Zephyr reports it
-(`>>> ZEPHYR FATAL ERROR 0: CPU exception`), lets the application's
-`k_sys_fatal_error_handler()` decide, and by default aborts only the thread
-that faulted. In wasm the same faults are traps: a call through a bad
+(`>>> ZEPHYR FATAL ERROR 0: CPU exception`) and calls
+`k_sys_fatal_error_handler()`. The default handler halts the system; one
+that returns, as tests and some applications provide, has the faulting
+thread aborted and the rest carry on. In wasm the same faults are traps: a call through a bad
 pointer or with the wrong signature (D8b), a division by zero, an
 `unreachable`. A trap unwinds every wasm frame to the host, and the board
 used to end there with a JavaScript stack trace.
@@ -1364,8 +1365,10 @@ So after a trap it enters again, at `z_wasm_trap()` on the trapped thread's
 stack, and prints `*** trap: RuntimeError: <message> ***`. `z_wasm_trap()`
 puts the nesting count back to thread level, since an interrupt handler's
 frames are gone too, and calls `z_fatal_error(K_ERR_CPU_EXCEPTION)`. The
-kernel aborts the thread and switches away, and that switch unwinds into the
-dead thread's buffer like any other. The rest of the board carries on.
+handler decides: by default the board halts, cleanly now (below), with the
+reason on the console; a handler that returns has the kernel abort the
+thread and switch away, which unwinds into the dead thread's buffer like
+any other switch, and the rest of the board carries on.
 Upstream's `tests/kernel/fatal/exception` now passes as it is: its CPU
 exception cases are an illegal call and a division by zero.
 
