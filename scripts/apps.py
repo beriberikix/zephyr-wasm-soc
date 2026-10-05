@@ -60,7 +60,8 @@ def counted(builds: list[dict]) -> set[str]:
 
 USES = {"leds", "buttons", "flash", "terminal", "accel"}
 # The Kconfig symbol each use is checked against, where it is not its own name.
-SYMBOL = {"terminal": "SHELL", "accel": "SENSOR_WASM_BRIDGE"}
+SYMBOL = {"terminal": "SHELL, UART_INTERRUPT_DRIVEN or CONSOLE_SUBSYS",
+          "accel": "SENSOR_WASM_BRIDGE"}
 
 
 # What a pair's board may be built with, beyond upstream's own files. The
@@ -188,8 +189,12 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
             continue
         on = set()
         for line in config.read_text().splitlines():
+            # A build reads what is typed if it has a shell, takes UART
+            # interrupts itself (echo_bot) or reads the console subsystem.
             for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display"),
-                             ("SHELL", "terminal"), ("SENSOR_WASM_BRIDGE", "accel")):
+                             ("SHELL", "terminal"), ("UART_INTERRUPT_DRIVEN", "terminal"),
+                             ("CONSOLE_SUBSYS", "terminal"),
+                             ("SENSOR_WASM_BRIDGE", "accel")):
                 if line == f"CONFIG_{sym}=y":
                     on.add(use)
         shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
