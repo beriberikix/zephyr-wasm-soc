@@ -1978,3 +1978,32 @@ Twister needed `ZEPHYR_EXTRA_MODULES` to find the board's SoC, which
 Semaphore, queue, the seven `common` configurations and `thread_apis` pass
 under twister, as do `hello_world`, `synchronization` and all nine
 `philosophers` configurations.
+
+### Tick 83 — a trap is a CPU exception
+
+`tests/kernel/fatal/exception` stopped on its first case: a call through an
+illegal address, which on wasm is a trap, and a trap unwound the whole board
+to the host. But a trap destroys only the running thread's wasm frames.
+Linear memory, the kernel's state and `__stack_pointer` are as they were,
+and the host already enters the guest through exports and switches threads
+by unwinding into the outgoing thread's buffer.
+
+So the host now catches the trap, prints `*** trap: RuntimeError: ... ***`,
+and enters the guest again at `z_wasm_trap()` on the dead thread's stack,
+which calls `z_fatal_error(K_ERR_CPU_EXCEPTION)`. From there it is Zephyr's
+own path. The suite's handler returns, so the kernel aborts the thread and
+switches away, and the switch unwinds into that thread's buffer like any
+other. Its divide-by-zero case traps too and is handled the same way. The
+suite passes as it is, every case: 23 of 26 kernel suites.
+
+With no handler of its own, as in `basic/threads`, Zephyr's default halts the
+board, and that showed an older fault. The fatal import starts an unwind,
+but `arch_system_halt()` never returns, so its callers are not instrumented
+to resume (D8a), and every halt ran into the `unreachable` after the call
+and ended in a JavaScript stack trace. The host now recognises that as the
+halt, and the run ends with the reason and exit code 1.
+
+`check_samples.py` now fails any run that reports a fault, unless upstream's
+entry sets `ignore_faults`, as twister does, so a sample cannot pass with a
+thread dead. No sample sets it, and the thread-signature samples stay
+recorded as they were.

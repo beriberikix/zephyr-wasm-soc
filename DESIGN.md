@@ -324,10 +324,8 @@ catch this, and with the layout above it works here. It writes a word at
 and after every interrupt that is not nested, which is the architecture's
 part: `z_wasm_irq_dispatch()` does it, as arm64's ISR exit does. Upstream's
 `tests/kernel/fatal/exception` with `sentinel.conf` overflows a stack on
-purpose and expects both checks to catch it. Here they do, though the
-suite as a whole cannot finish: two of its cases raise a CPU exception with
-an illegal call and a division by zero, and in wasm those are traps the
-guest cannot catch (section 4a).
+purpose and expects both checks to catch it. Here they do, and the whole
+suite passes, its CPU exceptions included (D14).
 
 Before the layout was fixed, the sentinel reported an overflow at once on
 a thread whose test did nothing. The 4 KB ztest thread's `stack_info.start`
@@ -1347,6 +1345,52 @@ Two things the sysroot needed that no C build had:
   are the same once truncated back to `char`, which is how they are
   compared.
 
+### D14. A trap is a CPU exception
+
+On hardware, a call through a bad pointer, an integer division by zero or an
+undefined instruction raises a CPU exception. Zephyr reports it
+(`>>> ZEPHYR FATAL ERROR 0: CPU exception`) and calls
+`k_sys_fatal_error_handler()`. The default handler halts the system; one
+that returns, as tests and some applications provide, has the faulting
+thread aborted and the rest carry on. In wasm the same faults are traps: a call through a bad
+pointer or with the wrong signature (D8b), a division by zero, an
+`unreachable`. A trap unwinds every wasm frame to the host, and the board
+used to end there with a JavaScript stack trace.
+
+It does not have to. A trap destroys the running thread's wasm frames and
+nothing else: linear memory, and with it every kernel object, is as it was,
+and so is `__stack_pointer`. The host already enters the guest through
+exports and switches threads by unwinding into the outgoing thread's buffer.
+So after a trap it enters again, at `z_wasm_trap()` on the trapped thread's
+stack, and prints `*** trap: RuntimeError: <message> ***`. `z_wasm_trap()`
+puts the nesting count back to thread level, since an interrupt handler's
+frames are gone too, and calls `z_fatal_error(K_ERR_CPU_EXCEPTION)`. The
+handler decides: by default the board halts, cleanly now (below), with the
+reason on the console; a handler that returns has the kernel abort the
+thread and switch away, which unwinds into the dead thread's buffer like
+any other switch, and the rest of the board carries on.
+Upstream's `tests/kernel/fatal/exception` now passes as it is: its CPU
+exception cases are an illegal call and a division by zero.
+
+What it does not cover, where the trap goes on up as before:
+- a trap during boot, before there is a thread to abort;
+- a trap mid-rewind or mid-unwind, where Asyncify's own state cannot be
+  trusted;
+- a trap inside `z_wasm_trap()` itself;
+- more than 100 traps in a run, which says the guest is not recovering.
+
+A guest that halts was ending in a trap too. The fatal import starts an
+unwind, but `arch_system_halt()` never returns, so its callers are not
+instrumented to resume (D8a) and the unwind ran into the `unreachable` after
+the call. The host now recognises that trap as the halt it is and ends the
+run cleanly, with the `*** fatal` line and exit code 1.
+
+The sweep judges faults as twister does. Twister fails a run that reports
+a fatal error unless upstream's entry sets `ignore_faults`, whatever else
+matched, and `check_samples.py` now does the same. Without that, a sample
+whose thread entry has the wrong signature could pass on the strength of its
+other threads' output, with one thread dead.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
@@ -1370,22 +1414,16 @@ All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
 
 `scripts/kernel_tests.json` records how each of Zephyr's own kernel suites
 does here and `scripts/check_kernel.py` re-runs them, so this stops being a
-number taken once. Of 26 suites, 22 pass outright, one finishes with
-failures, and three do not finish. Each of the four has a known cause, and
+number taken once. Of 26 suites, 23 pass outright, one finishes with
+failures, and two do not finish. Each of the three has a known cause, and
 none is the port's to fix:
 - `device` fails exactly the four cases that exercise `DEVICE_API_IS()` on an
   extended class, which is patch 0007's documented approximation
   demonstrated rather than predicted.
 - `mutex/mutex_api` and `pending` are D8b above: their thread entries have
-  the wrong signature, and `upstream/zephyr/` has the fix.
-- `fatal/exception`, run as upstream's stack-sentinel entry, raises its
-  first two CPU exceptions by calling an illegal address and dividing by
-  zero. In wasm both are traps: the run unwinds to the host and the guest
-  cannot catch them, so no exception handler can run. Everything after them
-  passes when they are raised in software instead, both stack sentinel
-  checks included (D8). Making a trap a fatal error the guest can handle
-  would need the host to re-enter it on the trapping thread's behalf, and
-  is not done.
+  the wrong signature, and `upstream/zephyr/` has the fix. The trap is
+  raised as a CPU exception (D14), and with no handler of their own the
+  kernel's default halts the board, as it would anywhere.
 
 Timing was blamed for four more, on the theory that a time slice ends at the
 next safepoint rather than on the tick. It was not that. `common`,

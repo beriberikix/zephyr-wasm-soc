@@ -120,4 +120,4 @@ def run(wasm: pathlib.Path, max_time_ms: int, args=(), timeout: int = 900,
 def trouble(out: str) -> str:
     """The most telling line of a run that went wrong, or ''."""
     m = RUN_TROUBLE_RE.search(out)
-    return m.group(1)[:160] if m else ""
+    return m.group(1).removesuffix(" ***")[:160] if m else ""
