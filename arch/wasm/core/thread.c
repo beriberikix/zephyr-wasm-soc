@@ -27,37 +27,34 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 		     void *p1, void *p2, void *p3)
 {
 	/*
-	 * Split the stack object. K_THREAD_STACK already reserved
-	 * ARCH_THREAD_STACK_RESERVED bytes, so stack_ptr is the top of the
-	 * usable shadow stack and the Asyncify buffer sits just above it.
+	 * Split the stack object. Zephyr puts the ARCH_THREAD_STACK_RESERVED
+	 * bytes at the bottom of every stack object, below the buffer the
+	 * thread asked for, where other architectures keep a guard. The
+	 * Asyncify buffer lives there, at the very bottom; the C shadow stack
+	 * grows down from stack_ptr, at the top, towards it. Between them, in a
+	 * debugging build, is the headroom (CONFIG_WASM_STACK_HEADROOM).
+	 *
+	 * So the lowest word of the buffer the thread asked for,
+	 * stack_info.start, is the bottom of its C stack, which is where
+	 * CONFIG_STACK_SENTINEL puts its sentinel. A C stack that overflows runs
+	 * into the headroom and then this thread's own Asyncify buffer, never
+	 * into another object. The buffer used to be carved from the top, below
+	 * stack_ptr, and the C stack then grew through the sentinel and the
+	 * reserved bytes beneath it.
 	 *
 	 * Asyncify wants a two-word header at the front of its buffer: the
 	 * current cursor and the end. It never bounds-checks that end, so the
 	 * buffer has to be big enough for the deepest stack this thread can
-	 * reach (DESIGN.md D8).
+	 * reach (DESIGN.md D8). The host checks the cursor after every unwind.
 	 */
-	/* Carve the buffer out below stack_ptr, not above it.
-	 *
-	 * ARCH_THREAD_STACK_RESERVED is supposed to make the kernel hand over a
-	 * stack_ptr that already excludes the reserved bytes, leaving them free
-	 * above. Measured, it does not: stack_ptr arrives at the very top of the
-	 * stack object, so a buffer placed above it lands in the next thread's
-	 * stack object, and unwinding one thread quietly overwrote another
-	 * thread's k_thread structure, timeout callback included.
-	 *
-	 * Taking the buffer from below stack_ptr keeps it inside this thread's
-	 * own object whether or not the reservation is applied, at the cost of
-	 * the shadow stack starting that much lower.
-	 */
-	uintptr_t buf = ROUND_DOWN((uintptr_t)stack_ptr - CONFIG_WASM_ASYNCIFY_BUFFER_SIZE, 16);
+	uintptr_t buf = ROUND_UP((uintptr_t)stack, 16);
 	uintptr_t end = buf + CONFIG_WASM_ASYNCIFY_BUFFER_SIZE;
 	uint32_t *hdr = (uint32_t *)buf;
 
 	hdr[0] = (uint32_t)(buf + 8);   /* cursor starts past the header */
 	hdr[1] = (uint32_t)end;
 
-	/* The shadow stack grows down from just below the buffer. */
-	thread->callee_saved.sp = (uint32_t)buf;
+	thread->callee_saved.sp = (uint32_t)ROUND_DOWN((uintptr_t)stack_ptr, 16);
 	thread->callee_saved.asyncify_buf = (uint32_t)buf;
 	thread->callee_saved.asyncify_end = (uint32_t)end;
 	thread->callee_saved.fresh = 1U;
