@@ -30,7 +30,7 @@ A function that makes no calls may keep its stack frame below
 and uses that, because nothing it calls could need the space. A safepoint makes
 it a caller after the fact, and an interrupt taken there would put its own
 frames on top of that one. So in such a function each safepoint call is wrapped
-in a move of the stack pointer past the frame and back (DESIGN.md D8e).
+in a move of the stack pointer past the frame and back (DESIGN.md D8o).
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def unpublished_frames(lines: list[str]) -> dict[str, int]:
             if frame is None:
                 raise SystemExit(f"instrument_safepoints: function {current} reads the "
                                  "stack pointer without writing it, and not in the "
-                                 "pattern recognised here; see DESIGN.md D8e")
+                                 "pattern recognised here; see DESIGN.md D8o")
             frames[current] = frame
 
     for i, line in enumerate(lines):

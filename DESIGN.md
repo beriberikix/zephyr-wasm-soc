@@ -1162,6 +1162,33 @@ run as they do on native_sim. There is no clock to slow: setting a state
 records it. The policies, and the load measurement they choose by, are the
 real ones.
 
+
+### D8o. A safepoint publishes the frame of a function that makes no calls
+
+LLVM's wasm backend gives a function that makes no calls a stack frame
+without moving `__stack_pointer`: it reads the global, subtracts the frame
+and works below it, since nothing it calls could need the space. The
+safepoint pass breaks that assumption after the fact. A safepoint is a call,
+and an interrupt taken there runs its handler on the same stack, from the
+pointer the function never moved, right over its frame.
+
+It showed once the UART took interrupts. The shell enables its TX interrupt
+whenever it prints, so the handler runs at safepoints inside the formatting
+code, and `net iface` printed `17.156.2.0` for `192.0.2.1`: the bytes
+`0x00029c11`, a pointer into the shell's TX ring that the handler left
+where a formatter kept its working copy. Any interrupt could have done it
+before (timer, GPIO, Ethernet); none fired often enough inside such a
+function to be seen.
+
+The pass now looks at every function before it instruments any: one that
+reads the stack pointer, takes a frame off it (`global.get`, `i32.const N`,
+`i32.sub`) and never writes it has each of its safepoint calls wrapped in a
+move of the pointer past the frame, rounded to 16, and back. What the
+safepoint runs is stacked below the frame. A function that reads the pointer
+without writing it in any other pattern stops the build, since guessing at
+its frame would be guessing at what may be overwritten. In the builds here
+the wrap applies to two or three functions each.
+
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
 The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
@@ -1206,8 +1233,18 @@ Three things make a host UART look like one on a board:
 
 Once the UART can interrupt, Zephyr builds every shell interrupt-driven, as
 on every real board (`SHELL_BACKEND_SERIAL_INTERRUPT_DRIVEN` defaults to y).
-The shell builds on the page changed mode with it and type and answer as
-before.
+That changed how a script types into one. The polled shell read on a timer,
+only as fast as its ring had room, and only once it had started. The
+interrupt-driven one reads the moment bytes arrive: bytes queued at boot were
+taken in before `shell_start()` flushed its input, which it does on purpose,
+and a long burst overran its 64-byte ring. So the host types piped input as
+twister's shell harness does: a line at a time, each once the shell has
+printed its prompt since the last, or for a board with no shell, once it has
+read the last line. Piped input is all there is, so the run is no longer
+interactive and ends when the board falls quiet, where it used to wait for
+keys that could not come. `run.mjs --type-at` holds typing until a board has
+set up, for a check whose answer depends on it. It also showed a bug in the
+safepoint pass that any interrupt could have hit (D8o).
 
 Input also forced a change in the host early on. It reads stdin through
 Node's event loop, which never got a turn because the Asyncify driver is a

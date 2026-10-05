@@ -2032,3 +2032,27 @@ commands the same as before.
 `drivers/uart/echo_bot` echoes what is typed. Its upstream harness is a
 keyboard, which twister cannot drive, so it is not in the sweep; the demo
 types into it and counts it as it counts `basic/button`. Score 96.
+
+Making the shell interrupt-driven showed three things the polled shell had
+been hiding.
+
+Scripted typing had relied on the poll. Bytes queued at boot reached the
+interrupt-driven shell before `shell_start()` flushed its input, and runs
+waited for keys that could never come once stdin ended, since the shell no
+longer kept time moving with a timer. The host now types piped input a line
+at a time, each when the shell has printed its prompt since the last, as
+twister's harness types, and the run ends when the board falls quiet.
+
+`net iface` printed `17.156.2.0` for `192.0.2.1`, on Node as on the page,
+and the polled build printed it right. Watching the address in memory found
+it never changed; the printing was wrong. `0x00029c11`, read as an address,
+is a pointer into the shell's TX ring. A function that makes no calls may
+keep its frame below `__stack_pointer` without moving it, and a safepoint
+added after linking makes it a caller: the TX interrupt, which fires while
+the shell prints, was taken there and stacked its frames on the formatter's.
+Any interrupt could have done it before. The safepoint pass now moves the
+stack pointer past such a frame around each safepoint (DESIGN.md D8o).
+
+And `echo`'s server answered `net iface` before its network had an
+address, now that typing waits only for the prompt; `ci_stdin_at_ms` holds
+it until a second in.
