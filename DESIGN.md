@@ -65,6 +65,12 @@ the rest of the system, and the idle loop in particular, running masked: the
 dispatcher would never run and nothing would ever wake. `arch_switch()` saves
 the mask into the outgoing thread and restores it from the incoming one.
 
+A handler runs masked, as on a CPU that masks interrupts on entry. Every line
+has the same priority, so none may preempt another, nor its own handler; and a
+handler has loops, whose safepoints would otherwise take whatever is pending,
+the line being handled included, halfway through it. A line raised meanwhile
+is taken when the dispatcher comes round again.
+
 Interrupt dispatch is also not a reschedule point here, the way returning from
 an interrupt is on hardware. The dispatcher is an ordinary call and
 `arch_is_in_isr()` is true while it runs, so anything it makes ready is
@@ -1216,12 +1222,19 @@ Ethernet all interrupt that way. The UART now does too
 (`CONFIG_UART_INTERRUPT_DRIVEN`), on line 5. Zephyr's Bluetooth transport,
 H4, needs it, which is why it came first in Phase 7.
 
-Three things make a host UART look like one on a board:
-- **Arrival.** The host raises the line when bytes arrive for the board,
-  once per arrival rather than for as long as they wait, so a guest that
-  never reads cannot be stormed. Bytes join the queue from the page, stdin
-  and a pair's script, so the run loop compares how many have arrived with
-  how many it last raised for.
+Four things make a host UART look like one on a board:
+- **A line rate.** Typed bytes come down the wire at the 115200 baud the
+  devicetree gives the UART, a byte every 87 µs of guest time, however fast
+  they were typed, pasted or piped. Without it, a paced board that had jumped
+  ahead to its next timer while keys were being pressed received them all
+  at once when it got there: 79 bytes in one interrupt, into the shell's
+  64-byte ring, and the end of a command was lost. That was the zperf pair
+  in the browser. The sender waits for the guest, as flow control would, so
+  no byte is ever lost on the way in.
+- **Arrival.** The host raises the line once for each byte that has come
+  down the wire, rather than for as long as it waits, so a guest that never
+  reads cannot be stormed. The next byte's time is a deadline like a frame's,
+  so an idle board wakes for it.
 - **A byte of look-ahead.** `uart_irq_rx_ready()` must say whether a byte is
   waiting without taking it, and the host's import only takes. The driver
   reads one ahead and keeps it, so the ABI did not change.

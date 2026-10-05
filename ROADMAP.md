@@ -983,8 +983,9 @@ counts, by the demo's checks.
 As the issue has it, with one dependency it does not name: Zephyr's H4 driver
 wants an interrupt-driven UART, and this port's UART was polled.
 
-- [x] **An interrupt-driven UART** (`DESIGN.md` D10), on line 5. The host
-      raises it when bytes arrive; the driver keeps a byte of look-ahead and
+- [x] **An interrupt-driven UART** (`DESIGN.md` D10), on line 5. Typed
+      bytes come down its wire at 115200 baud and the host raises it for
+      each; the driver keeps a byte of look-ahead and
       raises the line itself while its transmitter is enabled, since the
       host empties it at once. Every shell now runs interrupt-driven, as on
       a real board. `drivers/uart/echo_bot` runs on the page, which types

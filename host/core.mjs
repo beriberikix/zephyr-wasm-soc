@@ -69,6 +69,13 @@ const MAX_TRAPS = 100;
  * for it, as twister's shell harness does; see type(). */
 const SHELL_PROMPT = Array.from('uart:~$ ', (ch) => ch.charCodeAt(0));
 
+/* A byte's time on the UART's wire: ten bits (8N1) at the 115200 baud the
+ * board's devicetree gives it. Typed bytes reach the guest no faster than
+ * this, as they would down a cable, however fast they are typed, pasted or
+ * piped. A burst that landed all at once overran the shell's 64-byte ring,
+ * which a cable never does (DESIGN.md D10). */
+const UART_BYTE_NS = 86_806n;
+
 /* The default entropy seed. Any fixed value would do; this one is only
  * memorable. Both hosts use the same generator and the same seed, so a build
  * that prints random numbers prints the same ones under Node and under
@@ -172,14 +179,16 @@ export class Host {
     this.pace = null;            // paced runs: when guest and wall clocks lined up
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
-    /* Bytes the guest's UART has taken, and how many had arrived when its
-     * line was last raised. Bytes join this.input from several places (the
-     * page, stdin, a pair's script), so the run loop raises the line when
-     * more have arrived than it last raised for: once per arrival, not for
-     * as long as they wait, which a guest that never reads would turn into
-     * an interrupt storm. */
+    /* Bytes the guest's UART has taken, and the byte, counted the same
+     * way, its line was last raised for. Bytes join this.input from several
+     * places (the page, stdin, a pair's script); the run loop raises the
+     * line once for each as it comes down the wire. */
     this.uartTaken = 0;
     this.uartRaisedAt = 0;
+    /* When the next byte has come down the wire: one byte time after the
+     * last was taken. The sender waits for the guest, as flow control
+     * would, so bytes are never lost on the way in. */
+    this.uartReadyNs = 0n;
     /* Lines to type, a line at a time, each when the guest is next idle:
      * after the shell has started and is waiting, as a person or twister's
      * harness would. Queued all at once at boot, an interrupt-driven shell
@@ -271,6 +280,18 @@ export class Host {
 
   /* This board's time on the pair's shared timeline. */
   get globalNs() { return this.epochNs + this.nowNs; }
+
+  /* Whether the UART has a byte for the guest: one is waiting, and it has
+   * come down the wire. */
+  uartReady() {
+    return this.input.length > 0 && this.nowNs >= this.uartReadyNs;
+  }
+
+  /* When the waiting byte will have come down the wire, on this board's own
+   * clock, or null if none is on its way. */
+  nextUartNs() {
+    return this.input.length > 0 && this.uartReadyNs > this.nowNs ? this.uartReadyNs : null;
+  }
 
   /* The next frame, on this board's own clock, or null. */
   nextFrameNs() {
@@ -417,6 +438,7 @@ export class Host {
       promptSince: this.promptSince,
       uartTaken: this.uartTaken,
       uartRaisedAt: this.uartRaisedAt,
+      uartReadyNs: this.uartReadyNs,
       gpio: this.gpio.map((g) => ({ ...g })),
       shFiles: new Map([...this.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }])),
       shFds: new Map([...this.shFds].map(([k, d]) => [k, { ...d }])),
@@ -448,6 +470,7 @@ export class Host {
     this.promptSince = snap.promptSince;
     this.uartTaken = snap.uartTaken;
     this.uartRaisedAt = snap.uartRaisedAt;
+    this.uartReadyNs = snap.uartReadyNs;
     this.gpio = snap.gpio.map((g) => ({ ...g }));
     this.shFiles = new Map([...snap.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }]));
     this.shFds = new Map([...snap.shFds].map(([k, d]) => [k, { ...d }]));
@@ -536,8 +559,9 @@ export class Host {
         uart_poll_in() {
           /* -1 means nothing waiting, which is what Zephyr's polled UART
            * API expects. */
-          if (self.input.length === 0) return -1;
+          if (!self.uartReady()) return -1;
           self.uartTaken++;
+          self.uartReadyNs = self.nowNs + UART_BYTE_NS;
           return self.input.shift();
         },
 
@@ -1061,10 +1085,14 @@ export class Host {
     const input = this.opts.inputScript?.[0];
     const next = pin && (!input || pin.atNs <= input.atNs) ? pin : input;
     /* A frame from the other board of a pair is one too. Ties go to a
-     * scripted event, then a frame, then the alarm, so the order is fixed. */
+     * scripted event, then a frame, then a typed byte, then the alarm, so
+     * the order is fixed. */
     const frameAt = this.nextFrameNs();
     let at = next ? next.atNs : null;
     if (frameAt !== null && (at === null || frameAt < at)) at = frameAt;
+    /* And so is a typed byte coming down the UART's wire. */
+    const uartAt = this.nextUartNs();
+    if (uartAt !== null && (at === null || uartAt < at)) at = uartAt;
     /* The LAN's own next event: its timers, or a service's. It wakes the
      * LAN, not the board, which sees only the frames that come of it. */
     const lanAt = this.lan ? this.lan.nextNs() - this.epochNs : null;
@@ -1087,6 +1115,12 @@ export class Host {
       if (frameAt > this.nowNs) this.nowNs = frameAt;
       this.quiescentRounds = 0;
       this.injectIrq(IRQ.ETH);
+      return true;
+    }
+    if (at !== null && at === uartAt && (next === undefined || next.atNs !== at)) {
+      /* The run loop raises the line once the clock is there. */
+      this.nowNs = uartAt;
+      this.quiescentRounds = 0;
       return true;
     }
     if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
@@ -1201,6 +1235,8 @@ export class Host {
     /* Uptime starts again; the pair's timeline does not. */
     this.epochNs += this.nowNs;
     this.nowNs = 0n;
+    /* The wire's timing is on the clock that just went back to zero. */
+    this.uartReadyNs = 0n;
     this.startedAt = this.platform.nowNs();
     this.alarmNs = null;
     this.alarmIsClamp = false;
@@ -1233,10 +1269,11 @@ export class Host {
       if (this.ethQueue.length > 0 && this.ethQueue[0].atNs <= this.globalNs) {
         this.injectIrq(IRQ.ETH);
       }
-      /* Bytes for the UART that arrived since its line was last raised. */
-      const arrived = this.uartTaken + this.input.length;
-      if (arrived > this.uartRaisedAt) {
-        this.uartRaisedAt = arrived;
+      /* A byte has come down the wire that the line has not been raised
+       * for: once per byte, not for as long as it waits, which a guest that
+       * never reads would turn into an interrupt storm. */
+      if (this.uartReady() && this.uartRaisedAt <= this.uartTaken) {
+        this.uartRaisedAt = this.uartTaken + 1;
         this.injectIrq(IRQ.UART);
       }
       /* Anything raised from outside since the last step. The guest is

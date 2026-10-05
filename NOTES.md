@@ -2015,10 +2015,9 @@ Phase 7 starts with what H4, Zephyr's UART transport for Bluetooth, needs:
 interrupt the guest, which stopped being true when the pending word came in;
 four other devices interrupt through it already.
 
-The UART is line 5. The host raises it when bytes arrive, once per arrival:
-bytes reach its queue from the page, stdin and a pair's script, so the run
-loop counts how many have arrived against how many it last raised for. A
-guest that never reads is told once, not stormed. The driver needs to say
+The UART is line 5. Typed bytes come down its wire at 115200 baud, and the
+host raises the line once for each, so a guest that never reads is told once,
+not stormed. The driver needs to say
 whether a byte is waiting without taking it, and the import only takes, so
 it reads one ahead. The transmitter is always empty, since the host takes
 every byte at once, so an enabled TX interrupt fires at once and keeps
@@ -2033,7 +2032,7 @@ commands the same as before.
 keyboard, which twister cannot drive, so it is not in the sweep; the demo
 types into it and counts it as it counts `basic/button`. Score 96.
 
-Making the shell interrupt-driven showed three things the polled shell had
+Making the shell interrupt-driven showed four things the polled shell had
 been hiding.
 
 Scripted typing had relied on the poll. Bytes queued at boot reached the
@@ -2053,6 +2052,19 @@ the shell prints, was taken there and stacked its frames on the formatter's.
 Any interrupt could have done it before. The safepoint pass now moves the
 stack pointer past such a frame around each safepoint (DESIGN.md D8o).
 
-And `echo`'s server answered `net iface` before its network had an
-address, now that typing waits only for the prompt; `ci_stdin_at_ms` holds
-it until a second in.
+`echo`'s server answered `net iface` before its network had an address, now
+that typing waits only for the prompt; `ci_stdin_at_ms` holds it until a
+second in.
+
+In the browser, zperf's client lost the end of its second command to `RX
+ring buffer full`. The paced client had jumped to its next timer, most of a
+second ahead of the wall clock, while the page typed, and every key arrived
+at once when the wall clock caught up: 79 bytes in one interrupt, for a
+64-byte ring. A cable cannot do that, so the host's UART now has a line
+rate, the 115200 baud of its devicetree node, and the shell drains its ring
+between bytes as it would on a board (DESIGN.md D10).
+
+Reading the dispatcher on the way found that it ran handlers unmasked, so a
+safepoint in a handler's own loop could take its line again halfway through
+it. That was not this failure, but it is not what any board does; handlers
+now run masked, as on a CPU that masks on entry (DESIGN.md D4a).
