@@ -374,14 +374,26 @@ the kernel, so this comes first.
       and D8b.
 - [x] **The manifest and the score**, as above. The score is now the
       samples sweep; see the measure.
-- [ ] **Twister.** It builds for this board but cannot find the module's SoC,
-      because it takes a `--board-root` and no `--soc-root` and relies on
-      module discovery, which finds nothing when the module is the manifest
-      repository. Until that is solved the scoreboard is
-      `scripts/check_samples.py`, which applies twister's own rules without
-      twister. Half done: `wasm_node.yaml` now has the `supported:` list
-      (`26fe63b`), so twister will not filter the board out of every
-      `depends_on` test once it can build them.
+- [x] **Twister.** It runs: `scripts/twister.sh` passes the module as
+      `ZEPHYR_EXTRA_MODULES`, which is how twister's module discovery finds
+      the board's SoC and arch when the module is the manifest repository,
+      with the toolchain arguments every build needs. Three things stood in
+      the way after that:
+      - twister reads a ztest suite's cases from the ELF symbol table, and a
+        wasm image is not ELF (`patches/0009` takes them from the output);
+      - `CONFIG_DEBUG_THREAD_INFO` ends in a `#warning` for an architecture
+        it does not list, which twister's warnings-as-errors build refuses
+        (`patches/0010`);
+      - a sample that never ends reached `--max-time` before twister, which
+        waits two seconds after its harness matches, stopped it, and the
+        host's give-up exit failed it. The board's `run` target now stops
+        cleanly there (`--stop-at-max-time`).
+
+      Under twister, the semaphore, queue, common (seven configurations)
+      and thread suites pass, and so do `hello_world`, `synchronization`
+      and all nine `philosophers` configurations. `check_samples.py` stays
+      the scoreboard: it records a cause for every entry, and twister needs
+      Zephyr's test requirements, which the build does not.
 - [x] **Logging.** Already works. `CONFIG_LOG` was on this list because
       nearly every sample past `basic/` calls `LOG_INF` and because it brings
       three more iterable families with it, which made it the first real test
@@ -400,8 +412,18 @@ the kernel, so this comes first.
       after every unwind and stop the run with a message naming the buffer
       and how far it overran (`a696395`). It is after the fact, but it turns
       silent corruption into a reported fatal.
-- [ ] **`CONFIG_STACK_SENTINEL`**, which covers the C shadow stack, the other
-      half of a thread's stack. Not on yet, and not tried.
+- [x] **`CONFIG_STACK_SENTINEL`**, which covers the C shadow stack, the other
+      half of a thread's stack. It works, once the stack was laid out as
+      Zephyr describes it: the reserved bytes are at the bottom of a stack
+      object, and the Asyncify buffer now lives there, so `stack_info.start`
+      is the bottom of the C stack (`DESIGN.md` D8). The architecture's part,
+      a check after every interrupt that is not nested, is in
+      `z_wasm_irq_dispatch()`. Upstream's `tests/kernel/fatal/exception`
+      catches both its deliberate overflows, from a timer interrupt and from
+      a swap, but the suite cannot finish: its first two cases raise CPU
+      exceptions with an illegal call and a division by zero, and in wasm
+      those are traps the guest cannot catch. Making a trap something the
+      guest handles is the open part.
 - [x] **Build hygiene** (`10d1bdc`). The safepoint pass's skip of
       `z_wasm_switch` matched nothing because the function was not exported;
       it is exported now, and a skipped name that cannot be found fails the

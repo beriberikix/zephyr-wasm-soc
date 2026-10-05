@@ -426,6 +426,18 @@ regenerates the candidate list from upstream's `tests.yaml` files. All 230
 candidates take a few hours, so CI runs them weekly in
 `.github/workflows/samples.yml` rather than on every push.
 
+Zephyr's own twister runs too, through `scripts/twister.sh`, which passes the
+module and toolchain arguments every build needs:
+
+```sh
+pip install -r zephyr/scripts/requirements-run-test.txt \
+            -r zephyr/scripts/requirements-build-test.txt
+zephyr-wasm/scripts/twister.sh -T zephyr/tests/kernel/semaphore -T zephyr/samples/philosophers
+```
+
+It runs each image through the board's `run` target. The records above stay
+the scoreboard, because they give a cause for every entry that does not pass.
+
 The browser check needs Playwright (`npm install --no-save playwright && npx
 playwright install chromium`); nothing else here does, which is why it is not
 a dependency of the repository.
