@@ -420,10 +420,18 @@ the kernel, so this comes first.
       a check after every interrupt that is not nested, is in
       `z_wasm_irq_dispatch()`. Upstream's `tests/kernel/fatal/exception`
       catches both its deliberate overflows, from a timer interrupt and from
-      a swap, but the suite cannot finish: its first two cases raise CPU
-      exceptions with an illegal call and a division by zero, and in wasm
-      those are traps the guest cannot catch. Making a trap something the
-      guest handles is the open part.
+      a swap, and the whole suite passes since a trap became a CPU
+      exception (below).
+- [x] **A trap is a CPU exception** (`DESIGN.md` D14). A call through a bad
+      pointer or with the wrong signature, or a division by zero, used to
+      end the board with a JavaScript stack trace. The trap unwinds only the
+      running thread's frames, so the host now enters the guest again on
+      that thread's behalf, Zephyr reports `CPU exception` and aborts the
+      thread, and the rest of the board carries on, as on hardware.
+      `tests/kernel/fatal/exception` passes as it is, which makes 23 of 26
+      kernel suites. A halt no longer ends in a stack trace either. The
+      sweep now fails any run that reports a fault, as twister does, so a
+      sample with one dead thread cannot pass on its others' output.
 - [x] **Build hygiene** (`10d1bdc`). The safepoint pass's skip of
       `z_wasm_switch` matched nothing because the function was not exported;
       it is exported now, and a skipped name that cannot be found fails the

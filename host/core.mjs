@@ -903,7 +903,24 @@ export class Host {
     hdr[0] = c.buf + 8;
     c.entry = 'z_wasm_trap';
     c.arg = 0;
-    this.ex.z_wasm_trap();
+    try {
+      this.ex.z_wasm_trap();
+    } catch (again) {
+      if (!this.halted(again)) throw again;
+    }
+    return true;
+  }
+
+  /* Is this trap the end of a halt the guest asked for? The fatal import
+   * starts an unwind, but arch_system_halt() never returns, so its callers
+   * are not instrumented to resume (D8a) and the unwind runs into the
+   * `unreachable` after the call. That is the guest stopping, as it meant to,
+   * not a fault: finish the unwind and let the run end. */
+  halted(err) {
+    if (!this.pendingFatal || !(err instanceof WebAssembly.RuntimeError)) return false;
+    if (this.ex.asyncify_get_state() === ASYNCIFY_UNWINDING) {
+      try { this.ex.asyncify_stop_unwind(); } catch { /* the run is over */ }
+    }
     return true;
   }
 
@@ -1337,7 +1354,8 @@ export class Host {
     try {
       this.ex[c.entry](c.arg);
     } catch (err) {
-      if (!this.raiseTrap(c, err)) throw err;
+      if (!this.halted(err) && !this.raiseTrap(c, err)) throw err;
+      if (this.pendingFatal) return false;
     }
 
     if (this.ex.asyncify_get_state() !== ASYNCIFY_UNWINDING) {

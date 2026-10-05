@@ -126,13 +126,13 @@
       "path": "mutex/mutex_api",
       "status": "does-not-finish",
       "passes": 0,
-      "note": "Traps on the first case. The thread entries take two parameters and are cast to k_thread_entry_t, which takes three; wasm type-checks indirect calls, so the call traps where every other target tolerates it. Correcting the signatures locally makes all 11 pass. Not a port bug and not fixable in the port. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes."
+      "note": "Traps on the first case, and the trap is now raised as a CPU exception, which the suite's default fatal handler answers by halting. The thread entries take two parameters and are cast to k_thread_entry_t, which takes three; wasm type-checks indirect calls, so the call traps where every other target tolerates it. Correcting the signatures locally makes all 11 pass. Not a port bug and not fixable in the port. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes."
     },
     {
       "path": "pending",
       "status": "does-not-finish",
       "passes": 0,
-      "note": "The same signature mismatch, reached through K_THREAD_DEFINE with an entry declared void f(void) rather than through an explicit cast. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes."
+      "note": "The same signature mismatch, reached through K_THREAD_DEFINE with an entry declared void f(void) rather than through an explicit cast. The fix is in upstream/zephyr/; with it applied (scripts/try_upstream.sh) the suite passes. The trap is now raised as a CPU exception (DESIGN.md D14), which the default fatal handler answers by halting."
     },
     {
       "path": "threads/thread_apis",
@@ -157,9 +157,9 @@
       "extra_args": [
         "-DCONF_FILE=sentinel.conf"
       ],
-      "status": "does-not-finish",
-      "note": "Upstream's kernel.common.stack_sentinel entry. Its first two cases raise a CPU exception by calling an illegal address and dividing by zero, and in wasm both are traps, which unwind to the host and cannot be caught. With those two raised in software instead (a scratch copy, not committed), every other case passes, both stack sentinel checks among them: from a timer interrupt and from a swap.",
-      "passes": 0
+      "status": "passes",
+      "note": "Upstream's kernel.common.stack_sentinel entry, and every case in it passes: a CPU exception from a call through an illegal address and from a division by zero, both wasm traps the host raises as CPU exceptions (DESIGN.md D14); oops, panic, an assertion and arbitrary exceptions; and both stack sentinel checks, from a timer interrupt and from a swap.",
+      "passes": 1
     }
   ]
 }
