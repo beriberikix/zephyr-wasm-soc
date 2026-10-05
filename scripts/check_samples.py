@@ -306,6 +306,11 @@ def shell_verdict(commands: list[dict], out: str) -> bool:
     return True
 
 
+def fault_reported(out: str) -> bool:
+    """Did the run report a fault, as twister's harness looks for one?"""
+    return ">>> ZEPHYR FATAL ERROR" in out or "*** trap:" in out
+
+
 def run_cause(out: str) -> str:
     # V8 raises the same message for a call through a null pointer as for a
     # call with the wrong signature, so the trap alone cannot say which. The
@@ -316,7 +321,7 @@ def run_cause(out: str) -> str:
         return "indirect-call"
     if "RuntimeError" in out:
         return "trap"
-    if "*** fatal" in out:
+    if "*** fatal" in out or ">>> ZEPHYR FATAL ERROR" in out:
         return "fatal"
     if "*** gave up" in out:
         return "gave-up"
@@ -400,6 +405,15 @@ def run_one(sample: dict, keep: bool) -> dict:
         shutil.rmtree(build_dir, ignore_errors=True)
 
     verdict = shell_verdict(commands, out) if commands else console_verdict(entry, out)
+    # Twister fails a run that reports a fault unless the entry says faults
+    # are expected (ignore_faults), however much of its output matched. Here
+    # a trap is raised as a CPU exception and the run goes on (DESIGN.md
+    # D14), so without this rule a sample whose other threads printed what
+    # upstream looks for would pass with one of its threads dead.
+    if fault_reported(out) and not entry.get("ignore_faults"):
+        if verdict is True or "PROJECT EXECUTION SUCCESSFUL" in out:
+            verdict = False
+            out = out.replace("PROJECT EXECUTION SUCCESSFUL", "")
     if verdict is True:
         result["status"] = "passes"
     elif "PROJECT EXECUTION SUCCESSFUL" in out:

@@ -61,6 +61,10 @@ const CLAMP_NS = 100_000_000_000n;
  * each round costs one suspension, not one tick. */
 const QUIESCENT_ROUNDS = 2;
 
+/* How many traps a run may raise as CPU exceptions before the host stops
+ * believing the guest can recover from them (DESIGN.md D14). */
+const MAX_TRAPS = 100;
+
 /* The default entropy seed. Any fixed value would do; this one is only
  * memorable. Both hosts use the same generator and the same seed, so a build
  * that prints random numbers prints the same ones under Node and under
@@ -201,6 +205,7 @@ export class Host {
     this.storageImage = opts.flashImage ?? null;
     this.reboots = 0;
     this.maxReboots = opts.maxReboots ?? 64;
+    this.traps = 0;
     /* Input events waiting for the guest's ISR: [type, code, value, sync]. */
     this.inputQueue = [];
     /* Sensor readings waiting for the bridge's ISR: [sensor, channel,
@@ -873,6 +878,35 @@ export class Host {
     return true;
   }
 
+  /* A trap, raised in the guest as the CPU exception it would be on hardware
+   * (DESIGN.md D14). The trap unwound the running context's wasm frames and
+   * nothing else: linear memory, the kernel and __stack_pointer are as they
+   * were. So enter the guest again, on the same stack, at z_wasm_trap(),
+   * which reports a CPU exception and aborts the thread; the kernel switches
+   * away from it, and that unwinds into the context's buffer like any other
+   * switch. Returns false where that cannot be trusted, and the trap goes on
+   * up as before: a trap during boot, mid-rewind or mid-unwind, inside the
+   * handler itself, or in a guest that keeps trapping. */
+  raiseTrap(c, err) {
+    if (!(err instanceof WebAssembly.RuntimeError)) return false;
+    if (typeof this.ex.z_wasm_trap !== 'function') return false;
+    if (c.buf === this.scratchBuf || c.entry === 'z_wasm_trap') return false;
+    if (this.ex.asyncify_get_state() !== ASYNCIFY_NORMAL) return false;
+    if (++this.traps > MAX_TRAPS) {
+      this.platform.writeErr(`\n*** ${MAX_TRAPS} traps; not raising any more ***\n`);
+      return false;
+    }
+    this.platform.writeErr(`\n*** trap: RuntimeError: ${err.message} ***\n`);
+    /* The frames the buffer held were consumed by the rewind that started
+     * this step, or never written; start it empty for the handler's own. */
+    const hdr = new Uint32Array(this.mem.buffer, c.buf, 1);
+    hdr[0] = c.buf + 8;
+    c.entry = 'z_wasm_trap';
+    c.arg = 0;
+    this.ex.z_wasm_trap();
+    return true;
+  }
+
   /* Begin unwinding out of the guest. Both suspension points land here. */
   suspend({ idle, fatal = false }) {
     const blk = this.readSwitchBlock();
@@ -1300,7 +1334,11 @@ export class Host {
         `buf=0x${c.buf.toString(16)} cursor=+${used} limit=${limit}` +
         `${sane ? '' : '  <-- CURSOR OUT OF RANGE'}\n`);
     }
-    this.ex[c.entry](c.arg);
+    try {
+      this.ex[c.entry](c.arg);
+    } catch (err) {
+      if (!this.raiseTrap(c, err)) throw err;
+    }
 
     if (this.ex.asyncify_get_state() !== ASYNCIFY_UNWINDING) {
       /* The context ran to completion rather than suspending. z_cstart never
