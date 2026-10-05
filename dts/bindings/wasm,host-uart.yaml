@@ -1,4 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-description: Polled UART provided by the host through the zephyr_host imports
+description: |
+  A UART provided by the host through the zephyr_host imports.
+
+  Polled, or interrupt-driven with CONFIG_UART_INTERRUPT_DRIVEN. The host
+  raises the interrupt when bytes arrive for the board; the driver raises it
+  itself while its transmit interrupt is enabled, since the host takes every
+  byte at once.
+
 compatible: "wasm,host-uart"
+
 include: [uart-controller.yaml, base.yaml]
+
+properties:
+  interrupts:
+    required: true

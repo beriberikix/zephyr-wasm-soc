@@ -168,6 +168,14 @@ export class Host {
     this.pace = null;            // paced runs: when guest and wall clocks lined up
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
+    /* Bytes the guest's UART has taken, and how many had arrived when its
+     * line was last raised. Bytes join this.input from several places (the
+     * page, stdin, a pair's script), so the run loop raises the line when
+     * more have arrived than it last raised for: once per arrival, not for
+     * as long as they wait, which a guest that never reads would turn into
+     * an interrupt storm. */
+    this.uartTaken = 0;
+    this.uartRaisedAt = 0;
     /* Physical pin levels, per port. Outputs are what the guest last drove;
      * inputs are what the host is holding the pins at. A button wired active
      * low with a pull-up sits at 1 until something presses it, which is the
@@ -352,6 +360,8 @@ export class Host {
       externalIrqs: this.externalIrqs,
       outBytes: this.outBytes,
       input: this.input.slice(),
+      uartTaken: this.uartTaken,
+      uartRaisedAt: this.uartRaisedAt,
       gpio: this.gpio.map((g) => ({ ...g })),
       shFiles: new Map([...this.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }])),
       shFds: new Map([...this.shFds].map(([k, d]) => [k, { ...d }])),
@@ -377,6 +387,8 @@ export class Host {
     this.externalIrqs = snap.externalIrqs;
     this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
+    this.uartTaken = snap.uartTaken;
+    this.uartRaisedAt = snap.uartRaisedAt;
     this.gpio = snap.gpio.map((g) => ({ ...g }));
     this.shFiles = new Map([...snap.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }]));
     this.shFds = new Map([...snap.shFds].map(([k, d]) => [k, { ...d }]));
@@ -464,7 +476,9 @@ export class Host {
         uart_poll_in() {
           /* -1 means nothing waiting, which is what Zephyr's polled UART
            * API expects. */
-          return self.input.length > 0 ? self.input.shift() : -1;
+          if (self.input.length === 0) return -1;
+          self.uartTaken++;
+          return self.input.shift();
         },
 
         set_alarm_ns(deadline) {
@@ -666,7 +680,9 @@ export class Host {
         return 0;
       }
       case SH.READC:
-        return this.input.length > 0 ? this.input.shift() : -1;
+        if (this.input.length === 0) return -1;
+        this.uartTaken++;
+        return this.input.shift();
       case SH.OPEN: {
         const path = new TextDecoder().decode(mem().slice(word(0), word(0) + word(2)));
         const mode = word(1);
@@ -1155,6 +1171,12 @@ export class Host {
       /* A frame from the other board of a pair that is due now. */
       if (this.ethQueue.length > 0 && this.ethQueue[0].atNs <= this.globalNs) {
         this.injectIrq(IRQ.ETH);
+      }
+      /* Bytes for the UART that arrived since its line was last raised. */
+      const arrived = this.uartTaken + this.input.length;
+      if (arrived > this.uartRaisedAt) {
+        this.uartRaisedAt = arrived;
+        this.injectIrq(IRQ.UART);
       }
       /* Anything raised from outside since the last step. The guest is
        * fully unwound here, so writing the pending word is safe. A line

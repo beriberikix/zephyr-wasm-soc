@@ -201,6 +201,15 @@ extern struct wasm_switch_block z_wasm_switch_block;
 extern volatile uint32_t z_wasm_irq_pending;
 extern volatile uint32_t z_wasm_irq_masked;
 
+/* Raise a line from the guest itself, for a device whose interrupt condition
+ * the guest can see without the host: a UART's transmitter, which the host
+ * empties at once. Taken at the next safepoint, like one the host raised.
+ * The host writes the word only between steps, so this cannot race it. */
+static inline void z_wasm_irq_raise(unsigned int line)
+{
+	z_wasm_irq_pending |= (1U << line);
+}
+
 /* The deadline the system timer last gave the host, INT64_MAX for none. The
  * host keeps a single alarm, and a busy-wait borrows it; this is how the wait
  * knows when the kernel's own deadline falls and puts it back afterwards.

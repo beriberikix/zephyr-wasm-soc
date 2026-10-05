@@ -6,9 +6,9 @@ config UART_WASM_HOST
 	depends on DT_HAS_WASM_HOST_UART_ENABLED
 	depends on SERIAL
 	select SERIAL_HAS_DRIVER
+	select SERIAL_SUPPORT_INTERRUPT
 	help
-	  A polled UART. The host reads and writes a byte at a time, which is
-	  enough for the console and for the shell.
-
-	  Polling only: nothing lets the host interrupt the guest, so a receive
-	  interrupt would have nothing to fire it.
+	  The host reads and writes a byte at a time. Polled, and with
+	  CONFIG_UART_INTERRUPT_DRIVEN interrupt-driven too: the host raises the
+	  UART line when bytes arrive, and the driver raises it itself while its
+	  transmit interrupt is enabled.
