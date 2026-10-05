@@ -890,7 +890,10 @@ checks could only be thresholds. Now:
   one board and says whether it went idle and until when. When both boards
   have nothing to wake them, an unpaced pair is over. A paced one lets its
   time follow the wall clock while it waits for a person, as a single paced
-  board does.
+  board does. The kernel's "nothing soon" clamp counts as nothing to wake
+  for there too: a board whose only alarm is the clamp, as one with an
+  interrupt-driven shell often is, would otherwise jump days ahead in one
+  step, past the page's limit.
 - **Pacing is the pair's.** Unpaced, in Node, a pair runs as fast as it
   can. On the page, the pair's time, the earlier of its busy boards, is
   held to the wall clock with the single board's anchor logic. That

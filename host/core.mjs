@@ -1077,7 +1077,11 @@ export class Host {
    * sample which waits for a button be run unattended and still produce the
    * same output every time: the press happens at a stated guest time rather
    * than whenever a person got round to it. */
-  advanceToNextDeadline(limitNs = null) {
+  advanceToNextDeadline(limitNs = null, clampIsNothing = false) {
+    /* The kernel's alarm, unless it is only the clamp and the caller is
+     * paced: then nothing is due, and time passes with the wall clock until
+     * something happens, rather than jumping days ahead in one go. */
+    const alarmNs = clampIsNothing && this.alarmIsClamp ? null : this.alarmNs;
     /* The next scripted event, of either kind: a pin moving or input
      * arriving. Scripted input counts as a deadline for the same reason a
      * scripted button press does. */
@@ -1097,12 +1101,12 @@ export class Host {
      * LAN, not the board, which sees only the frames that come of it. */
     const lanAt = this.lan ? this.lan.nextNs() - this.epochNs : null;
     if (lanAt !== null && (at === null || lanAt < at) &&
-        (this.alarmNs === null || lanAt < this.alarmNs)) {
+        (alarmNs === null || lanAt < alarmNs)) {
       if (lanAt > this.nowNs) this.nowNs = lanAt;
       this.fromLan(this.lan.advance(this.globalNs));
       return true;
     }
-    if (this.alarmNs !== null && (at === null || this.alarmNs < at)) at = this.alarmNs;
+    if (alarmNs !== null && (at === null || alarmNs < at)) at = alarmNs;
     /* In a pair, a board may only go as far as the other lets it
      * (host/pair.mjs). Short of its next event it idles up to the limit,
      * which is time passing with nothing to do, and says where it stopped. */
@@ -1123,7 +1127,7 @@ export class Host {
       this.quiescentRounds = 0;
       return true;
     }
-    if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
+    if (next && (alarmNs === null || next.atNs <= alarmNs)) {
       if (next.atNs > this.nowNs) this.nowNs = next.atNs;
       this.quiescentRounds = 0;
       if (next === pin) {
@@ -1137,7 +1141,7 @@ export class Host {
       }
       return true;
     }
-    if (this.alarmNs === null) return false;
+    if (alarmNs === null) return false;
     /* Waking from a clamped deadline having done nothing is the signal that
      * the kernel has run out of work. Waking from a real one is progress. */
     this.quiescentRounds = this.alarmIsClamp ? this.quiescentRounds + 1 : 0;
@@ -1522,7 +1526,7 @@ export class Host {
          * limit; otherwise idle up to the limit and say what comes next, or
          * that nothing does. */
         if (pending === 0 && (this.externalIrqs & this.enabledLines()) === 0 &&
-            !this.advanceToNextDeadline(this.stepLimitNs)) {
+            !this.advanceToNextDeadline(this.stepLimitNs, !!this.opts.pairPaced)) {
           this.idleUntil = null;
         }
         return true;

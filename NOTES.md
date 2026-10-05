@@ -2032,7 +2032,7 @@ commands the same as before.
 keyboard, which twister cannot drive, so it is not in the sweep; the demo
 types into it and counts it as it counts `basic/button`. Score 96.
 
-Making the shell interrupt-driven showed four things the polled shell had
+Making the shell interrupt-driven showed five things the polled shell had
 been hiding.
 
 Scripted typing had relied on the poll. Bytes queued at boot reached the
@@ -2068,3 +2068,10 @@ Reading the dispatcher on the way found that it ran handlers unmasked, so a
 safepoint in a handler's own loop could take its line again halfway through
 it. That was not this failure, but it is not what any board does; handlers
 now run masked, as on a CPU that masks on entry (DESIGN.md D4a).
+
+The mDNS pair then ended by itself on the page, seconds in, at its
+ten-minute limit. With the poll gone, the responder's only alarm was the
+kernel's clamp, days away, and a pair whose other board had gone quiet let
+it jump there. A paced single board has always treated the clamp as nothing
+to wake for and let the wall clock carry it; a paced pair now does too, and
+the shell's 10 ms poll had been hiding that it did not (DESIGN.md D8k).

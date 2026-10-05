@@ -55,7 +55,13 @@ export class Pair {
     this.exitCode = 0;
     boards[0].epochNs = 0n;
     boards[1].epochNs = opts.delayNs ?? 0n;
-    for (const b of boards) b.opts.pair = true;
+    /* A paced pair waits out the kernel's "nothing soon" clamp with the
+     * wall clock, as a paced board does (core.mjs), instead of jumping to
+     * it: a board whose shell takes interrupts has no other alarm. */
+    for (const b of boards) {
+      b.opts.pair = true;
+      b.opts.pairPaced = !!opts.paced;
+    }
     /* What each board was last seen doing: running, or idle until an
      * event at `next` on the pair's timeline (null for nothing at all). A
      * board not yet powered on is idle until its power-on. */
