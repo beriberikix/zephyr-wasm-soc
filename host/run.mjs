@@ -52,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--lan-dial') { opts.lan = true; opts.lanDial.push(parseDial(argv[++i])); }
     else if (a === '--lan-ping') { opts.lan = true; opts.lanPing.push(parsePing(argv[++i])); }
     else if (a === '--max-time') opts.maxTimeMs = Number(argv[++i]);
+    else if (a === '--stop-at-max-time') opts.stopAtMaxTime = true;
     else if (a.startsWith('--max-time=')) opts.maxTimeMs = Number(a.slice(11));
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else if (!a.startsWith('-')) opts.wasm = a;
@@ -160,6 +161,10 @@ function usage() {
   --realtime         follow the wall clock instead of virtual time
   --trace-switches   log every context switch to stderr
   --max-time <ms>    give up after this much guest time (default 10000)
+  --stop-at-max-time reaching --max-time stops the run and exits 0, as
+                     twister stops a native_sim run that never ends; its
+                     verdict comes from the output. The board's run target
+                     passes this
   --interactive      forward this terminal's input to the guest UART, and
                      do not stop when the guest has nothing left to do
   --paced            let virtual time pass at the rate it claims, so a

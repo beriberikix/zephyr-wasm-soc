@@ -11,11 +11,13 @@
 /*
  * A wasm thread is two regions carved out of one K_THREAD_STACK object:
  *
- *   low   +------------------+  <- stack_base
- *         |  C shadow stack  |     grows down from asyncify_buf
- *         +------------------+  <- asyncify_buf
- *         | Asyncify buffer  |     holds unwound wasm frames
- *   high  +------------------+  <- asyncify_end
+ *   low   +------------------+  <- the object, and asyncify_buf
+ *         | Asyncify buffer  |     holds unwound wasm frames; the
+ *         +------------------+  <- asyncify_end   reserved bytes
+ *         |  (headroom)      |     debugging builds only
+ *         +------------------+  <- stack_info.start, the sentinel
+ *         |  C shadow stack  |     grows down from the top
+ *   high  +------------------+  <- stack_ptr
  *
  * Asyncify saves the wasm frames but knows nothing about __stack_pointer, so
  * the arch saves and restores that itself on every switch. See DESIGN.md D8.

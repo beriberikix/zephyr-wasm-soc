@@ -151,6 +151,15 @@
       "status": "passes",
       "passes": 23,
       "note": "Passes since iterable sections are laid out in upstream's order, which makes ztest run the cases in upstream's order too. In link order it panicked at test_k_heap_alloc_size[sizes/0] on ASSERTION FAIL [z_spin_lock_valid(l)]: some case that ran earlier left the heap's spinlock recorded as held. Which one was never found, so that is still unexplained; it no longer runs first. The timeout hypothesis was ruled out."
+    },
+    {
+      "path": "fatal/exception",
+      "extra_args": [
+        "-DCONF_FILE=sentinel.conf"
+      ],
+      "status": "does-not-finish",
+      "note": "Upstream's kernel.common.stack_sentinel entry. Its first two cases raise a CPU exception by calling an illegal address and dividing by zero, and in wasm both are traps, which unwind to the host and cannot be caught. With those two raised in software instead (a scratch copy, not committed), every other case passes, both stack sentinel checks among them: from a timer interrupt and from a swap.",
+      "passes": 0
     }
   ]
 }

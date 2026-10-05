@@ -245,18 +245,27 @@ struct the host reports 32 bytes and wasm32 reports 16, so compiling
 ### D8. Thread stack split, and why the full Asyncify pass
 
 Spike C settles the shape of a thread. Each `K_THREAD_STACK` object is split
-in two: the low part is the C shadow stack that `__stack_pointer` walks, and
-the high part is the Asyncify buffer holding unwound wasm frames. A switch
+in two: the Asyncify buffer holding unwound wasm frames, and the C shadow
+stack that `__stack_pointer` walks. A switch
 swaps both, because Asyncify saves the wasm frames but does not touch
 `__stack_pointer`. wasm-ld exports that global and the host can write it.
 
-The buffer is carved from **below** `stack_ptr`, not above it.
-`ARCH_THREAD_STACK_RESERVED` is supposed to make the kernel hand over a
-`stack_ptr` that already excludes the reserved bytes; measured, it does not,
-and `stack_ptr` arrives at the top of the stack object. A buffer placed above
-it lands in the next thread's stack object, so unwinding one thread overwrites
-another thread's `k_thread` structure. Taking it from below keeps it inside
-the thread's own object either way.
+The buffer lives in the bytes `ARCH_THREAD_STACK_RESERVED` sets aside, and
+Zephyr puts those at the **bottom** of every stack object, below the buffer
+the thread asked for, where an MPU target keeps its guard. So the object
+reads, from low to high: the Asyncify buffer, the headroom of a debugging
+build (below), and then the requested stack, which the C stack walks down
+from `stack_ptr` at the top. The bottom of that requested stack,
+`stack_info.start`, is the bottom of the C stack, which is where Zephyr's
+stack sentinel and thread analyzer look for it. A C stack that overflows
+runs into its own thread's buffer, never another object.
+
+It was not always so. The first version assumed the reserved bytes were at
+the top, found that a buffer placed above `stack_ptr` landed in the next
+thread's object, and carved it from below `stack_ptr` instead. That kept the
+buffer inside the object, but the C stack then grew down through
+`stack_info.start` and the reserved bytes, and the sentinel sat inside the C
+stack (below).
 
 Sizing comes from the measurements: the buffer needs about 88 bytes plus 32
 per frame live at the moment of the yield. The reserved split will be a
@@ -278,9 +287,7 @@ shell thread, below the command handler, the shell and the socket layer,
 and unwound 4,240. Tying the larger default to what needs it, rather
 than raising it for every build, keeps the cost where it is
 paid: every thread's stack carries the buffer, and every step-back snapshot
-copies it. The port places
-the buffer at the top of the stack object so an overflow runs into the next
-guard rather than into live thread state.
+copies it.
 
 Kernel stacks need the same reservation as thread stacks. The idle thread and
 the system work queue run on `K_KERNEL_STACK` objects and suspend like any
@@ -312,25 +319,27 @@ load and store through an import, so a scratch host can report the stack
 of the store that hits a given address. That turned "a null function in
 `test_cb`" into "a `k_work_submit_to_queue` frame spilling an argument into
 the ztest list". Zephyr's `CONFIG_STACK_SENTINEL` is the ordinary way to
-catch this, and it works here on a healthy sample, but in one suite it
-reported an overflow on a thread whose test does nothing. That report is
-not explained, so the sentinel is not trusted yet.
+catch this, and with the layout above it works here. It writes a word at
+`stack_info.start` and checks it at every switch, for the outgoing thread,
+and after every interrupt that is not nested, which is the architecture's
+part: `z_wasm_irq_dispatch()` does it, as arm64's ISR exit does. Upstream's
+`tests/kernel/fatal/exception` with `sentinel.conf` overflows a stack on
+purpose and expects both checks to catch it. Here they do, though the
+suite as a whole cannot finish: two of its cases raise a CPU exception with
+an illegal call and a division by zero, and in wasm those are traps the
+guest cannot catch (section 4a).
 
-It is explained now, and so is why the thread analyzer's figures here make
-no sense. Zephyr puts a stack object's reserved bytes at the **bottom**,
-where an MPU target keeps its guard, and describes the thread's stack
-(`stack_info`) as the requested size above them. The port carves the
-Asyncify buffer down from the top of the object, so a stack no bigger than
-the buffer has its whole `stack_info` inside the buffer, and the C stack
-actually runs from below the buffer down through the reserved bytes. The
-sentinel's word and the analyzer's paint are where unwinds write, not where
-the C stack grows. Both need the port to describe its stacks as they are
-before they can be trusted.
+Before the layout was fixed, the sentinel reported an overflow at once on
+a thread whose test did nothing. The 4 KB ztest thread's `stack_info.start`
+was the top of its C stack, not the bottom. It is off by default, as
+everywhere: one load and compare per switch and interrupt.
 
 **A debugging build gets more C stack** (`CONFIG_WASM_STACK_HEADROOM`,
 8192 when built `-Og`, as `CONFIG_DEBUG=y` builds, and 0 otherwise). It is
 added to the reservation, so every stack object grows by it and the size
-the kernel knows about does not change. Optimised, wasm code fits the
+the kernel knows about does not change. It lies below `stack_info.start`,
+so with the sentinel on, a debugging build's thread that uses it is
+reported as overflowing the size it asked for, which is the truth. Optimised, wasm code fits the
 stacks upstream sizes for native targets; built for debugging it does not.
 `smf_calculator` asks for `CONFIG_DEBUG` and gives its own thread 1 KB,
 and it ran off the bottom into what is linked below: first main's timeout
@@ -1361,14 +1370,22 @@ All of the above are set in `boards/wasm/wasm_node/wasm_node_defconfig`.
 
 `scripts/kernel_tests.json` records how each of Zephyr's own kernel suites
 does here and `scripts/check_kernel.py` re-runs them, so this stops being a
-number taken once. Of 25 suites, 22 pass outright, one finishes with
-failures, and two do not finish. Each of the three has a known cause, and
+number taken once. Of 26 suites, 22 pass outright, one finishes with
+failures, and three do not finish. Each of the four has a known cause, and
 none is the port's to fix:
 - `device` fails exactly the four cases that exercise `DEVICE_API_IS()` on an
   extended class, which is patch 0007's documented approximation
   demonstrated rather than predicted.
 - `mutex/mutex_api` and `pending` are D8b above: their thread entries have
   the wrong signature, and `upstream/zephyr/` has the fix.
+- `fatal/exception`, run as upstream's stack-sentinel entry, raises its
+  first two CPU exceptions by calling an illegal address and dividing by
+  zero. In wasm both are traps: the run unwinds to the host and the guest
+  cannot catch them, so no exception handler can run. Everything after them
+  passes when they are raised in software instead, both stack sentinel
+  checks included (D8). Making a trap a fatal error the guest can handle
+  would need the host to re-enter it on the trapping thread's behalf, and
+  is not done.
 
 Timing was blamed for four more, on the theory that a time slice ends at the
 next safepoint rather than on the tick. It was not that. `common`,
@@ -1400,6 +1417,20 @@ leaves it out on wasm (D11).
 **picolibc/0002-libm-build-every-long-double-source-with-CMake.patch** adds
 six `long double` sources picolibc's CMake build left out and its meson build
 does not. Only the sysroot's libc++ reaches them (D13).
+
+**0009-twister-cases-from-output-when-not-elf.patch** lets twister run a ztest
+suite on this board. It lists a suite's cases from the ztest symbols in the
+image's ELF symbol table, and a WebAssembly image is not ELF, so the whole
+run stopped there. With the patch it skips that step for an image that is
+not ELF, and takes the cases from the console output its harness parses
+anyway. `scripts/twister.sh` runs twister with the module and toolchain
+arguments every build needs.
+
+**0010-thread-info-stack-pointer-on-wasm.patch** adds wasm to the list in
+`subsys/debug/thread_info.c` of where each architecture keeps a thread's
+saved stack pointer, for `CONFIG_DEBUG_THREAD_INFO`. Without it the file
+ends in a `#warning`, which twister's warnings-as-errors build refuses, so
+`philosophers` did not build under twister.
 
 **0008-cbprintf-cxx-long-double-check-on-wasm.patch** adds `__wasm__` to the
 architectures on which cbprintf's C++ build skips its `long double` check.

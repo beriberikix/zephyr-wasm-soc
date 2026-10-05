@@ -17,8 +17,10 @@ The kernel's suites are the default list. --list takes another, such as
 scripts/net_tests.json for the network stack's: a list names the tree its
 suites are under with "root", which defaults to tests/kernel, and may set
 "max_time_ms", the guest time a suite gets unless its entry says otherwise
-(120 s by default). A suite
-recorded as "untried" has never been run, and any result is better.
+(120 s by default). An entry's "extra_args" are passed to the build, as a
+twister entry's are, for a suite whose interesting configuration is not its
+default one. A suite recorded as "untried" has never been run, and any
+result is better.
 
 --update rewrites the recorded statuses from this run, for when a fix moves
 several at once. Read the diff before committing it.
@@ -48,7 +50,8 @@ def run_one(entry: dict, root: str, max_time_ms: int, keep: bool) -> dict:
     build_dir = TOP / f"build-{tree}-{name.replace('/', '_')}"
     result = {"path": name}
 
-    ok, err, _ = sweeplib.build(f"zephyr/{root}/{name}", build_dir)
+    ok, err, _ = sweeplib.build(f"zephyr/{root}/{name}", build_dir,
+                                entry.get("extra_args", ()))
     if not ok:
         result["status"] = "build-fails"
         result["note"] = err[:160]

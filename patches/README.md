@@ -134,6 +134,33 @@ not compile.
 It is another per-architecture list with no hook for an architecture outside
 the tree. Upstream could make the function `constexpr` and drop the list.
 
+## 0009-twister-cases-from-output-when-not-elf.patch
+
+Before it runs a ztest suite, twister lists its test cases by reading the
+ztest symbols from the image's ELF symbol table. A WebAssembly image is not an
+ELF file, so `ELFFile()` raised and twister abandoned the whole run before
+building anything else. With the patch it skips that step when the image is
+not ELF, and takes the cases from the console output, which its ztest harness
+parses anyway.
+
+The one thing lost is the list of cases compiled out of a build. Twister
+reports those as having no status rather than leaving them out, a warning and
+not a failure. The upstream fix would read a WebAssembly image's names too,
+or let a board say how its images are inspected.
+
+## 0010-thread-info-stack-pointer-on-wasm.patch
+
+`CONFIG_DEBUG_THREAD_INFO` publishes the offsets a debugger needs to walk
+the kernel's threads, and one of them, where a thread's saved stack pointer
+is, comes from a per-architecture chain in `subsys/debug/thread_info.c` that
+ends in `#warning`. `philosophers` turns the option on. The sweep builds it
+with the warning, but twister builds with warnings as errors, so there it
+did not build. The patch adds wasm, whose saved stack pointer is the C
+shadow stack's, `callee_saved.sp`.
+
+Another per-architecture list with no hook for an architecture outside the
+tree, like 0001, 0002 and 0008.
+
 ## picolibc/0001-exitprocs-no-fini-array-on-wasm.patch
 
 Picolibc registers the function that runs `atexit()` handlers by putting a

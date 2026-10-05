@@ -1934,3 +1934,47 @@ on the case says x86 and SPARC cannot do this yet.
 
 22 of 25 kernel suites pass, up from 17. The other three are patch 0007's
 `DEVICE_API_IS()` approximation and the two D8b suites.
+
+### Tick 82 — the stack sentinel, and twister
+
+The last two Phase 0 items.
+
+`CONFIG_STACK_SENTINEL` keeps a word at the bottom of each thread's stack,
+`stack_info.start`, and checks it at every switch and, on architectures
+that do their part, after every interrupt. The port's part went into
+`z_wasm_irq_dispatch()`. Upstream's `tests/kernel/fatal/exception` with
+`sentinel.conf` then reported a stack overflow on the ztest thread before
+the test had done anything.
+
+DESIGN D8 had already said why the sentinel could not be trusted, and not
+fixed it. Zephyr puts the reserved bytes, `ARCH_THREAD_STACK_RESERVED`, at
+the bottom of a stack object. The port reserved them for the Asyncify
+buffer but carved the buffer from the top, so the C stack grew down through
+`stack_info.start` and on into the reserved bytes, and for a 4 KB thread
+the sentinel was the top of its C stack. The buffer now lives in the
+reserved bytes, the C stack runs down from `stack_ptr`, and
+`stack_info.start` is the bottom of the C stack. Same sizes as before; an
+overflow now runs into the thread's own buffer.
+
+The suite still cannot finish. Its first two cases raise CPU exceptions by
+calling an illegal address and dividing by zero, and in wasm both are traps
+that unwind to the host. With those raised in software, in a scratch copy,
+everything after them passes, both deliberate overflows caught: one from a
+timer interrupt, one from a swap.
+
+Twister needed `ZEPHYR_EXTRA_MODULES` to find the board's SoC, which
+`scripts/twister.sh` sets, and then three fixes, each found by running it:
+- it lists a ztest suite's cases from the ELF symbol table, and stopped on
+  a wasm image (`patches/0009` takes them from the output instead);
+- `philosophers` turns on `CONFIG_DEBUG_THREAD_INFO`, whose list of
+  architectures ends in a `#warning`, and twister builds with warnings as
+  errors (`patches/0010`);
+- `synchronization` never ends. Twister waits two real seconds after the
+  harness matches and then stops the process, but virtual time reached
+  `--max-time` before that and the host's give-up exit failed the run. The
+  `run` target now passes `--stop-at-max-time`, which makes reaching the
+  limit a clean stop.
+
+Semaphore, queue, the seven `common` configurations and `thread_apis` pass
+under twister, as do `hello_world`, `synchronization` and all nine
+`philosophers` configurations.

@@ -17,6 +17,7 @@
 #include <zephyr/irq_offload.h>
 #include <zephyr/tracing/tracing.h>
 #include <ksched.h>
+#include <kswap.h>
 
 volatile uint32_t z_wasm_irq_pending;
 volatile uint32_t z_wasm_irq_masked = 1U;
@@ -132,6 +133,17 @@ void z_wasm_irq_dispatch(void)
 		_kernel.cpus[0].nested--;
 		sys_trace_isr_exit();
 	}
+
+#ifdef CONFIG_STACK_SENTINEL
+	/* After a non-nested interrupt, check the interrupted thread's stack,
+	 * as the other architectures' interrupt exits do. The kernel checks
+	 * the outgoing thread at every switch; this covers a thread that only
+	 * spins, and is never switched away from until something notices.
+	 */
+	if (_kernel.cpus[0].nested == 0U) {
+		z_check_stack_sentinel();
+	}
+#endif
 }
 
 #ifdef CONFIG_WASM_SAFEPOINTS
