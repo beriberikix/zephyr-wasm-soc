@@ -33,12 +33,13 @@ WASM_HOST_IMPORT(wait_for_event) void wasm_host_wait_for_event(void);
  */
 WASM_HOST_IMPORT(switch_to) void wasm_host_switch_to(void);
 
-/* UART. Output goes out a byte at a time; input returns the next byte waiting,
- * or -1 when there is none. Polling only: there is no way for the host to
- * interrupt the guest, so a receive interrupt would have nothing to fire it.
+/* UARTs, by port: 0 is the console, 1 the Bluetooth controller's HCI line
+ * when a build has one. Output goes out a byte at a time; input returns the
+ * next byte waiting, or -1 when there is none. The host raises the port's
+ * interrupt line when a byte arrives (DESIGN.md D10).
  */
-WASM_HOST_IMPORT(uart_poll_out) void wasm_host_uart_poll_out(int32_t c);
-WASM_HOST_IMPORT(uart_poll_in) int32_t wasm_host_uart_poll_in(void);
+WASM_HOST_IMPORT(uart_poll_out) void wasm_host_uart_poll_out(int32_t port, int32_t c);
+WASM_HOST_IMPORT(uart_poll_in) int32_t wasm_host_uart_poll_in(int32_t port);
 
 /* GPIO, as the host sees it.
  *

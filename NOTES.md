@@ -2084,3 +2084,37 @@ retransmit, too late for the transaction it answered. A paced board that
 can hear from outside now follows the wall clock to its next deadline,
 sleeping 10 ms at a time, instead of jumping there; which is what the
 burst of keys into zperf's client had been too (DESIGN.md D5b).
+
+### Tick 85 — a radio between two boards
+
+Phase 7's second step: a controller for H4. The guest side is upstream's
+from top to bottom. The `wasm-bt` snippet turns on a second UART (port 1,
+line 6, 1 Mbaud), hangs `zephyr,bt-hci-uart` off it and points
+`zephyr,bt-hci` at that, as `qemu_x86` does with its second serial port.
+The UART imports now take a port; that was the only change below the
+samples, apart from a `soc.h`, which this SoC never had and the Bluetooth
+host's `hci_core.c` includes.
+
+The far end is `host/bt.mjs`: a controller per board, on its board's clock,
+answering the legacy LE subset, with the air between two controllers
+carried by the pair and synchronised as Ethernet frames are. A spike built
+`peripheral_hr`, `central_hr`, `beacon` and `observer` first, to find out
+whether the host stack would build at all. All four did. Then the
+heart-rate pair ran on the first try: the monitor scans, finds the sensor
+at RSSI -40, connects, discovers the heart-rate service, subscribes, and a
+notification arrives every second. `observer` hears `beacon`'s
+advertisement and its scan response. Score 100.
+
+Every Bluetooth board logs `Identity: ` and then garbage. Clang had said
+why at build time, with `-Wdangling` at dozens of logging calls:
+`bt_addr_le_str()` returns a pointer into a struct returned by value, which
+ends with the full expression, and the logging macros copy each argument
+into a local and read it in a later statement. GCC's code keeps the slot;
+clang's for wasm reuses it. `upstream/zephyr/0018` makes the macros fill a
+compound literal, which lives to the end of the block; with it the line
+reads `Identity: C0:DE:00:00:00:01 (public)`. As with the other upstream
+fixes, the demo shows Zephyr as it is until Zephyr takes it.
+
+A Bluetooth build's output only appears a second in, which looked like a
+hang in a one-second run: its printk goes through deferred logging, whose
+thread flushes once a second.

@@ -876,6 +876,7 @@ function resetBoard() {
   peer.term.reset();
   peer.xterm.write('\x1b[?25l');
   linkCounts = [0, 0];
+  linkIsRadio = false;
   showLink();
   /* No cursor until a build that reads the keyboard is running. */
   xterm.write('\x1b[?25l');
@@ -1085,10 +1086,15 @@ const eraseFlash = (name) => flashStore('readwrite', (s) => s.delete(name));
 
 /* The wire between the two boards of a pair is inside their Worker now
  * (pair.mjs); the page only shows how much has crossed it, from each
- * board's own count of frames it has taken off the wire. */
-function countLink(board, eth) {
-  if (!eth) return;
-  linkCounts[1 - board] = eth.received;
+ * board's own count of frames it has taken off the wire. For a Bluetooth
+ * pair that is the radio between their controllers (bt.mjs), counted in
+ * packets heard. */
+let linkIsRadio = false;
+function countLink(board, state) {
+  const link = state.air ?? state.eth;
+  if (!link) return;
+  linkIsRadio = !!state.air;
+  linkCounts[1 - board] = link.received;
   /* A state arrives every tenth of a second or so: redraw once a frame. */
   if (!linkDrawPending) {
     linkDrawPending = true;
@@ -1102,7 +1108,8 @@ function showLink() {
   if (!build?.boards) return;
   const [a, b] = build.boards.map((x) => x.label.toLowerCase());
   const n = (x) => x.toLocaleString('en');
-  linkEl.textContent = `Link: ${n(linkCounts[0])} frames ${a} \u2192 ${b}, ` +
+  linkEl.textContent = `${linkIsRadio ? 'Radio' : 'Link'}: ${n(linkCounts[0])} ` +
+    `${linkIsRadio ? 'packets' : 'frames'} ${a} \u2192 ${b}, ` +
     `${n(linkCounts[1])} ${b} \u2192 ${a}`;
 }
 
@@ -1153,7 +1160,7 @@ async function start() {
     const t = data.board === 1 ? peer.term : term;
     if (data.type === 'state') {
       if (data.state.outBytes !== undefined) t.rewind(data.state.outBytes);
-      if (second) countLink(data.board ?? 0, data.state.eth);
+      if (second) countLink(data.board ?? 0, data.state);
       else showKernel(data.state);
     }
     else if (data.type === 'gpio') showLeds(data.values);

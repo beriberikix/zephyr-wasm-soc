@@ -70,6 +70,11 @@ log, including what did not work. `BRIEF.md` is the original task.
   The two boards run on one clock, so a pair gives the same output every
   run. `run.mjs --peer` does the same in Node, and `--peer-stdin` types
   into the second board.
+* Bluetooth between two boards: Zephyr's own host stack over upstream's H4
+  driver, on a second UART whose far end is a controller the page
+  emulates, with a radio between the two on the pair's clock.
+  `peripheral_hr` and `central_hr` connect and stream heart-rate
+  notifications; `observer` hears `beacon`.
 * The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
   the Linux host upstream's networking samples expect. It offers DHCP, DNS,
   SNTP, TFTP, HTTP, a WebSocket echo, CoAP over TCP, FTP, an MQTT broker

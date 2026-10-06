@@ -38,8 +38,12 @@
  * the host takes every byte at once. */
 #define WASM_IRQ_UART 5
 
+/** The second UART, port 1: a Bluetooth controller's HCI line. As line 5,
+ * for its own port. */
+#define WASM_IRQ_UART1 6
+
 /*
- * 6 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
+ * 7 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
  * the software ISR table is CONFIG_WASM_IRQ_LINES deep, so the ceiling is 32.
  */
 

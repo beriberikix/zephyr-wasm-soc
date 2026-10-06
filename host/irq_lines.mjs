@@ -14,4 +14,5 @@ export const IRQ = {
   SENSOR: 3,
   ETH: 4,
   UART: 5,
+  UART1: 6,
 };

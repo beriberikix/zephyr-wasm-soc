@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **96**. 62 pass upstream's own criterion, and 34 more are counted
+today: **100**. 62 pass upstream's own criterion, and 38 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -35,8 +35,10 @@ server, zperf, which is both ends of its own pair, and `dns_resolve` with
 `tftp_client`, `sntp_client`, `ftp_client`, `prometheus` and
 `mqtt_publisher`, whose peer
 is the host's own network; `promiscuous_mode` and `pkt_filter`, which the
-host's network pings; and `net_mgmt`, `stats`, `virtual` and `vlan`, which
-need an interface but no one to talk to.
+host's network pings; `net_mgmt`, `stats`, `virtual` and `vlan`, which
+need an interface but no one to talk to; and four Bluetooth samples the
+radio pairs run, `peripheral_hr` with `central_hr` and `beacon` with
+`observer`.
 Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, type, or give a board a
 peer, so
@@ -47,7 +49,8 @@ board is built only as upstream's own test entry builds it, with this board's
 own files for the sample where it has them (below). A pair's boards
 may also be given build arguments that put two boards on one network, and
 nothing else:
-- the link itself (`-DSNIPPET=wasm-ethernet`);
+- the link itself (`-DSNIPPET=wasm-ethernet`), or for a Bluetooth pair the
+  radio (`-DSNIPPET=wasm-bt`);
 - addresses (`NET_CONFIG_MY_*` and `PEER_*`);
 - sample-specific peers, ports and resource names;
 - switching off an IP version the other board does not speak.
@@ -291,7 +294,9 @@ once cbprintf's `long double` check skipped wasm as it skips the other
 targets whose `long double` is 16-byte aligned (`patches/0008`). The same
 patch let `logging/syst`'s deferred C++ variants build. An interrupt-driven
 UART, Phase 7's first step, took it to 96 with `drivers/uart/echo_bot`,
-typed into on the page as `basic/button` is pressed.
+typed into on the page as `basic/button` is pressed. A Bluetooth controller
+behind H4, the second step, took it to 100 with two radio pairs: the
+heart-rate sensor and monitor, and a beacon and an observer.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -991,9 +996,18 @@ wants an interrupt-driven UART, and this port's UART was polled.
       a real board. `drivers/uart/echo_bot` runs on the page, which types
       into it, and counts as `basic/button` does: upstream's harness for it
       is a keyboard, which twister cannot drive.
-- [ ] **A controller for H4.** Either a virtual controller between two
-      boards, in the shape of `userchan.c`, or Web Serial to a real HCI
-      dongle.
+- [x] **A controller for H4** (`DESIGN.md` D8p). Each board of a pair has
+      a second UART with upstream's H4 driver on it, and the host emulates
+      the controller at its far end, with a radio between the two on the
+      pair's clock. Zephyr's own Bluetooth host advertises, scans, connects
+      and runs GATT over it, unmodified. `peripheral_hr` and `central_hr`
+      connect and stream heart-rate notifications, and `observer` hears
+      `beacon`: four samples, which count as the other pairs do, since
+      upstream's `bluetooth` harness is one twister cannot run.
+- [ ] **Encryption in the controller**: LE Start Encryption and the LTK
+      exchange, for the pairs that pair, such as `central_gatt_write` with
+      `peripheral_gatt_write`, and `central_multilink`.
+- [ ] **Web Serial to a real HCI dongle**, behind the same UART.
 
 ## Two levers on the score that no phase covers
 

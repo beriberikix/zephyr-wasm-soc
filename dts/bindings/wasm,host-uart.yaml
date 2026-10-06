@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 description: |
-  A UART provided by the host through the zephyr_host imports.
+  A UART provided by the host through the zephyr_host imports, one of
+  several ports.
 
   Polled, or interrupt-driven with CONFIG_UART_INTERRUPT_DRIVEN. The host
   raises the interrupt when bytes arrive for the board; the driver raises it
@@ -14,3 +15,10 @@ include: [uart-controller.yaml, base.yaml]
 properties:
   interrupts:
     required: true
+  port:
+    type: int
+    default: 0
+    description: |
+      Which of the host's UARTs this is. 0 is the console. 1 is a Bluetooth
+      controller's HCI line, whose host end is the host's virtual controller
+      (DESIGN.md D8p).

@@ -67,12 +67,13 @@ SYMBOL = {"terminal": "SHELL, UART_INTERRUPT_DRIVEN or CONSOLE_SUBSYS",
 # What a pair's board may be built with, beyond upstream's own files. The
 # score counts samples that run unmodified; for a pair that means unmodified
 # source, with build arguments limited to putting the two boards on one
-# network: turning the link on, addresses, ports, and switching off an IP
+# network: turning the link on (or the radio, for a Bluetooth pair),
+# addresses, ports, and switching off an IP
 # version the other side does not speak. Anything else, a buffer size or a
 # feature, is a change to the sample and is refused here. ROADMAP's "The
 # measure" states the rule.
 PAIR_ARG = re.compile(
-    r"^-D(?:SNIPPET=wasm-ethernet"
+    r"^-D(?:SNIPPET=wasm-(?:ethernet|bt)"
     r"|CONFIG_NET_CONFIG_(?:MY|PEER)_IPV[46]_ADDR=.*"
     r"|CONFIG_NET_CONFIG_NEED_IPV[46]=n"
     r"|CONFIG_NET_IPV[46]=n"
@@ -188,14 +189,18 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
             problems.append(f"{b['name']}: no {config}")
             continue
         on = set()
-        for line in config.read_text().splitlines():
+        lines = config.read_text().splitlines()
+        # Bluetooth's H4 driver takes UART interrupts too, on the HCI UART;
+        # that is not the console's.
+        h4 = "CONFIG_BT_UART=y" in lines
+        for line in lines:
             # A build reads what is typed if it has a shell, takes UART
             # interrupts itself (echo_bot) or reads the console subsystem.
             for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display"),
                              ("SHELL", "terminal"), ("UART_INTERRUPT_DRIVEN", "terminal"),
                              ("CONSOLE_SUBSYS", "terminal"),
                              ("SENSOR_WASM_BRIDGE", "accel")):
-                if line == f"CONFIG_{sym}=y":
+                if line == f"CONFIG_{sym}=y" and not (h4 and sym == "UART_INTERRUPT_DRIVEN"):
                     on.add(use)
         shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
         for use in ("flash", "display", "terminal", "accel"):
