@@ -33,6 +33,7 @@
  */
 
 import { IRQ } from './irq_lines.mjs';
+import { BtController } from './bt.mjs';
 
 const ASYNCIFY_NORMAL = 0, ASYNCIFY_UNWINDING = 1, ASYNCIFY_REWINDING = 2;
 
@@ -264,6 +265,32 @@ export class Host {
     /* The host's own network, when the board is plugged into it instead of
      * another board (host/lan.mjs). It runs on this board's clock. */
     this.lan = null;
+    /* The Bluetooth controller at the far end of the board's second UART
+     * (host/bt.mjs), made when the guest first uses that UART. */
+    this.bt = null;
+  }
+
+  /* The controller for a build with an HCI UART, on this board's clock.
+   * Its public address comes from the seed, as the board's MAC does, so
+   * the two boards of a pair differ and every run is the same. */
+  btController() {
+    if (!this.bt) {
+      const seed = (this.opts.seed ?? DEFAULT_SEED) >>> 0;
+      this.bt = new BtController({
+        address: [seed & 0xff, (seed >> 8) & 0xff, 0x00, 0x00, 0xde, 0xc0],
+        seed,
+        airSend: (pdu, atNs) =>
+          this.platform.airSend?.(pdu, this.epochNs + atNs + LINK_LATENCY_NS),
+      });
+    }
+    return this.bt;
+  }
+
+  /* A PDU from the other board's controller, due at atNs on the pair's
+   * timeline. A board whose guest has not brought its controller up yet
+   * has no radio on to hear it. */
+  pushAir(pdu, atNs) {
+    if (this.bt) this.bt.fromAir(pdu, atNs - this.epochNs);
   }
 
   /* Frames the LAN sent, which reach the board a wire's latency later. */
@@ -445,6 +472,7 @@ export class Host {
       uartTaken: this.uartTaken,
       uartRaisedAt: this.uartRaisedAt,
       uartReadyNs: this.uartReadyNs,
+      bt: this.bt?.snapshot(),
       gpio: this.gpio.map((g) => ({ ...g })),
       shFiles: new Map([...this.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }])),
       shFds: new Map([...this.shFds].map(([k, d]) => [k, { ...d }])),
@@ -477,6 +505,7 @@ export class Host {
     this.uartTaken = snap.uartTaken;
     this.uartRaisedAt = snap.uartRaisedAt;
     this.uartReadyNs = snap.uartReadyNs;
+    if (this.bt && snap.bt) this.bt.restore(snap.bt);
     this.gpio = snap.gpio.map((g) => ({ ...g }));
     this.shFiles = new Map([...snap.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }]));
     this.shFds = new Map([...snap.shFds].map(([k, d]) => [k, { ...d }]));
@@ -556,15 +585,20 @@ export class Host {
 
         time_now_ns() { return self.timeNs; },
 
-        uart_poll_out(c) {
+        uart_poll_out(port, c) {
+          if (port !== 0) {
+            self.btController().fromHost(c & 0xff, self.nowNs);
+            return;
+          }
           self.outBytes++;
           self.notePrompt(c & 0xff);
           self.platform.writeOut(new Uint8Array([c & 0xff]));
         },
 
-        uart_poll_in() {
+        uart_poll_in(port) {
           /* -1 means nothing waiting, which is what Zephyr's polled UART
            * API expects. */
+          if (port !== 0) return self.btController().rxTake(self.nowNs);
           if (!self.uartReady()) return -1;
           self.uartTaken++;
           self.uartReadyNs = self.nowNs + UART_BYTE_NS;
@@ -1083,6 +1117,7 @@ export class Host {
     const cands = [this.opts.gpio?.[0]?.atNs, this.opts.inputScript?.[0]?.atNs,
                    this.nextFrameNs(), this.nextUartNs(),
                    this.lan ? this.lan.nextNs() - this.epochNs : null,
+                   this.bt ? this.bt.nextNs(this.nowNs) : null,
                    this.alarmIsClamp ? null : this.alarmNs];
     let at = null;
     for (const c of cands) if (c !== undefined && c !== null && (at === null || c < at)) at = c;
@@ -1116,6 +1151,9 @@ export class Host {
     /* And so is a typed byte coming down the UART's wire. */
     const uartAt = this.nextUartNs();
     if (uartAt !== null && (at === null || uartAt < at)) at = uartAt;
+    /* And whatever the Bluetooth controller does next. */
+    const btAt = this.bt ? this.bt.nextNs(this.nowNs) : null;
+    if (btAt !== null && (at === null || btAt < at)) at = btAt;
     /* The LAN's own next event: its timers, or a service's. It wakes the
      * LAN, not the board, which sees only the frames that come of it. */
     const lanAt = this.lan ? this.lan.nextNs() - this.epochNs : null;
@@ -1143,6 +1181,12 @@ export class Host {
     if (at !== null && at === uartAt && (next === undefined || next.atNs !== at)) {
       /* The run loop raises the line once the clock is there. */
       this.nowNs = uartAt;
+      this.quiescentRounds = 0;
+      return true;
+    }
+    if (at !== null && at === btAt && (next === undefined || next.atNs !== at)) {
+      if (btAt > this.nowNs) this.nowNs = btAt;
+      this.bt.advance(this.nowNs);
       this.quiescentRounds = 0;
       return true;
     }
@@ -1194,6 +1238,7 @@ export class Host {
       pending: new Uint32Array(this.mem.buffer, this.irqPendingAddr, 1)[0],
       switches: this.switches,
       eth: { sent: this.ethSent, received: this.ethReceived },
+      air: this.bt ? { sent: this.bt.s.airSent, received: this.bt.s.airReceived } : null,
       paused: this.paused,
       canStepBack: this.history.length,
       outBytes: this.outBytes,
@@ -1298,6 +1343,16 @@ export class Host {
       if (this.uartReady() && this.uartRaisedAt <= this.uartTaken) {
         this.uartRaisedAt = this.uartTaken + 1;
         this.injectIrq(IRQ.UART);
+      }
+      /* The same for the HCI UART, once the controller has done what is
+       * due by now. */
+      if (this.bt) {
+        const b = this.bt;
+        b.advance(this.nowNs);
+        if (b.rxReady(this.nowNs) && b.s.rxRaisedAt <= b.s.rxTaken) {
+          b.s.rxRaisedAt = b.s.rxTaken + 1;
+          this.injectIrq(IRQ.UART1);
+        }
       }
       /* Anything raised from outside since the last step. The guest is
        * fully unwound here, so writing the pending word is safe. A line
@@ -1581,6 +1636,7 @@ export class Host {
              * arrived while the host waited, stamped with the time it came
              * in. */
             if (this.lan) this.fromLan(this.lan.advance(this.globalNs));
+            if (this.bt) this.bt.advance(this.nowNs);
             const frameAt = this.nextFrameNs();
             if (frameAt !== null && frameAt <= this.nowNs) this.injectIrq(IRQ.ETH);
             /* Sleep towards the next deadline rather than spin on it. */

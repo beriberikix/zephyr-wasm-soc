@@ -22,6 +22,11 @@
 #include <zephyr/irq.h>
 #include <zephyr/arch/wasm/wasm_host.h>
 
+struct uart_wasm_host_config {
+	/* Which of the host's UARTs this is: 0 the console, 1 an HCI line. */
+	int32_t port;
+};
+
 struct uart_wasm_host_data {
 	/* A byte read from the host and not yet handed to the application,
 	 * or -1. */
@@ -35,20 +40,26 @@ struct uart_wasm_host_data {
 #endif
 };
 
-static int32_t take_byte(struct uart_wasm_host_data *data)
+static inline int32_t port_of(const struct device *dev)
 {
+	return ((const struct uart_wasm_host_config *)dev->config)->port;
+}
+
+static int32_t take_byte(const struct device *dev)
+{
+	struct uart_wasm_host_data *data = dev->data;
 	int32_t ch = data->ahead;
 
 	if (ch >= 0) {
 		data->ahead = -1;
 		return ch;
 	}
-	return wasm_host_uart_poll_in();
+	return wasm_host_uart_poll_in(port_of(dev));
 }
 
 static int uart_wasm_host_poll_in(const struct device *dev, unsigned char *c)
 {
-	int32_t ch = take_byte(dev->data);
+	int32_t ch = take_byte(dev);
 
 	if (ch < 0) {
 		return -1;
@@ -59,8 +70,7 @@ static int uart_wasm_host_poll_in(const struct device *dev, unsigned char *c)
 
 static void uart_wasm_host_poll_out(const struct device *dev, unsigned char c)
 {
-	ARG_UNUSED(dev);
-	wasm_host_uart_poll_out((int32_t)c);
+	wasm_host_uart_poll_out(port_of(dev), (int32_t)c);
 }
 
 static int uart_wasm_host_err_check(const struct device *dev)
@@ -71,31 +81,30 @@ static int uart_wasm_host_err_check(const struct device *dev)
 
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 
-static bool rx_waiting(struct uart_wasm_host_data *data)
+static bool rx_waiting(const struct device *dev)
 {
+	struct uart_wasm_host_data *data = dev->data;
+
 	if (data->ahead < 0) {
-		data->ahead = wasm_host_uart_poll_in();
+		data->ahead = wasm_host_uart_poll_in(port_of(dev));
 	}
 	return data->ahead >= 0;
 }
 
 static int uart_wasm_host_fifo_fill(const struct device *dev, const uint8_t *buf, int len)
 {
-	ARG_UNUSED(dev);
-
 	for (int i = 0; i < len; i++) {
-		wasm_host_uart_poll_out((int32_t)buf[i]);
+		wasm_host_uart_poll_out(port_of(dev), (int32_t)buf[i]);
 	}
 	return len;
 }
 
 static int uart_wasm_host_fifo_read(const struct device *dev, uint8_t *buf, const int size)
 {
-	struct uart_wasm_host_data *data = dev->data;
 	int n = 0;
 
 	while (n < size) {
-		int32_t ch = take_byte(data);
+		int32_t ch = take_byte(dev);
 
 		if (ch < 0) {
 			break;
@@ -136,7 +145,7 @@ static void uart_wasm_host_irq_rx_enable(const struct device *dev)
 
 	data->rx_enabled = true;
 	/* Bytes may have arrived while receive was off. */
-	if (rx_waiting(data)) {
+	if (rx_waiting(dev)) {
 		z_wasm_irq_raise(data->irq);
 	}
 }
@@ -150,7 +159,7 @@ static int uart_wasm_host_irq_rx_ready(const struct device *dev)
 {
 	struct uart_wasm_host_data *data = dev->data;
 
-	return (data->rx_enabled && rx_waiting(data)) ? 1 : 0;
+	return (data->rx_enabled && rx_waiting(dev)) ? 1 : 0;
 }
 
 static void uart_wasm_host_irq_err_enable(const struct device *dev)
@@ -187,7 +196,7 @@ static void uart_wasm_host_isr(const struct device *dev)
 	struct uart_wasm_host_data *data = dev->data;
 
 	if (data->callback != NULL &&
-	    (data->tx_enabled || (data->rx_enabled && rx_waiting(data)))) {
+	    (data->tx_enabled || (data->rx_enabled && rx_waiting(dev)))) {
 		data->callback(dev, data->cb_data);
 	}
 
@@ -195,7 +204,7 @@ static void uart_wasm_host_isr(const struct device *dev)
 	 * transmitter is still empty, and bytes the callback left unread are
 	 * still waiting.
 	 */
-	if (data->tx_enabled || (data->rx_enabled && rx_waiting(data))) {
+	if (data->tx_enabled || (data->rx_enabled && rx_waiting(dev))) {
 		z_wasm_irq_raise(data->irq);
 	}
 }
@@ -236,6 +245,9 @@ static DEVICE_API(uart, uart_wasm_host_api) = {
 #endif
 
 #define UART_WASM_HOST_DEFINE(n)                                                                   \
+	static const struct uart_wasm_host_config uart_wasm_host_config_##n = {                   \
+		.port = DT_INST_PROP(n, port),                                                     \
+	};                                                                                         \
 	static struct uart_wasm_host_data uart_wasm_host_data_##n = {.ahead = -1};                \
 	static int uart_wasm_host_init_##n(const struct device *dev)                              \
 	{                                                                                          \
@@ -243,7 +255,8 @@ static DEVICE_API(uart, uart_wasm_host_api) = {
 		UART_WASM_HOST_IRQ_INIT(n);                                                        \
 		return 0;                                                                          \
 	}                                                                                          \
-	DEVICE_DT_INST_DEFINE(n, uart_wasm_host_init_##n, NULL, &uart_wasm_host_data_##n, NULL,   \
+	DEVICE_DT_INST_DEFINE(n, uart_wasm_host_init_##n, NULL, &uart_wasm_host_data_##n,        \
+			      &uart_wasm_host_config_##n,                                          \
 			      PRE_KERNEL_1, CONFIG_SERIAL_INIT_PRIORITY, &uart_wasm_host_api);
 
 DT_INST_FOREACH_STATUS_OKAY(UART_WASM_HOST_DEFINE)

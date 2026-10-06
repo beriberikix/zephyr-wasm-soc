@@ -114,8 +114,8 @@ in the Asyncify import list.
 | `safepoint_tick` | `() -> ()` | progress report, so time moves while spinning |
 | `fatal` | `(reason: i32, arg: i32) -> ()` | unrecoverable error |
 | `entropy_get` | `(ptr: i32, len: i32) -> ()` | seeded bytes, or the platform's (D5) |
-| `uart_poll_out` | `(c: i32) -> ()` | one byte out |
-| `uart_poll_in` | `() -> i32` | one byte in, or -1 when none is waiting |
+| `uart_poll_out` | `(port: i32, c: i32) -> ()` | one byte out of UART `port`: 0 the console, 1 an HCI line (D10, D8p) |
+| `uart_poll_in` | `(port: i32) -> i32` | one byte in, or -1 when none is waiting |
 | `gpio_out` | `(port: i32, values: i32) -> ()` | output pins changed (D8c) |
 | `gpio_in` | `(port: i32) -> i32` | input pin levels (D8c) |
 | `storage_attach` | `(ptr: i32, len: i32) -> ()` | where the flash lives (D8h) |
@@ -1208,6 +1208,64 @@ without writing it in any other pattern stops the build, since guessing at
 its frame would be guessing at what may be overwritten. In the builds here
 the wrap applies to two or three functions each.
 
+### D8p. A radio between two boards
+
+Phase 7 is Bluetooth, and Zephyr's Bluetooth host talks to its controller
+over HCI. Web Bluetooth is the wrong layer for that: it hands a page GATT,
+the top of the stack, where Zephyr wants to be the stack. So the board gets
+what boards with a separate controller chip have: a second UART, with
+upstream's H4 driver on it, and at its other end a controller.
+
+**The guest side is upstream's.** The `wasm-bt` snippet turns on
+`host_uart1`, the board's second UART (port 1, line 6, 1 Mbaud), hangs a
+`zephyr,bt-hci-uart` node off it and points `zephyr,bt-hci` at that, the
+same shape as `qemu_x86`'s second serial port. `BT_H4` follows from the
+devicetree. Nothing in the samples, the host stack or the driver changes.
+Only the UART imports changed, to take a port.
+
+**The controller is the host's** (`host/bt.mjs`), one per board, on that
+board's clock as the LAN is (D8m). It reads H4 from the guest and answers as
+a Bluetooth 5.0 controller with the legacy LE subset: what the host sends at
+init, advertising, scanning, creating and cancelling a connection,
+connection update, remote features and version, disconnect, and ACL data
+with Number Of Completed Packets. Its features say no to encryption, data
+length, privacy, 2M and extended advertising, so the host never asks for
+them, and anything else is "Unknown HCI Command". Its public address comes
+from the board's seed, as its MAC does: `C0:DE:00:00:00:01` for the first
+board of a pair.
+
+**The air is the pair's** (`host/pair.mjs`). Each controller hands what it
+transmits to the pair, which delivers it to the other one a link latency
+later and synchronises the two boards exactly as for an Ethernet frame
+(D8k): the receiver is woken for it, and the sender may run no further than
+an answer could come back. What goes over the air is the controller's own
+PDUs, not bits:
+- an advertiser sends its advertising PDU every advertising interval, with
+  its scan response along, since the scan request and response are not
+  modelled;
+- a scanner reports each one it hears at RSSI -40 (several upstream
+  centrals only connect at -50 or better), and for active scanning of a
+  scannable advertiser, the scan response too;
+- an initiator connects on the first connectable PDU from the address it
+  wants: both sides report the connection at once, and the advertiser
+  stops;
+- on a connection, ACL data goes at the next connection event, every
+  connection interval from the moment of connection, and the sender's
+  packets are reported done when they go. Updates, remote features and
+  disconnects take effect at the next event too.
+
+A controller wakes its board only for what it has to do: an advertising
+event, a connection event with something to send, a PDU arriving, or a byte
+for the guest, which comes down the UART at its line rate as the console's
+does (D10). An idle connection costs nothing. Nothing reads the wall clock
+or an unseeded random number, so a Bluetooth pair repeats as an Ethernet
+one does, and the Node check runs each twice and compares.
+
+Encryption is the next thing it lacks: pairing needs LE Start Encryption and
+the LTK exchange, which `central_gatt_write` and `central_multilink` ask for.
+The same UART is also what a real controller would sit behind: Web Serial to
+an HCI dongle replaces the far end, not the guest.
+
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
 The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
@@ -1234,6 +1292,12 @@ and the guest takes it at its next safepoint, and GPIO, input, sensors and
 Ethernet all interrupt that way. The UART now does too
 (`CONFIG_UART_INTERRUPT_DRIVEN`), on line 5. Zephyr's Bluetooth transport,
 H4, needs it, which is why it came first in Phase 7.
+
+There can be two. The imports take a port: 0 is the console, and 1, on line
+6, is the HCI line a Bluetooth build hangs H4 off (D8p). Each port has its
+own line rate from its devicetree node, 115200 baud for the console and
+1 Mbaud for HCI, and the driver keeps its look-ahead and interrupt state per
+instance.
 
 Four things make a host UART look like one on a board:
 - **A line rate.** Typed bytes come down the wire at the 115200 baud the

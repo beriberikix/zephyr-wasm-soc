@@ -70,12 +70,27 @@ export class Pair {
      * as on a cable plugged into nothing. */
     boards.forEach((b, i) => {
       b.platform.ethSend = (frame, atNs) => this.send(1 - i, frame, atNs);
+      /* And the air between their Bluetooth controllers (host/bt.mjs),
+       * synchronised the same way. */
+      b.platform.airSend = (pdu, atNs) => this.sendAir(1 - i, pdu, atNs);
     });
   }
 
   send(to, frame, atNs) {
     if (!this.on[to]) return;
     this.boards[to].pushEthernet(frame, atNs);
+    this.arriving(to, atNs);
+  }
+
+  /* A PDU on the air, to the other board's controller. */
+  sendAir(to, pdu, atNs) {
+    if (!this.on[to]) return;
+    this.boards[to].pushAir(pdu, atNs);
+    this.arriving(to, atNs);
+  }
+
+  /* Something will arrive at board `to` at atNs on the pair's timeline. */
+  arriving(to, atNs) {
     /* An idle board now has something to wake for. */
     const s = this.seen[to];
     if (s.idle && (s.next === null || atNs < s.next)) s.next = atNs;

@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jonathan Beri <jmberi@gmail.com>
+Date: Tue, 6 Oct 2026 12:00:00 +0000
+Subject: [PATCH] bluetooth: give address strings a block's lifetime
+
+bt_addr_str(), bt_addr_le_str() and bt_conn_dst_str() return a pointer
+into a struct returned by value, which lives only until the end of the
+full expression. Their documentation offers them for logging calls, but
+the logging macros copy each argument into a local first
+(Z_LOG_LOCAL_ARG_CREATE) and read it in a later statement, by which time
+the struct is gone. That is undefined behaviour, and clang says so with
+-Wdangling at every LOG_* call that passes one of them.
+
+With GCC the struct's stack slot happens to survive. With clang it need
+not: on WebAssembly, "Identity: %s" in hci_core.c prints garbage.
+
+Have the macros fill a compound literal instead. At block scope its
+lifetime is the enclosing block, which includes the logging macro's
+later statements, and the string reads the same everywhere else.
+
+Assisted-by: Claude:MODEL-VERSION
+---
+ include/zephyr/bluetooth/addr.h |   12 ++++++------
+ include/zephyr/bluetooth/conn.h |    6 +++---
+ subsys/bluetooth/common/addr.c  |   16 ++++++----------
+ subsys/bluetooth/host/conn.c    |    9 ++++++++-
+ 4 files changed, 23 insertions(+), 20 deletions(-)
+
+diff --git a/include/zephyr/bluetooth/addr.h b/include/zephyr/bluetooth/addr.h
+index c1c4af174ce..378d0a0bfef 100644
+--- a/include/zephyr/bluetooth/addr.h
++++ b/include/zephyr/bluetooth/addr.h
+@@ -284,13 +284,13 @@ struct bt_addr_tmp_str {
+ 	char str[BT_ADDR_STR_LEN];
+ };
+ 
+-struct bt_addr_tmp_str bt_addr_tmp_str(const bt_addr_t *addr);
++const char *bt_addr_tmp_str(struct bt_addr_tmp_str *buf, const bt_addr_t *addr);
+ 
+ struct bt_addr_le_tmp_str {
+ 	char str[BT_ADDR_LE_STR_LEN];
+ };
+ 
+-struct bt_addr_le_tmp_str bt_addr_le_tmp_str(const bt_addr_le_t *addr);
++const char *bt_addr_le_tmp_str(struct bt_addr_le_tmp_str *buf, const bt_addr_le_t *addr);
+ /** @endcond  */
+ 
+ /**
+@@ -299,11 +299,11 @@ struct bt_addr_le_tmp_str bt_addr_le_tmp_str(const bt_addr_le_t *addr);
+  *
+  * @param _addr Pointer to the Bluetooth address (bt_addr_t)
+  *
+- * @return A string pointer which is only valid until the end of the full expression.
++ * @return A string pointer which is only valid until the end of the enclosing block.
+  *         In practice this means that this is primarily useful as an input parameter
+  *         to printk/printf or logging calls.
+  */
+-#define bt_addr_str(_addr) bt_addr_tmp_str(_addr).str
++#define bt_addr_str(_addr) bt_addr_tmp_str(&(struct bt_addr_tmp_str){ { 0 } }, (_addr))
+ 
+ /**
+  * @brief Convert a Bluetooth LE address to a string
+@@ -311,11 +311,11 @@ struct bt_addr_le_tmp_str bt_addr_le_tmp_str(const bt_addr_le_t *addr);
+  *
+  * @param _addr Pointer to the Bluetooth LE address (bt_addr_le_t)
+  *
+- * @return A string pointer which is only valid until the end of the full expression.
++ * @return A string pointer which is only valid until the end of the enclosing block.
+  *         In practice this means that this is primarily useful as an input parameter
+  *         to printk/printf or logging calls.
+  */
+-#define bt_addr_le_str(_addr) bt_addr_le_tmp_str(_addr).str
++#define bt_addr_le_str(_addr) bt_addr_le_tmp_str(&(struct bt_addr_le_tmp_str){ { 0 } }, (_addr))
+ 
+ /** @brief Convert Bluetooth address from string to binary.
+  *
+diff --git a/include/zephyr/bluetooth/conn.h b/include/zephyr/bluetooth/conn.h
+index 45762760cb6..52e124f741a 100644
+--- a/include/zephyr/bluetooth/conn.h
++++ b/include/zephyr/bluetooth/conn.h
+@@ -1449,7 +1449,7 @@ struct bt_conn_tmp_str {
+ 	char str[BT_ADDR_LE_STR_LEN];
+ };
+ 
+-struct bt_conn_tmp_str bt_conn_dst_tmp_str(const struct bt_conn *conn);
++const char *bt_conn_dst_tmp_str(struct bt_conn_tmp_str *buf, const struct bt_conn *conn);
+ /** @endcond  */
+ 
+ /**
+@@ -1458,11 +1458,11 @@ struct bt_conn_tmp_str bt_conn_dst_tmp_str(const struct bt_conn *conn);
+  *
+  * @param _conn Pointer to the connection object.
+  *
+- * @return A string pointer which is only valid until the end of the full expression.
++ * @return A string pointer which is only valid until the end of the enclosing block.
+  *         In practice this means that this is primarily useful as an input parameter
+  *         to printk/printf or logging calls.
+  */
+-#define bt_conn_dst_str(_conn) bt_conn_dst_tmp_str(_conn).str
++#define bt_conn_dst_str(_conn) bt_conn_dst_tmp_str(&(struct bt_conn_tmp_str){ { 0 } }, (_conn))
+ 
+ /** @brief Function to determine the type of a connection
+  *
+diff --git a/subsys/bluetooth/common/addr.c b/subsys/bluetooth/common/addr.c
+index 6668b9f2202..542cacbccd9 100644
+--- a/subsys/bluetooth/common/addr.c
++++ b/subsys/bluetooth/common/addr.c
+@@ -11,20 +11,16 @@ const bt_addr_t bt_addr_none = { { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
+ const bt_addr_le_t bt_addr_le_any = { 0, { { 0, 0, 0, 0, 0, 0 } } };
+ const bt_addr_le_t bt_addr_le_none = { 0, { { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } } };
+ 
+-struct bt_addr_tmp_str bt_addr_tmp_str(const bt_addr_t *addr)
++const char *bt_addr_tmp_str(struct bt_addr_tmp_str *buf, const bt_addr_t *addr)
+ {
+-	struct bt_addr_tmp_str val;
++	(void)bt_addr_to_str(addr, buf->str, sizeof(buf->str));
+ 
+-	(void)bt_addr_to_str(addr, val.str, sizeof(val.str));
+-
+-	return val;
++	return buf->str;
+ }
+ 
+-struct bt_addr_le_tmp_str bt_addr_le_tmp_str(const bt_addr_le_t *addr)
++const char *bt_addr_le_tmp_str(struct bt_addr_le_tmp_str *buf, const bt_addr_le_t *addr)
+ {
+-	struct bt_addr_le_tmp_str val;
+-
+-	(void)bt_addr_le_to_str(addr, val.str, sizeof(val.str));
++	(void)bt_addr_le_to_str(addr, buf->str, sizeof(buf->str));
+ 
+-	return val;
++	return buf->str;
+ }
+diff --git a/subsys/bluetooth/host/conn.c b/subsys/bluetooth/host/conn.c
+index 779b9e11fd8..4dc1553048e 100644
+--- a/subsys/bluetooth/host/conn.c
++++ b/subsys/bluetooth/host/conn.c
+@@ -2871,7 +2871,7 @@ const bt_addr_le_t *bt_conn_get_dst(const struct bt_conn *conn)
+ 	return &conn->le.dst;
+ }
+ 
+-struct bt_conn_tmp_str bt_conn_dst_tmp_str(const struct bt_conn *conn)
++static struct bt_conn_tmp_str conn_dst_str(const struct bt_conn *conn)
+ {
+ 	struct bt_conn_tmp_str val;
+ 
+@@ -2908,6 +2908,13 @@ struct bt_conn_tmp_str bt_conn_dst_tmp_str(const struct bt_conn *conn)
+ 	return val;
+ }
+ 
++const char *bt_conn_dst_tmp_str(struct bt_conn_tmp_str *buf, const struct bt_conn *conn)
++{
++	*buf = conn_dst_str(conn);
++
++	return buf->str;
++}
++
+ static enum bt_conn_state conn_internal_to_public_state(bt_conn_state_t state)
+ {
+ 	switch (state) {
+-- 
+2.43.0
+

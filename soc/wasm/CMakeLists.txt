@@ -20,5 +20,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/modules_wasm.cmake)
 
 zephyr_sources_ifdef(CONFIG_CPU_FREQ_PSTATE_SET_SOC cpu_freq.c)
 
+# <soc.h>, for code that includes it.
+zephyr_include_directories(.)
+
 # The wasm32 sysroot, for builds that need a full C++ standard library.
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/sysroot_wasm.cmake)

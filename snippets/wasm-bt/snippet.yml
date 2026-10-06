@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Gives wasm_node a Bluetooth controller: the board's second UART, with
+# upstream's H4 driver on it, and the host's virtual controller at its other
+# end (DESIGN.md D8p). scripts/apps.json's Bluetooth pairs build each board
+# with -DSNIPPET=wasm-bt.
+name: wasm-bt
+append:
+  EXTRA_DTC_OVERLAY_FILE: wasm-bt.overlay

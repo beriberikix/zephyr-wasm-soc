@@ -39,6 +39,7 @@ IRQ_INPUT = 2
 IRQ_SENSOR = 3
 IRQ_ETH = 4
 IRQ_UART = 5
+IRQ_UART1 = 6
 
 # Must match DEFAULT_SEED and nextRandomByte() in host/core.mjs: a build that
 # prints random numbers has to print the same ones under both hosts, which is
@@ -228,11 +229,14 @@ class Host:
         def eth_recv(ptr, maxlen):
             return 0
 
-        def uart_poll_out(c):
-            sys.stdout.write(chr(c & 0xFF))
-            sys.stdout.flush()
+        def uart_poll_out(port, c):
+            # Port 0 is the console. This host has no Bluetooth controller,
+            # so what a build writes to port 1 goes nowhere.
+            if port == 0:
+                sys.stdout.write(chr(c & 0xFF))
+                sys.stdout.flush()
 
-        def uart_poll_in():
+        def uart_poll_in(port):
             return -1          # no input: this host is not interactive
 
         # The same operations and results as host/core.mjs: see its semihost().
@@ -327,8 +331,8 @@ class Host:
             "gpio_in": (gpio_in, [I32], [I32]),
             "safepoint_tick": (safepoint_tick, [], []),
             "fatal": (fatal, [I32, I32], []),
-            "uart_poll_out": (uart_poll_out, [I32], []),
-            "uart_poll_in": (uart_poll_in, [], [I32]),
+            "uart_poll_out": (uart_poll_out, [I32, I32], []),
+            "uart_poll_in": (uart_poll_in, [I32], [I32]),
             "storage_attach": (storage_attach, [I32, I32], []),
             "reboot": (reboot, [I32], []),
             "display_attach": (display_attach, [I32, I32, I32, I32], []),

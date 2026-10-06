@@ -59,9 +59,10 @@
     "threads_expect: substrings the thread table must show at some point in",
     "  the Node check's run (run.mjs --threads), for a lesson that relies",
     "  on what the table says.",
-    "boards: two boards joined by an Ethernet link, in place of app. Each",
-    "  has an app, a label, and what a build has: args (with",
-    "  -DSNIPPET=wasm-ethernet, which gives it the link), uses, ci_stdin and",
+    "boards: two boards joined by an Ethernet link, or by a radio between",
+    "  their Bluetooth controllers, in place of app. Each has an app, a",
+    "  label, and what a build has: args (with -DSNIPPET=wasm-ethernet, which",
+    "  gives it the link, or -DSNIPPET=wasm-bt, the radio), uses, ci_stdin and",
     "  expect, which is checked against that board's own output. ci_stdin is",
     "  typed into that board's own shell: stdin for the first, run.mjs",
     "  --peer-stdin for the second, and its own terminal on the page. They are",
@@ -74,7 +75,8 @@
     "  set, and the page shows it. start_after_ms powers a board on after the",
     "  other, as a client is plugged in after its server; the first board is",
     "  the one that starts first. ci_link_frames_at_least is how many frames",
-    "  the browser check wants each way (default 100). ci_stdin_at_ms holds",
+    "  (or radio packets) the browser check wants each way (default 100).",
+    "  ci_stdin_at_ms holds",
     "  the first board's typing until that much guest time has passed",
     "  (run.mjs --type-at), for a command whose answer needs the board to",
     "  have finished setting up. Otherwise a line is typed as soon as the",
@@ -993,6 +995,82 @@
           ],
           "uses": [
             "terminal"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "hr",
+      "kind": "sample",
+      "title": "Bluetooth heart rate (two boards)",
+      "hint": "Zephyr's own Bluetooth host on both boards, over the H4 driver, to a controller the page emulates: the sensor advertises, the monitor scans, connects, finds the heart-rate service and subscribes, and a reading arrives every second.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 20,
+      "boards": [
+        {
+          "label": "Sensor",
+          "app": "zephyr/samples/bluetooth/peripheral_hr",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Advertising successfully started",
+            "Connected",
+            "HRS notification status changed: enabled"
+          ]
+        },
+        {
+          "label": "Monitor",
+          "app": "zephyr/samples/bluetooth/central_hr",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Scanning successfully started",
+            "Connected: C0:DE:00:00:00:01 (public)",
+            "[SUBSCRIBED]",
+            "[NOTIFICATION] data"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "beacon",
+      "kind": "sample",
+      "title": "Bluetooth beacon and observer (two boards)",
+      "hint": "A beacon advertises its name; an observer scans and reports what it hears, the advertisement and the scan response. Both run Zephyr's Bluetooth host over the H4 driver, to a controller the page emulates.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 6000,
+      "endless": true,
+      "ci_link_frames_at_least": 10,
+      "boards": [
+        {
+          "label": "Beacon",
+          "app": "zephyr/samples/bluetooth/beacon",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Beacon started, advertising as C0:DE:00:00:00:01 (public)"
+          ]
+        },
+        {
+          "label": "Observer",
+          "app": "zephyr/samples/bluetooth/observer",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Device found: C0:DE:00:00:00:01 (public) (RSSI -40), type 2",
+            "Device found: C0:DE:00:00:00:01 (public) (RSSI -40), type 4"
           ]
         }
       ]

@@ -119,6 +119,22 @@ selected `PSA_WANT_ALG_SHA_256`, but the handshake hashes with SHA-1.
 Upstream `main` selects `PSA_WANT_ALG_SHA_1`, so the sample counts once the
 pin moves past that fix.
 
+## zephyr/: address strings that outlive their struct
+
+Found by the Bluetooth pairs (`DESIGN.md` D8p). Every Bluetooth board here
+logs `Identity: ` followed by garbage, where upstream prints its address.
+
+| Patch | Fixes | Here, unlocks |
+|---|---|---|
+| 0018 `bluetooth: give address strings a block's lifetime` | `bt_addr_str()`, `bt_addr_le_str()` and `bt_conn_dst_str()` return a pointer into a struct returned by value, which ends with the full expression. They are documented for logging calls, but the logging macros copy each argument into a local and read it in a later statement (`Z_LOG_LOCAL_ARG_CREATE`). clang warns at every such call (`-Wdangling`); GCC's code happens to keep the struct's stack slot, clang's for wasm does not. The macros now fill a compound literal, which lives to the end of the enclosing block | nothing counted: the Bluetooth pairs pass without it, and `hci_core.c`'s `Identity:` line then shows the address |
+
+It applies to the pin and to upstream `main` as fetched on 6 October 2026
+(`8f62a4a`), where the bug is unchanged, and checkpatch reports only the
+missing `Signed-off-by`. Check it by hand: build
+`samples/bluetooth/peripheral_hr` with `-DSNIPPET=wasm-bt` with and
+without it; with it, the build has no `-Wdangling` warning and the log
+shows `Identity: C0:DE:00:00:00:01 (public)`.
+
 ## zephyr/: sending them
 
 Zephyr's contribution guidelines have a section on AI-assisted changes
@@ -149,6 +165,7 @@ A suggested split, by who maintains what:
     samples' maintainers;
 11. 0017 on its own, for the maintainers of `lib/os/zvfs`, or with 0007
     and 0008, which are the same kind of bug in the same unions.
+12. 0018 on its own, for the Bluetooth host maintainers.
 
 ```sh
 git -C zephyr checkout -b thread-entry-signatures origin/main
