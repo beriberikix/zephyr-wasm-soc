@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **95**. 62 pass upstream's own criterion, and 33 more are counted
+today: **96**. 62 pass upstream's own criterion, and 34 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -24,7 +24,8 @@ and the thermometer `sensor/thermometer`'s board files attach. An application
 counts once if any of its entries passes. `scripts/samples.json` holds the result for every
 entry, with a cause for every one that does not pass, and `scripts/apps.py score`
 reads the score from there plus the curated demo in `scripts/apps.json`, which
-adds `basic/blinky`, `basic/button`, `input/draw_touch_events`, two LVGL
+adds `basic/blinky`, `basic/button`, `input/draw_touch_events`,
+`drivers/uart/echo_bot`, which the demo types into, two LVGL
 samples with nothing upstream checks, `display/lvgl` and
 `smf_calculator`, whose screens and consoles the demo checks, and the
 fourteen network samples the two-board pairs run: the echo client and four
@@ -37,7 +38,8 @@ is the host's own network; `promiscuous_mode` and `pkt_filter`, which the
 host's network pings; and `net_mgmt`, `stats`, `virtual` and `vlan`, which
 need an interface but no one to talk to.
 Upstream gives those no criterion twister can run, because it has no
-way to watch an LED, press a button or a screen, or give a board a peer, so
+way to watch an LED, press a button or a screen, type, or give a board a
+peer, so
 the demo's own checks judge them.
 
 **What "unmodified" means for a pair.** The source is never touched. A single
@@ -56,7 +58,7 @@ upstream file sets them up to talk to each other. `scripts/apps.py` enforces
 the list (`PAIR_ARG`) and refuses anything else, a buffer size for
 instance. Each entry that uses it says in words what was set, and the page
 shows that under the entry's hint. This is looser than twister's own
-criterion, which is why it is spelled out: of the 95, ten count only
+criterion, which is why it is spelled out: of the 96, ten count only
 because of it: the CoAP server with its three clients, HTTP's client and
 server, zperf, the mDNS pair, and `sntp_client`, pointed at its server.
 The five echo samples pair as shipped.
@@ -224,7 +226,7 @@ asserts the output it is supposed to produce.
 ## Where things stand, and what is next
 
 Phases 0 to 4 are done, apart from the small items still open in each. The
-score went from 3 to 95. Phases 5 and 6 have started; 7 has not. The first
+score went from 3 to 96. Phases 5, 6 and 7 have started. The first
 lesson is on the page.
 
 What comes next, in order, and why:
@@ -287,7 +289,9 @@ with `cpp/hello_world`. Importing two of Zephyr's optional C++ modules took
 it to 95: TensorFlow Lite Micro's `hello_world` ran as it is, and CHRE did
 once cbprintf's `long double` check skipped wasm as it skips the other
 targets whose `long double` is 16-byte aligned (`patches/0008`). The same
-patch let `logging/syst`'s deferred C++ variants build.
+patch let `logging/syst`'s deferred C++ variants build. An interrupt-driven
+UART, Phase 7's first step, took it to 96 with `drivers/uart/echo_bot`,
+typed into on the page as `basic/button` is pressed.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -977,9 +981,19 @@ counts, by the demo's checks.
 ## Phase 7 — Bluetooth
 
 As the issue has it, with one dependency it does not name: Zephyr's H4 driver
-wants an interrupt-driven UART, and this port's UART is polled because nothing
-could fire the interrupt. The interrupt path from Phase 1 is what makes an
-interrupt-driven UART possible, and that has to come first.
+wants an interrupt-driven UART, and this port's UART was polled.
+
+- [x] **An interrupt-driven UART** (`DESIGN.md` D10), on line 5. Typed
+      bytes come down its wire at 115200 baud and the host raises it for
+      each; the driver keeps a byte of look-ahead and
+      raises the line itself while its transmitter is enabled, since the
+      host empties it at once. Every shell now runs interrupt-driven, as on
+      a real board. `drivers/uart/echo_bot` runs on the page, which types
+      into it, and counts as `basic/button` does: upstream's harness for it
+      is a keyboard, which twister cannot drive.
+- [ ] **A controller for H4.** Either a virtual controller between two
+      boards, in the shape of `userchan.c`, or Web Serial to a real HCI
+      dongle.
 
 ## Two levers on the score that no phase covers
 

@@ -65,6 +65,12 @@ the rest of the system, and the idle loop in particular, running masked: the
 dispatcher would never run and nothing would ever wake. `arch_switch()` saves
 the mask into the outgoing thread and restores it from the incoming one.
 
+A handler runs masked, as on a CPU that masks interrupts on entry. Every line
+has the same priority, so none may preempt another, nor its own handler; and a
+handler has loops, whose safepoints would otherwise take whatever is pending,
+the line being handled included, halfway through it. A line raised meanwhile
+is taken when the dispatcher comes round again.
+
 Interrupt dispatch is also not a reschedule point here, the way returning from
 an interrupt is on hardware. The dispatcher is an ordinary call and
 `arch_is_in_isr()` is true while it runs, so anything it makes ready is
@@ -539,12 +545,21 @@ step back, after a jump too long to wait out, and when the guest has fallen
 more than `PACE_BEHIND_MS` behind, so a slow stretch is not followed by a
 burst of catching up.
 
-One paced case does let the wall clock in: an interactive run with nothing to
-wake for but a person. Jumping to the next deadline there leaves the clock
-standing until they do something, so a five-second button press is logged as
-lasting no time. Instead the guest's clock advances with the wall clock while
-it idles. That run was never deterministic, since it reads a person; every
-run CI compares is scripted, and not affected.
+One paced case does let the wall clock in: a run that can hear from outside,
+an interactive one or one on a relay, while it idles. Jumping to the next
+deadline there leaves the clock standing until someone does something, so a
+five-second button press is logged as lasting no time; and whatever arrives
+while the host waits out the jump lands at once when the wall clock catches
+up. A relay's DHCP offer reached the client just as its retransmit timer
+fired, so it never matched; a page's keys reached the shell as one burst.
+Instead the guest's clock advances with the wall clock up to its next
+deadline, the host sleeping up to `PACE_IDLE_MS` at a time so it does not
+spin. The kernel's "nothing soon" clamp is never waited for. That run was
+never deterministic, since it reads a person or a network; every run CI
+compares is scripted, and not affected.
+
+The interrupt-driven shell is what made this matter. Its polled predecessor
+kept a 10 ms timer running, so no jump was ever longer than that.
 
 ### D8e. The host asks rather than reads
 
@@ -884,7 +899,10 @@ checks could only be thresholds. Now:
   one board and says whether it went idle and until when. When both boards
   have nothing to wake them, an unpaced pair is over. A paced one lets its
   time follow the wall clock while it waits for a person, as a single paced
-  board does.
+  board does. The kernel's "nothing soon" clamp counts as nothing to wake
+  for there too: a board whose only alarm is the clamp, as one with an
+  interrupt-driven shell often is, would otherwise jump days ahead in one
+  step, past the page's limit.
 - **Pacing is the pair's.** Unpaced, in Node, a pair runs as fast as it
   can. On the page, the pair's time, the earlier of its busy boards, is
   held to the wall clock with the single board's anchor logic. That
@@ -965,7 +983,8 @@ What else was looked at, and why not:
 
 **Time.** A relay's peers follow the wall clock, so an uplinked board is
 paced and does not stop when nothing is scheduled, as an interactive one
-does not. A frame from the relay is stamped with the board's time when it
+does not, and its clock follows the wall clock to each deadline rather than
+jumping there (D5b). A frame from the relay is stamped with the board's time when it
 arrives, and one that arrives while the host waits out an idle period
 raises `IRQ.ETH` at once. Such a run is not repeatable, and nothing that
 needs repeatability depends on it: the pairs stay on their own clock.
@@ -1162,6 +1181,33 @@ run as they do on native_sim. There is no clock to slow: setting a state
 records it. The policies, and the load measurement they choose by, are the
 real ones.
 
+
+### D8o. A safepoint publishes the frame of a function that makes no calls
+
+LLVM's wasm backend gives a function that makes no calls a stack frame
+without moving `__stack_pointer`: it reads the global, subtracts the frame
+and works below it, since nothing it calls could need the space. The
+safepoint pass breaks that assumption after the fact. A safepoint is a call,
+and an interrupt taken there runs its handler on the same stack, from the
+pointer the function never moved, right over its frame.
+
+It showed once the UART took interrupts. The shell enables its TX interrupt
+whenever it prints, so the handler runs at safepoints inside the formatting
+code, and `net iface` printed `17.156.2.0` for `192.0.2.1`: the bytes
+`0x00029c11`, a pointer into the shell's TX ring that the handler left
+where a formatter kept its working copy. Any interrupt could have done it
+before (timer, GPIO, Ethernet); none fired often enough inside such a
+function to be seen.
+
+The pass now looks at every function before it instruments any: one that
+reads the stack pointer, takes a frame off it (`global.get`, `i32.const N`,
+`i32.sub`) and never writes it has each of its safepoint calls wrapped in a
+move of the pointer past the frame, rounded to 16, and back. What the
+safepoint runs is stacked below the frame. A function that reads the pointer
+without writing it in any other pattern stops the build, since guessing at
+its frame would be guessing at what may be overwritten. In the builds here
+the wrap applies to two or three functions each.
+
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
 The link is `clang -fuse-ld=wasm-ld` (`cmake/linker/wasm-ld/target.cmake`).
@@ -1180,18 +1226,56 @@ nothing names it. For a build that has to be read, add
 version of this note said the link called wasm-ld directly so that names
 survived. It did not, and nothing noticed until a trap needed naming.
 
-### D10. The UART is polled
+### D10. The UART takes interrupts
 
-Nothing lets the host interrupt the guest: the only mechanism is the pending
-word, and that is read at safepoints. An interrupt-driven UART would have
-nothing to fire it, so the driver implements `poll_in` and `poll_out` only.
-That costs nothing in practice, because a shell thread blocks between
-characters.
+It began polled, on the reasoning that nothing let the host interrupt the
+guest. That stopped being true with the pending word: the host sets a bit
+and the guest takes it at its next safepoint, and GPIO, input, sensors and
+Ethernet all interrupt that way. The UART now does too
+(`CONFIG_UART_INTERRUPT_DRIVEN`), on line 5. Zephyr's Bluetooth transport,
+H4, needs it, which is why it came first in Phase 7.
 
-Input also forced a change in the host. It reads stdin through Node's event
-loop, which never got a turn because the Asyncify driver is a synchronous
-loop. It now yields whenever the guest idles, which is when input can matter
-and never on a hot path.
+Four things make a host UART look like one on a board:
+- **A line rate.** Typed bytes come down the wire at the 115200 baud the
+  devicetree gives the UART, a byte every 87 µs of guest time, however fast
+  they were typed, pasted or piped. Without it, a paced board that had jumped
+  ahead to its next timer while keys were being pressed received them all
+  at once when it got there: 79 bytes in one interrupt, into the shell's
+  64-byte ring, and the end of a command was lost. That was the zperf pair
+  in the browser. The sender waits for the guest, as flow control would, so
+  no byte is ever lost on the way in.
+- **Arrival.** The host raises the line once for each byte that has come
+  down the wire, rather than for as long as it waits, so a guest that never
+  reads cannot be stormed. The next byte's time is a deadline like a frame's,
+  so an idle board wakes for it.
+- **A byte of look-ahead.** `uart_irq_rx_ready()` must say whether a byte is
+  waiting without taking it, and the host's import only takes. The driver
+  reads one ahead and keeps it, so the ABI did not change.
+- **An empty transmitter.** The host takes every byte as it is written, so
+  the transmit FIFO is always empty, and an enabled TX-empty interrupt fires
+  at once and keeps firing, as on hardware. The driver raises its own line
+  for that (`z_wasm_irq_raise()`), on enable and at the end of each ISR while
+  transmit stays enabled, which is how upstream's `uart_emul` behaves too.
+
+Once the UART can interrupt, Zephyr builds every shell interrupt-driven, as
+on every real board (`SHELL_BACKEND_SERIAL_INTERRUPT_DRIVEN` defaults to y).
+That changed how a script types into one. The polled shell read on a timer,
+only as fast as its ring had room, and only once it had started. The
+interrupt-driven one reads the moment bytes arrive: bytes queued at boot were
+taken in before `shell_start()` flushed its input, which it does on purpose,
+and a long burst overran its 64-byte ring. So the host types piped input as
+twister's shell harness does: a line at a time, each once the shell has
+printed its prompt since the last, or for a board with no shell, once it has
+read the last line. Piped input is all there is, so the run is no longer
+interactive and ends when the board falls quiet, where it used to wait for
+keys that could not come. `run.mjs --type-at` holds typing until a board has
+set up, for a check whose answer depends on it. It also showed a bug in the
+safepoint pass that any interrupt could have hit (D8o).
+
+Input also forced a change in the host early on. It reads stdin through
+Node's event loop, which never got a turn because the Asyncify driver is a
+synchronous loop. It yields whenever the guest idles, which is when input
+can matter and never on a hot path.
 
 ### D11. The C library is picolibc, built from its module
 

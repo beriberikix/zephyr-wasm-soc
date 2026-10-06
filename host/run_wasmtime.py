@@ -38,6 +38,7 @@ IRQ_GPIO = 1
 IRQ_INPUT = 2
 IRQ_SENSOR = 3
 IRQ_ETH = 4
+IRQ_UART = 5
 
 # Must match DEFAULT_SEED and nextRandomByte() in host/core.mjs: a build that
 # prints random numbers has to print the same ones under both hosts, which is

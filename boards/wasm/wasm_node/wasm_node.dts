@@ -160,6 +160,7 @@
 			compatible = "wasm,host-uart";
 			status = "okay";
 			current-speed = <115200>;
+			interrupts = <WASM_IRQ_UART>;
 		};
 
 		host_timer: timer {

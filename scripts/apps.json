@@ -74,7 +74,11 @@
     "  set, and the page shows it. start_after_ms powers a board on after the",
     "  other, as a client is plugged in after its server; the first board is",
     "  the one that starts first. ci_link_frames_at_least is how many frames",
-    "  the browser check wants each way (default 100).",
+    "  the browser check wants each way (default 100). ci_stdin_at_ms holds",
+    "  the first board's typing until that much guest time has passed",
+    "  (run.mjs --type-at), for a command whose answer needs the board to",
+    "  have finished setting up. Otherwise a line is typed as soon as the",
+    "  shell's prompt shows, as twister's shell harness types.",
     "uplink: one board on a real network, through a relay that speaks v86's",
     "  wsproxy protocol (host/uplink.mjs). Built with -DSNIPPET=wasm-ethernet",
     "  and nothing else; the relay's DHCP gives it an address. The page",
@@ -517,6 +521,24 @@
       ]
     },
     {
+      "name": "echo-bot",
+      "app": "zephyr/samples/drivers/uart/echo_bot",
+      "kind": "sample",
+      "title": "UART echo bot",
+      "hint": "Click the output, type a line and press Enter: the bot reads it a byte at a time in its UART interrupt and sends it back. The interrupt is real: the board raises it when your keys arrive.",
+      "uses": ["terminal"],
+      "upstream": true,
+      "interactive": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 4000,
+      "ci_stdin": "hello\n",
+      "expect": [
+        "Hello! I'm your echo bot.",
+        "Echo: hello"
+      ]
+    },
+    {
       "name": "echo",
       "kind": "sample",
       "title": "Echo over Ethernet (two boards)",
@@ -538,6 +560,7 @@
             "terminal"
           ],
           "ci_stdin": "net iface\n",
+          "ci_stdin_at_ms": 1000,
           "expect": [
             "(Ethernet)",
             "192.0.2.1"

@@ -39,12 +39,14 @@ const site = args.find((a, i) => !a.startsWith('--') && !values.has(i))
 
 /* The harness exits 2 when it gives up at --max-time. For an application that
  * never finishes that is the expected end of the run, not a failure. */
-function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer, uplink, lan) {
+function run(wasm, maxTimeMs, stdin, gpio, screenshot, touches, accels, threads, peer, uplink, lan, typeAtMs) {
   /* An interactive build only reads its UART input under --interactive, and
    * under that flag it also keeps running while the guest is idle, so it
    * ends at --max-time rather than when the shell falls quiet. */
   const argv = [runner, '--max-time', String(maxTimeMs)];
   if (stdin !== undefined) argv.push('--interactive');
+  /* Typing waits until the board has set up, where the answer needs it. */
+  if (typeAtMs !== undefined) argv.push('--type-at', String(typeAtMs));
   /* Scripted pin movements happen at a stated guest time, so a sample that
    * waits for a button gives the same output every run. */
   for (const event of gpio ?? []) argv.push('--gpio', event);
@@ -140,6 +142,7 @@ for (const b of manifest.builds) {
   /* An interactive build is given its input on stdin, which is how the shell
    * run in the README was checked. */
   const stdin = first.ci_stdin;
+  const typeAt = first.ci_stdin_at_ms;
   /* A build with a display is also judged by what it drew: the last frame
    * has to show at least display.colors_at_least distinct colours, so a
    * blank or black screen fails even when the console looks right. */
@@ -148,7 +151,7 @@ for (const b of manifest.builds) {
    * through it as well, below, when there is one. */
   const uplink = b.uplink && !b.lan ? relay : null;
   const { code, out, err } = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                                       !!b.threads_expect, peer, uplink, b.lan);
+                                       !!b.threads_expect, peer, uplink, b.lan, typeAt);
   const peerOut = peer ? await readFile(peer.out, 'utf8').catch(() => '') : '';
 
   const problems = [];
@@ -157,7 +160,7 @@ for (const b of manifest.builds) {
    * This is what lets a pair's expectations be more than thresholds. */
   if (second) {
     const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                            !!b.threads_expect, peer);
+                            !!b.threads_expect, peer, undefined, undefined, typeAt);
     const peerAgain = await readFile(peer.out, 'utf8').catch(() => '');
     if (again.out !== out) problems.push(`the ${first.label}'s output differed on a second run`);
     if (peerAgain !== peerOut) problems.push(`the ${second.label}'s output differed on a second run`);
@@ -165,7 +168,7 @@ for (const b of manifest.builds) {
   /* So does a board on the LAN (host/lan.mjs), which runs on its clock. */
   if (b.lan) {
     const again = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                            !!b.threads_expect, null, null, b.lan);
+                            !!b.threads_expect, null, null, b.lan, typeAt);
     if (again.out !== out) problems.push('the output differed on a second run on the LAN');
     if (lanLines(again.err).join('\n') !== lanLines(err).join('\n')) {
       problems.push('the LAN\'s log differed on a second run');
@@ -174,7 +177,7 @@ for (const b of manifest.builds) {
   /* And one that can also take a relay, through the one given. */
   if (b.lan && b.uplink && relay) {
     const real = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
-                           false, null, relay);
+                           false, null, relay, undefined, typeAt);
     for (const want of first.expect ?? []) {
       if (!real.out.includes(want)) problems.push(`through the relay, missing: ${JSON.stringify(want)}`);
     }

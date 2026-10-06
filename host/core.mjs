@@ -65,6 +65,17 @@ const QUIESCENT_ROUNDS = 2;
  * believing the guest can recover from them (DESIGN.md D14). */
 const MAX_TRAPS = 100;
 
+/* Zephyr's shell prompt on a UART (CONFIG_SHELL_PROMPT_UART). Typing waits
+ * for it, as twister's shell harness does; see type(). */
+const SHELL_PROMPT = Array.from('uart:~$ ', (ch) => ch.charCodeAt(0));
+
+/* A byte's time on the UART's wire: ten bits (8N1) at the 115200 baud the
+ * board's devicetree gives it. Typed bytes reach the guest no faster than
+ * this, as they would down a cable, however fast they are typed, pasted or
+ * piped. A burst that landed all at once overran the shell's 64-byte ring,
+ * which a cable never does (DESIGN.md D10). */
+const UART_BYTE_NS = 86_806n;
+
 /* The default entropy seed. Any fixed value would do; this one is only
  * memorable. Both hosts use the same generator and the same seed, so a build
  * that prints random numbers prints the same ones under Node and under
@@ -93,6 +104,11 @@ const PACE_BEHIND_MS = 250;
  * of speed or a frame from its peer until it caught up, which it may
  * never do. */
 const PACE_YIELD_NS = 50_000_000n;
+
+/* How long a paced board that is waiting for the wall clock sleeps at a
+ * time, at most. Keys and frames arrive while it sleeps, and are seen this
+ * soon after. */
+const PACE_IDLE_MS = 10;
 
 /* Virtual time charged per safepoint progress report. With the default of
  * 20000 safepoints between reports this makes a spinning thread advance the
@@ -166,8 +182,30 @@ export class Host {
     this.resumeSame = false;     // set by an idle suspension
     this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
     this.pace = null;            // paced runs: when guest and wall clocks lined up
+    this.idleWaitMs = 0;         // paced runs: sleep this long before the next step
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
+    /* Bytes the guest's UART has taken, and the byte, counted the same
+     * way, its line was last raised for. Bytes join this.input from several
+     * places (the page, stdin, a pair's script); the run loop raises the
+     * line once for each as it comes down the wire. */
+    this.uartTaken = 0;
+    this.uartRaisedAt = 0;
+    /* When the next byte has come down the wire: one byte time after the
+     * last was taken. The sender waits for the guest, as flow control
+     * would, so bytes are never lost on the way in. */
+    this.uartReadyNs = 0n;
+    /* Lines to type, a line at a time, each when the guest is next idle:
+     * after the shell has started and is waiting, as a person or twister's
+     * harness would. Queued all at once at boot, an interrupt-driven shell
+     * took them in before shell_start() flushed its input, and a long burst
+     * overran its 64-byte ring. See type(). */
+    this.typing = [];
+    /* The last bytes the guest wrote, as long as the prompt, and whether it
+     * has printed one at all and since the last line was typed. */
+    this.outTail = [];
+    this.shellSeen = false;
+    this.promptSince = false;
     /* Physical pin levels, per port. Outputs are what the guest last drove;
      * inputs are what the host is holding the pins at. A button wired active
      * low with a pull-up sits at 1 until something presses it, which is the
@@ -249,9 +287,57 @@ export class Host {
   /* This board's time on the pair's shared timeline. */
   get globalNs() { return this.epochNs + this.nowNs; }
 
+  /* Whether the UART has a byte for the guest: one is waiting, and it has
+   * come down the wire. */
+  uartReady() {
+    return this.input.length > 0 && this.nowNs >= this.uartReadyNs;
+  }
+
+  /* When the waiting byte will have come down the wire, on this board's own
+   * clock, or null if none is on its way. */
+  nextUartNs() {
+    return this.input.length > 0 && this.uartReadyNs > this.nowNs ? this.uartReadyNs : null;
+  }
+
   /* The next frame, on this board's own clock, or null. */
   nextFrameNs() {
     return this.ethQueue.length > 0 ? this.ethQueue[0].atNs - this.epochNs : null;
+  }
+
+  /* Type these bytes into the guest's UART, a line at a time, each line
+   * when the guest is next idle with nothing left to read. */
+  type(bytes) {
+    let line = [];
+    for (const b of bytes) {
+      line.push(b);
+      if (b === 0x0a) { this.typing.push(line); line = []; }
+    }
+    if (line.length > 0) this.typing.push(line);
+  }
+
+  /* The next typed line, if the guest is ready for it. A board with a
+   * shell is ready when it has printed its prompt since the last line,
+   * which is what twister's shell harness waits for: idle alone is not
+   * enough, because a command waiting on the network is idle too, and lines
+   * typed then pile up in the shell's 64-byte ring until it overflows. A
+   * board without one, echo_bot say, is ready when it has read the last. */
+  typeNextLine() {
+    if (this.typing.length === 0 || this.input.length > 0) return false;
+    if (this.opts.typeHeld) return false;
+    if (this.shellSeen && !this.promptSince) return false;
+    this.input.push(...this.typing.shift());
+    this.promptSince = false;
+    return true;
+  }
+
+  notePrompt(c) {
+    this.outTail.push(c);
+    if (this.outTail.length > SHELL_PROMPT.length) this.outTail.shift();
+    if (this.outTail.length === SHELL_PROMPT.length &&
+        this.outTail.every((b, i) => b === SHELL_PROMPT[i])) {
+      this.shellSeen = true;
+      this.promptSince = true;
+    }
   }
 
   /* Queue input events and tell the guest. Safe at any time, like
@@ -352,6 +438,13 @@ export class Host {
       externalIrqs: this.externalIrqs,
       outBytes: this.outBytes,
       input: this.input.slice(),
+      typing: this.typing.map((line) => line.slice()),
+      outTail: this.outTail.slice(),
+      shellSeen: this.shellSeen,
+      promptSince: this.promptSince,
+      uartTaken: this.uartTaken,
+      uartRaisedAt: this.uartRaisedAt,
+      uartReadyNs: this.uartReadyNs,
       gpio: this.gpio.map((g) => ({ ...g })),
       shFiles: new Map([...this.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }])),
       shFds: new Map([...this.shFds].map(([k, d]) => [k, { ...d }])),
@@ -377,6 +470,13 @@ export class Host {
     this.externalIrqs = snap.externalIrqs;
     this.outBytes = snap.outBytes;
     this.input = snap.input.slice();
+    this.typing = snap.typing.map((line) => line.slice());
+    this.outTail = snap.outTail.slice();
+    this.shellSeen = snap.shellSeen;
+    this.promptSince = snap.promptSince;
+    this.uartTaken = snap.uartTaken;
+    this.uartRaisedAt = snap.uartRaisedAt;
+    this.uartReadyNs = snap.uartReadyNs;
     this.gpio = snap.gpio.map((g) => ({ ...g }));
     this.shFiles = new Map([...snap.shFiles].map(([k, f]) => [k, { data: f.data.slice(), size: f.size }]));
     this.shFds = new Map([...snap.shFds].map(([k, d]) => [k, { ...d }]));
@@ -458,13 +558,17 @@ export class Host {
 
         uart_poll_out(c) {
           self.outBytes++;
+          self.notePrompt(c & 0xff);
           self.platform.writeOut(new Uint8Array([c & 0xff]));
         },
 
         uart_poll_in() {
           /* -1 means nothing waiting, which is what Zephyr's polled UART
            * API expects. */
-          return self.input.length > 0 ? self.input.shift() : -1;
+          if (!self.uartReady()) return -1;
+          self.uartTaken++;
+          self.uartReadyNs = self.nowNs + UART_BYTE_NS;
+          return self.input.shift();
         },
 
         set_alarm_ns(deadline) {
@@ -666,7 +770,9 @@ export class Host {
         return 0;
       }
       case SH.READC:
-        return this.input.length > 0 ? this.input.shift() : -1;
+        if (this.input.length === 0) return -1;
+        this.uartTaken++;
+        return this.input.shift();
       case SH.OPEN: {
         const path = new TextDecoder().decode(mem().slice(word(0), word(0) + word(2)));
         const mode = word(1);
@@ -970,6 +1076,19 @@ export class Host {
     return w[this.irqPendingAddr >> 2] & this.enabledLines();
   }
 
+  /* When the next thing is due, on this board's own clock, without doing
+   * it: a scripted event, a frame, a typed byte, the LAN, or the kernel's
+   * alarm unless that is only the clamp. Null if nothing is. */
+  nextDeadlineNs() {
+    const cands = [this.opts.gpio?.[0]?.atNs, this.opts.inputScript?.[0]?.atNs,
+                   this.nextFrameNs(), this.nextUartNs(),
+                   this.lan ? this.lan.nextNs() - this.epochNs : null,
+                   this.alarmIsClamp ? null : this.alarmNs];
+    let at = null;
+    for (const c of cands) if (c !== undefined && c !== null && (at === null || c < at)) at = c;
+    return at;
+  }
+
   /* Virtual time: nothing happens until the kernel idles, then jump to the
    * next deadline. With no deadline there is nothing left to wait for.
    *
@@ -977,7 +1096,11 @@ export class Host {
    * sample which waits for a button be run unattended and still produce the
    * same output every time: the press happens at a stated guest time rather
    * than whenever a person got round to it. */
-  advanceToNextDeadline(limitNs = null) {
+  advanceToNextDeadline(limitNs = null, clampIsNothing = false) {
+    /* The kernel's alarm, unless it is only the clamp and the caller is
+     * paced: then nothing is due, and time passes with the wall clock until
+     * something happens, rather than jumping days ahead in one go. */
+    const alarmNs = clampIsNothing && this.alarmIsClamp ? null : this.alarmNs;
     /* The next scripted event, of either kind: a pin moving or input
      * arriving. Scripted input counts as a deadline for the same reason a
      * scripted button press does. */
@@ -985,20 +1108,24 @@ export class Host {
     const input = this.opts.inputScript?.[0];
     const next = pin && (!input || pin.atNs <= input.atNs) ? pin : input;
     /* A frame from the other board of a pair is one too. Ties go to a
-     * scripted event, then a frame, then the alarm, so the order is fixed. */
+     * scripted event, then a frame, then a typed byte, then the alarm, so
+     * the order is fixed. */
     const frameAt = this.nextFrameNs();
     let at = next ? next.atNs : null;
     if (frameAt !== null && (at === null || frameAt < at)) at = frameAt;
+    /* And so is a typed byte coming down the UART's wire. */
+    const uartAt = this.nextUartNs();
+    if (uartAt !== null && (at === null || uartAt < at)) at = uartAt;
     /* The LAN's own next event: its timers, or a service's. It wakes the
      * LAN, not the board, which sees only the frames that come of it. */
     const lanAt = this.lan ? this.lan.nextNs() - this.epochNs : null;
     if (lanAt !== null && (at === null || lanAt < at) &&
-        (this.alarmNs === null || lanAt < this.alarmNs)) {
+        (alarmNs === null || lanAt < alarmNs)) {
       if (lanAt > this.nowNs) this.nowNs = lanAt;
       this.fromLan(this.lan.advance(this.globalNs));
       return true;
     }
-    if (this.alarmNs !== null && (at === null || this.alarmNs < at)) at = this.alarmNs;
+    if (alarmNs !== null && (at === null || alarmNs < at)) at = alarmNs;
     /* In a pair, a board may only go as far as the other lets it
      * (host/pair.mjs). Short of its next event it idles up to the limit,
      * which is time passing with nothing to do, and says where it stopped. */
@@ -1013,7 +1140,13 @@ export class Host {
       this.injectIrq(IRQ.ETH);
       return true;
     }
-    if (next && (this.alarmNs === null || next.atNs <= this.alarmNs)) {
+    if (at !== null && at === uartAt && (next === undefined || next.atNs !== at)) {
+      /* The run loop raises the line once the clock is there. */
+      this.nowNs = uartAt;
+      this.quiescentRounds = 0;
+      return true;
+    }
+    if (next && (alarmNs === null || next.atNs <= alarmNs)) {
       if (next.atNs > this.nowNs) this.nowNs = next.atNs;
       this.quiescentRounds = 0;
       if (next === pin) {
@@ -1021,12 +1154,13 @@ export class Host {
         this.setGpioInput(pin.port, pin.pin, pin.level);
       } else {
         this.opts.inputScript.shift();
-        if (input.sensors) this.pushSensor(input.sensors);
+        if (input.typeStart) this.opts.typeHeld = false;
+        else if (input.sensors) this.pushSensor(input.sensors);
         else this.pushInput(input.events);
       }
       return true;
     }
-    if (this.alarmNs === null) return false;
+    if (alarmNs === null) return false;
     /* Waking from a clamped deadline having done nothing is the signal that
      * the kernel has run out of work. Waking from a real one is progress. */
     this.quiescentRounds = this.alarmIsClamp ? this.quiescentRounds + 1 : 0;
@@ -1124,6 +1258,8 @@ export class Host {
     /* Uptime starts again; the pair's timeline does not. */
     this.epochNs += this.nowNs;
     this.nowNs = 0n;
+    /* The wire's timing is on the clock that just went back to zero. */
+    this.uartReadyNs = 0n;
     this.startedAt = this.platform.nowNs();
     this.alarmNs = null;
     this.alarmIsClamp = false;
@@ -1155,6 +1291,13 @@ export class Host {
       /* A frame from the other board of a pair that is due now. */
       if (this.ethQueue.length > 0 && this.ethQueue[0].atNs <= this.globalNs) {
         this.injectIrq(IRQ.ETH);
+      }
+      /* A byte has come down the wire that the line has not been raised
+       * for: once per byte, not for as long as it waits, which a guest that
+       * never reads would turn into an interrupt storm. */
+      if (this.uartReady() && this.uartRaisedAt <= this.uartTaken) {
+        this.uartRaisedAt = this.uartTaken + 1;
+        this.injectIrq(IRQ.UART);
       }
       /* Anything raised from outside since the last step. The guest is
        * fully unwound here, so writing the pending word is safe. A line
@@ -1309,6 +1452,7 @@ export class Host {
         const aheadMs = Number(dueNs - this.platform.nowNs()) / 1e6;
         if (aheadMs >= 1) {
           this.yieldToHost = false;
+          this.idleWaitMs = 0;
           await this.platform.wait(aheadMs);
           lastYield = this.platform.nowNs();
           continue;
@@ -1316,7 +1460,15 @@ export class Host {
         if (aheadMs < -PACE_BEHIND_MS) reanchor();
         if (this.platform.nowNs() - lastYield > PACE_YIELD_NS) this.yieldToHost = true;
       }
-      if (this.yieldToHost) {
+      if (this.idleWaitMs > 0) {
+        /* Paced and idle, waiting for the wall clock: input arrives while
+         * it sleeps. */
+        const ms = this.idleWaitMs;
+        this.idleWaitMs = 0;
+        this.yieldToHost = false;
+        await this.platform.wait(ms);
+        lastYield = this.platform.nowNs();
+      } else if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a
          * turn and typed characters would never arrive. Give it one whenever
          * the guest is idle, which is exactly when input can matter. */
@@ -1394,13 +1546,15 @@ export class Host {
       /* Idle: the same context resumes once something it can take is
        * pending. */
       const pending = this.deliverableIrqs();
+      /* Idle, and everything typed so far has been read: the next line. */
+      if (pending === 0 && this.typeNextLine()) return true;
       if (this.opts.pair) {
         /* One board of a pair: the pair's clock decides how far it may go
          * (host/pair.mjs). Jump to the next event if that is within the
          * limit; otherwise idle up to the limit and say what comes next, or
          * that nothing does. */
         if (pending === 0 && (this.externalIrqs & this.enabledLines()) === 0 &&
-            !this.advanceToNextDeadline(this.stepLimitNs)) {
+            !this.advanceToNextDeadline(this.stepLimitNs, !!this.opts.pairPaced)) {
           this.idleUntil = null;
         }
         return true;
@@ -1411,14 +1565,17 @@ export class Host {
          * the relay, as well as keys. */
         this.yieldToHost = true;
         if (pending === 0) {
-          if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
-            /* Paced, and nothing to wake for but a person or the network:
-             * time passes as it does for them. Jumping to the next deadline
+          const byWall = this.pace && this.pace.guest +
+            BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+          const at = this.pace ? this.nextDeadlineNs() : null;
+          if (this.pace && (at === null || at > byWall)) {
+            /* Paced, and waiting for a person or the network: time passes
+             * as it does for them, up to the next deadline. Jumping to it
              * would leave the clock standing still until they did
-             * something, and a five-second press would be logged as lasting
-             * no time. */
-            const byWall = this.pace.guest +
-              BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+             * something, so a five-second press would be logged as lasting
+             * no time; and whatever they sent meanwhile would arrive at
+             * once when the wall clock caught up, a relay's DHCP offer as
+             * the client gave up on it and a page's keys in one burst. */
             if (byWall > this.nowNs) this.nowNs = byWall;
             /* The LAN keeps time with the board, and a frame from the relay
              * arrived while the host waited, stamped with the time it came
@@ -1426,6 +1583,9 @@ export class Host {
             if (this.lan) this.fromLan(this.lan.advance(this.globalNs));
             const frameAt = this.nextFrameNs();
             if (frameAt !== null && frameAt <= this.nowNs) this.injectIrq(IRQ.ETH);
+            /* Sleep towards the next deadline rather than spin on it. */
+            this.idleWaitMs = at === null ? PACE_IDLE_MS
+              : Math.min(PACE_IDLE_MS, Number(at - this.nowNs) / 1e6 / this.pace.scale);
           } else {
             this.advanceToNextDeadline();
           }

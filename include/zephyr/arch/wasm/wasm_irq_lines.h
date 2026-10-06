@@ -33,8 +33,13 @@
  * end of the board's link. */
 #define WASM_IRQ_ETH 4
 
+/** UART. The host raises this when bytes arrive for the board's UART; the
+ * driver raises it itself while its transmit interrupt is enabled, since
+ * the host takes every byte at once. */
+#define WASM_IRQ_UART 5
+
 /*
- * 5 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
+ * 6 to CONFIG_WASM_IRQ_LINES-1 are unused. The pending word is 32 bits and
  * the software ISR table is CONFIG_WASM_IRQ_LINES deep, so the ceiling is 32.
  */
 

@@ -124,12 +124,21 @@ void z_wasm_irq_dispatch(void)
 
 		/* Traced per handler, as every other architecture's ISR wrapper
 		 * does, so tracing backends see interrupts here too.
+		 *
+		 * The handler runs masked, as it would on a CPU that masks
+		 * interrupts on entry: every line has the same priority, so none
+		 * may preempt another, nor its own handler. A handler has loops,
+		 * and their safepoints would otherwise take whatever is pending,
+		 * the line being handled included, in the middle of it. A line
+		 * raised meanwhile waits for this loop to come round again.
 		 */
 		sys_trace_isr_enter();
 		_kernel.cpus[0].nested++;
+		z_wasm_irq_masked = 1U;
 		if (isr_table[irq].isr != NULL) {
 			isr_table[irq].isr(isr_table[irq].arg);
 		}
+		z_wasm_irq_masked = 0U;
 		_kernel.cpus[0].nested--;
 		sys_trace_isr_exit();
 	}
