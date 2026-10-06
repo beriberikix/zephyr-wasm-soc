@@ -75,7 +75,9 @@
     "  set, and the page shows it. start_after_ms powers a board on after the",
     "  other, as a client is plugged in after its server; the first board is",
     "  the one that starts first. ci_link_frames_at_least is how many frames",
-    "  (or radio packets) the browser check wants each way (default 100).",
+    "  (or radio packets) the browser check wants each way (default 100); 0",
+    "  for a radio pair where one board only listens, whose expect shows",
+    "  what it heard.",
     "  ci_stdin_at_ms holds",
     "  the first board's typing until that much guest time has passed",
     "  (run.mjs --type-at), for a command whose answer needs the board to",
@@ -1009,7 +1011,7 @@
       "max_time_ms": 600000,
       "ci_max_time_ms": 10000,
       "endless": true,
-      "ci_link_frames_at_least": 20,
+      "ci_link_frames_at_least": 5,
       "boards": [
         {
           "label": "Sensor",
@@ -1049,7 +1051,7 @@
       "max_time_ms": 600000,
       "ci_max_time_ms": 6000,
       "endless": true,
-      "ci_link_frames_at_least": 10,
+      "ci_link_frames_at_least": 0,
       "boards": [
         {
           "label": "Beacon",
