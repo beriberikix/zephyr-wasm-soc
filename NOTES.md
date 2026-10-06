@@ -2032,7 +2032,7 @@ commands the same as before.
 keyboard, which twister cannot drive, so it is not in the sweep; the demo
 types into it and counts it as it counts `basic/button`. Score 96.
 
-Making the shell interrupt-driven showed five things the polled shell had
+Making the shell interrupt-driven showed six things the polled shell had
 been hiding.
 
 Scripted typing had relied on the poll. Bytes queued at boot reached the
@@ -2075,3 +2075,12 @@ kernel's clamp, days away, and a pair whose other board had gone quiet let
 it jump there. A paced single board has always treated the clamp as nothing
 to wake for and let the wall clock carry it; a paced pair now does too, and
 the shell's 10 ms poll had been hiding that it did not (DESIGN.md D8k).
+
+CI then failed `dhcp` through the relay, which the local check had not
+been given. RootlessRelay offered an address twice and the board never
+asked for it. The board, paced, had jumped to DHCP's retransmit timer,
+seconds ahead of the wall clock, and the offer arrived with the
+retransmit, too late for the transaction it answered. A paced board that
+can hear from outside now follows the wall clock to its next deadline,
+sleeping 10 ms at a time, instead of jumping there; which is what the
+burst of keys into zperf's client had been too (DESIGN.md D5b).

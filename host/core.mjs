@@ -105,6 +105,11 @@ const PACE_BEHIND_MS = 250;
  * never do. */
 const PACE_YIELD_NS = 50_000_000n;
 
+/* How long a paced board that is waiting for the wall clock sleeps at a
+ * time, at most. Keys and frames arrive while it sleeps, and are seen this
+ * soon after. */
+const PACE_IDLE_MS = 10;
+
 /* Virtual time charged per safepoint progress report. With the default of
  * 20000 safepoints between reports this makes a spinning thread advance the
  * clock at a plausible rate rather than a meaningful one; what matters is
@@ -177,6 +182,7 @@ export class Host {
     this.resumeSame = false;     // set by an idle suspension
     this.alarmIsClamp = false;   // the last deadline was the kernel's clamp
     this.pace = null;            // paced runs: when guest and wall clocks lined up
+    this.idleWaitMs = 0;         // paced runs: sleep this long before the next step
     this.quiescentRounds = 0;
     this.input = [];             // bytes waiting for the guest's UART
     /* Bytes the guest's UART has taken, and the byte, counted the same
@@ -1070,6 +1076,19 @@ export class Host {
     return w[this.irqPendingAddr >> 2] & this.enabledLines();
   }
 
+  /* When the next thing is due, on this board's own clock, without doing
+   * it: a scripted event, a frame, a typed byte, the LAN, or the kernel's
+   * alarm unless that is only the clamp. Null if nothing is. */
+  nextDeadlineNs() {
+    const cands = [this.opts.gpio?.[0]?.atNs, this.opts.inputScript?.[0]?.atNs,
+                   this.nextFrameNs(), this.nextUartNs(),
+                   this.lan ? this.lan.nextNs() - this.epochNs : null,
+                   this.alarmIsClamp ? null : this.alarmNs];
+    let at = null;
+    for (const c of cands) if (c !== undefined && c !== null && (at === null || c < at)) at = c;
+    return at;
+  }
+
   /* Virtual time: nothing happens until the kernel idles, then jump to the
    * next deadline. With no deadline there is nothing left to wait for.
    *
@@ -1433,6 +1452,7 @@ export class Host {
         const aheadMs = Number(dueNs - this.platform.nowNs()) / 1e6;
         if (aheadMs >= 1) {
           this.yieldToHost = false;
+          this.idleWaitMs = 0;
           await this.platform.wait(aheadMs);
           lastYield = this.platform.nowNs();
           continue;
@@ -1440,7 +1460,15 @@ export class Host {
         if (aheadMs < -PACE_BEHIND_MS) reanchor();
         if (this.platform.nowNs() - lastYield > PACE_YIELD_NS) this.yieldToHost = true;
       }
-      if (this.yieldToHost) {
+      if (this.idleWaitMs > 0) {
+        /* Paced and idle, waiting for the wall clock: input arrives while
+         * it sleeps. */
+        const ms = this.idleWaitMs;
+        this.idleWaitMs = 0;
+        this.yieldToHost = false;
+        await this.platform.wait(ms);
+        lastYield = this.platform.nowNs();
+      } else if (this.yieldToHost) {
         /* The driver loop is synchronous, so Node's event loop never gets a
          * turn and typed characters would never arrive. Give it one whenever
          * the guest is idle, which is exactly when input can matter. */
@@ -1537,14 +1565,17 @@ export class Host {
          * the relay, as well as keys. */
         this.yieldToHost = true;
         if (pending === 0) {
-          if (this.pace && (this.alarmNs === null || this.alarmIsClamp)) {
-            /* Paced, and nothing to wake for but a person or the network:
-             * time passes as it does for them. Jumping to the next deadline
+          const byWall = this.pace && this.pace.guest +
+            BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+          const at = this.pace ? this.nextDeadlineNs() : null;
+          if (this.pace && (at === null || at > byWall)) {
+            /* Paced, and waiting for a person or the network: time passes
+             * as it does for them, up to the next deadline. Jumping to it
              * would leave the clock standing still until they did
-             * something, and a five-second press would be logged as lasting
-             * no time. */
-            const byWall = this.pace.guest +
-              BigInt(Math.round(Number(this.platform.nowNs() - this.pace.wall) * this.pace.scale));
+             * something, so a five-second press would be logged as lasting
+             * no time; and whatever they sent meanwhile would arrive at
+             * once when the wall clock caught up, a relay's DHCP offer as
+             * the client gave up on it and a page's keys in one burst. */
             if (byWall > this.nowNs) this.nowNs = byWall;
             /* The LAN keeps time with the board, and a frame from the relay
              * arrived while the host waited, stamped with the time it came
@@ -1552,6 +1583,9 @@ export class Host {
             if (this.lan) this.fromLan(this.lan.advance(this.globalNs));
             const frameAt = this.nextFrameNs();
             if (frameAt !== null && frameAt <= this.nowNs) this.injectIrq(IRQ.ETH);
+            /* Sleep towards the next deadline rather than spin on it. */
+            this.idleWaitMs = at === null ? PACE_IDLE_MS
+              : Math.min(PACE_IDLE_MS, Number(at - this.nowNs) / 1e6 / this.pace.scale);
           } else {
             this.advanceToNextDeadline();
           }

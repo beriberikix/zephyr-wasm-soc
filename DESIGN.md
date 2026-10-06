@@ -545,12 +545,21 @@ step back, after a jump too long to wait out, and when the guest has fallen
 more than `PACE_BEHIND_MS` behind, so a slow stretch is not followed by a
 burst of catching up.
 
-One paced case does let the wall clock in: an interactive run with nothing to
-wake for but a person. Jumping to the next deadline there leaves the clock
-standing until they do something, so a five-second button press is logged as
-lasting no time. Instead the guest's clock advances with the wall clock while
-it idles. That run was never deterministic, since it reads a person; every
-run CI compares is scripted, and not affected.
+One paced case does let the wall clock in: a run that can hear from outside,
+an interactive one or one on a relay, while it idles. Jumping to the next
+deadline there leaves the clock standing until someone does something, so a
+five-second button press is logged as lasting no time; and whatever arrives
+while the host waits out the jump lands at once when the wall clock catches
+up. A relay's DHCP offer reached the client just as its retransmit timer
+fired, so it never matched; a page's keys reached the shell as one burst.
+Instead the guest's clock advances with the wall clock up to its next
+deadline, the host sleeping up to `PACE_IDLE_MS` at a time so it does not
+spin. The kernel's "nothing soon" clamp is never waited for. That run was
+never deterministic, since it reads a person or a network; every run CI
+compares is scripted, and not affected.
+
+The interrupt-driven shell is what made this matter. Its polled predecessor
+kept a 10 ms timer running, so no jump was ever longer than that.
 
 ### D8e. The host asks rather than reads
 
@@ -974,7 +983,8 @@ What else was looked at, and why not:
 
 **Time.** A relay's peers follow the wall clock, so an uplinked board is
 paced and does not stop when nothing is scheduled, as an interactive one
-does not. A frame from the relay is stamped with the board's time when it
+does not, and its clock follows the wall clock to each deadline rather than
+jumping there (D5b). A frame from the relay is stamped with the board's time when it
 arrives, and one that arrives while the host waits out an idle period
 raises `IRQ.ETH` at once. Such a run is not repeatable, and nothing that
 needs repeatability depends on it: the pairs stay on their own clock.
