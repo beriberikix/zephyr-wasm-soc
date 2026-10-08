@@ -1042,6 +1042,47 @@
       ]
     },
     {
+      "name": "gatt-write",
+      "kind": "sample",
+      "title": "Bluetooth GATT writes, encrypted (two boards)",
+      "hint": "The central connects to the first device it hears nearby, asks for security, and the two pair (Secure Connections, Just Works) and encrypt the link; then both write to each other as fast as the link allows and print the rate, while the peripheral asks for new connection parameters every few seconds.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 50,
+      "boards": [
+        {
+          "label": "Peripheral",
+          "app": "zephyr/samples/bluetooth/peripheral_gatt_write",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "connected: C0:DE:00:00:00:02 (public) role 1",
+            "security_changed: to level 2, err (0)",
+            "mtu_exchange_cb: MTU exchange successful (247)",
+            "write_cmd_cb: count="
+          ]
+        },
+        {
+          "label": "Central",
+          "app": "zephyr/samples/bluetooth/central_gatt_write",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "connected: C0:DE:00:00:00:01 (public) role 0",
+            "security_changed: to level 2, err (0)",
+            "write_cmd_cb: count=",
+            "le_param_updated: int"
+          ]
+        }
+      ]
+    },
+    {
       "name": "beacon",
       "kind": "sample",
       "title": "Bluetooth beacon and observer (two boards)",

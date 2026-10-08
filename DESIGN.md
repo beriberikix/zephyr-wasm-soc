@@ -1227,8 +1227,8 @@ Only the UART imports changed, to take a port.
 board's clock as the LAN is (D8m). It reads H4 from the guest and answers as
 a Bluetooth 5.0 controller with the legacy LE subset: what the host sends at
 init, advertising, scanning, creating and cancelling a connection,
-connection update, remote features and version, disconnect, and ACL data
-with Number Of Completed Packets. Its features say no to encryption, data
+connection update, remote features and version, disconnect, encryption, and
+ACL data with Number Of Completed Packets. Its features say no to data
 length, privacy, 2M and extended advertising, so the host never asks for
 them, and anything else is "Unknown HCI Command". Its public address comes
 from the board's seed, as its MAC does: `C0:DE:00:00:00:01` for the first
@@ -1261,8 +1261,19 @@ does (D10). An idle connection costs nothing. Nothing reads the wall clock
 or an unseeded random number, so a Bluetooth pair repeats as an Ethernet
 one does, and the Node check runs each twice and compares.
 
-Encryption is the next thing it lacks: pairing needs LE Start Encryption and
-the LTK exchange, which `central_gatt_write` and `central_multilink` ask for.
+**Encryption is the procedure, not the cipher.** Pairing is the hosts'
+business, over ACL with their own PSA crypto; the controller's part is
+starting encryption. The central's LE Start Encryption goes over the air at
+the next connection event, after the ACL queued before it, so the
+peripheral's host has the end of the pairing before it is asked for a key.
+The peripheral's controller asks its host for the LTK, compares it with the
+central's, and if they match reports the link encrypted to both sides, the
+central's at once, ahead of anything the peripheral's host then sends; on
+a link already encrypted, as a key refresh, since the host ignores an
+Encryption Change that changes nothing. Keys that differ drop the link with
+a MIC failure, as on a real one. The bytes on the emulated air are not
+enciphered: nothing could listen to them.
+
 The same UART is also what a real controller would sit behind: Web Serial to
 an HCI dongle replaces the far end, not the guest.
 

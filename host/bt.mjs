@@ -11,10 +11,16 @@
  * advertising, scanning, connecting and GATT need: the commands the host
  * sends at init, legacy advertising and scanning, creating and cancelling a
  * connection, connection update, remote features and version, disconnect,
- * and ACL data in both directions with Number Of Completed Packets.
- * Encryption, extended advertising, data length and PHY updates are not
+ * encryption, and ACL data in both directions with Number Of Completed
+ * Packets. Extended advertising, data length and PHY updates are not
  * offered, and the features the controller reports say so, so the host
  * never asks for them. Anything else gets "Unknown HCI Command".
+ *
+ * Encryption is the procedure, not the cipher: the central's LTK goes over
+ * the air with its start-encryption request, the peripheral's host is
+ * asked for its own, and the link is encrypted if they match and dropped
+ * with a MIC failure if they do not, as a real link would be. What crosses
+ * the air afterwards is not enciphered; nothing can listen to it.
  *
  * Timing is on the board's own clock, as everything else in the host is,
  * so a pair runs the same every time:
@@ -40,22 +46,27 @@ const H4_EVT = 0x04;
 
 /* Events and LE subevents. */
 const EVT_DISCONN_COMPLETE = 0x05;
+const EVT_ENCRYPT_CHANGE = 0x08;
 const EVT_REMOTE_VERSION = 0x0c;
 const EVT_CMD_COMPLETE = 0x0e;
 const EVT_CMD_STATUS = 0x0f;
 const EVT_NUM_COMPLETED = 0x13;
+const EVT_KEY_REFRESH_COMPLETE = 0x30;
 const EVT_LE_META = 0x3e;
 const LE_CONN_COMPLETE = 0x01;
 const LE_ADV_REPORT = 0x02;
 const LE_CONN_UPDATE_COMPLETE = 0x03;
 const LE_REMOTE_FEATURES = 0x04;
+const LE_LTK_REQUEST = 0x05;
 
 /* Status codes. */
 const OK = 0x00;
 const UNKNOWN_COMMAND = 0x01;
 const UNKNOWN_CONN = 0x02;
+const KEY_MISSING = 0x06;
 const DISALLOWED = 0x0c;
 const LOCAL_HOST_TERMINATED = 0x16;
+const MIC_FAILURE = 0x3d;
 
 /* Advertising PDU types, as LE Set Advertising Parameters gives them. */
 const ADV_IND = 0x00;
@@ -113,6 +124,9 @@ const OP = {
   LE_CONN_UPDATE: 0x2013,
   LE_READ_REMOTE_FEATURES: 0x2016,
   LE_RAND: 0x2018,
+  LE_START_ENCRYPTION: 0x2019,
+  LE_LTK_REPLY: 0x201a,
+  LE_LTK_NEG_REPLY: 0x201b,
 };
 
 /* Read Local Supported Commands: the bit for each command above, as
@@ -127,6 +141,7 @@ const SUPPORTED = [
   [25, 0], [25, 1], [25, 2], [25, 4], [25, 5], [25, 6], [25, 7],
   [26, 0], [26, 1], [26, 2], [26, 3], [26, 4], [26, 5], [26, 6], [26, 7],
   [27, 2], [27, 5], [27, 7],                // Conn Update, Remote Features, Rand
+  [28, 0], [28, 1], [28, 2],                // Start Encryption, LTK (Negative) Reply
 ];
 
 const le16 = (v) => [v & 0xff, (v >> 8) & 0xff];
@@ -345,9 +360,9 @@ export class BtController {
         this.complete(op, [OK, ...le16(ACL_LEN), ACL_NUM]);
         return;
       case OP.LE_READ_LOCAL_FEATURES:
-        /* None of the optional LE features: no encryption, data length,
-         * privacy, 2M or extended advertising. */
-        this.complete(op, [OK, 0, 0, 0, 0, 0, 0, 0, 0]);
+        /* LE Encryption, and none of the other optional features: no
+         * data length, privacy, 2M or extended advertising. */
+        this.complete(op, [OK, 0x01, 0, 0, 0, 0, 0, 0, 0]);
         return;
       case OP.LE_SET_RANDOM_ADDRESS:
         s.randomAddr = p.slice(0, 6);
@@ -412,6 +427,35 @@ export class BtController {
       case OP.LE_RAND:
         this.complete(op, [OK, ...this.rand8()]);
         return;
+      case OP.LE_LTK_REPLY:
+      case OP.LE_LTK_NEG_REPLY: {
+        const handle = rd16(p, 0) & 0x0fff;
+        const c = s.conn;
+        if (!c || handle !== c.handle || !c.encPending) {
+          this.complete(op, [DISALLOWED, ...le16(handle)]);
+          return;
+        }
+        this.complete(op, [OK, ...le16(handle)]);
+        const theirs = c.encPending.ltk;
+        c.encPending = null;
+        if (op === OP.LE_LTK_NEG_REPLY) {
+          this.send({ kind: 'enc_rsp', ok: false }, nowNs);
+        } else if (p.slice(2, 18).every((b, i) => b === theirs[i])) {
+          /* At once, not at the next connection event: the central hears
+           * that the link is encrypted before anything this side's host
+           * sends now that it is. */
+          this.encrypted(OK);
+          this.send({ kind: 'enc_rsp', ok: true }, nowNs);
+        } else {
+          /* The keys differ, so neither side can read the other's first
+           * encrypted packet: both drop the link. */
+          this.send({ kind: 'terminate', reason: MIC_FAILURE }, nowNs);
+          this.event(EVT_DISCONN_COMPLETE, [OK, ...le16(c.handle), MIC_FAILURE]);
+          s.conn = null;
+        }
+        return;
+      }
+      case OP.LE_START_ENCRYPTION:
       case OP.LE_CONN_UPDATE:
       case OP.LE_READ_REMOTE_FEATURES:
       case OP.READ_REMOTE_VERSION:
@@ -470,13 +514,33 @@ export class BtController {
         const upd = { interval: rd16(p, 4), latency: rd16(p, 6), timeout: rd16(p, 8) };
         this.send({ kind: 'update', ...upd }, atNs);
         this.applyUpdate(upd, atNs);
+      } else if (op === OP.LE_START_ENCRYPTION) {
+        /* After the ACL queued before it, which went first above: the
+         * peripheral's host must have it before it is asked for a key. */
+        this.send({ kind: 'enc_req', rand: p.slice(2, 10), ediv: p.slice(10, 12),
+                    ltk: p.slice(12, 28) }, atNs);
       } else if (op === OP.LE_READ_REMOTE_FEATURES) {
-        this.leMeta(LE_REMOTE_FEATURES, [OK, ...le16(c.handle), 0, 0, 0, 0, 0, 0, 0, 0]);
+        this.leMeta(LE_REMOTE_FEATURES, [OK, ...le16(c.handle), 0x01, 0, 0, 0, 0, 0, 0, 0]);
       } else if (op === OP.READ_REMOTE_VERSION) {
         this.event(EVT_REMOTE_VERSION, [OK, ...le16(c.handle), 0x09, ...le16(0xffff), ...le16(0)]);
       }
     }
     if (this.s.conn) this.s.conn.since = atNs + 1n;
+  }
+
+  /* Encryption is on: a change for a link that was not encrypted, a key
+   * refresh for one that was, since the host ignores an Encryption Change
+   * that changes nothing. */
+  encrypted(status) {
+    const c = this.s.conn;
+    if (status !== OK) {
+      this.event(EVT_ENCRYPT_CHANGE, [status, ...le16(c.handle), 0x00]);
+    } else if (c.encrypted) {
+      this.event(EVT_KEY_REFRESH_COMPLETE, [OK, ...le16(c.handle)]);
+    } else {
+      c.encrypted = true;
+      this.event(EVT_ENCRYPT_CHANGE, [OK, ...le16(c.handle), 0x01]);
+    }
   }
 
   applyUpdate(upd, atNs) {
@@ -495,7 +559,7 @@ export class BtController {
       handle: 0x0000, role, peerType, peerAddr: [...peerAddr],
       interval: params.interval, latency: params.latency, timeout: params.timeout,
       intervalNs: BigInt(params.interval) * UNIT_CONN_NS,
-      anchorNs: atNs, since: atNs, tx: [], pending: [],
+      anchorNs: atNs, since: atNs, tx: [], pending: [], encrypted: false, encPending: null,
     };
     this.leMeta(LE_CONN_COMPLETE, [OK, ...le16(0x0000), role, peerType, ...peerAddr,
                                    ...le16(params.interval), ...le16(params.latency),
@@ -554,6 +618,14 @@ export class BtController {
         return;
       case 'update':
         if (s.conn) this.applyUpdate(pdu, atNs);
+        return;
+      case 'enc_req':
+        if (!s.conn) return;
+        s.conn.encPending = { ltk: pdu.ltk };
+        this.leMeta(LE_LTK_REQUEST, [...le16(s.conn.handle), ...pdu.rand, ...pdu.ediv]);
+        return;
+      case 'enc_rsp':
+        if (s.conn) this.encrypted(pdu.ok ? OK : KEY_MISSING);
         return;
       case 'terminate':
         if (!s.conn) return;

@@ -2118,3 +2118,20 @@ fixes, the demo shows Zephyr as it is until Zephyr takes it.
 A Bluetooth build's output only appears a second in, which looked like a
 hang in a one-second run: its printk goes through deferred logging, whose
 thread flushes once a second.
+
+### Tick 86 — the controller encrypts
+
+Pairing is the hosts' business: SMP over ACL, with their own PSA crypto,
+which already worked. What was missing was the controller's part, starting
+encryption once the key is agreed. LE Start Encryption now goes over the air
+at the next connection event, after whatever ACL was queued before it, so
+the peripheral's host has the DHKey Check before it is asked for a key; the
+peripheral's controller asks its host for the LTK, compares it with the
+central's, and reports the link encrypted to both, the central's at once so
+it hears before any encrypted data arrives. On an encrypted link it is a
+key refresh, since the host drops an Encryption Change that changes
+nothing.
+
+`central_gatt_write` and `peripheral_gatt_write` ran on the first try:
+Secure Connections, Just Works, level 2, then writes at about 20 kbps both
+ways and a connection-parameter update every few seconds. Score 102.
