@@ -1267,6 +1267,46 @@
       ]
     },
     {
+      "name": "multilink",
+      "kind": "sample",
+      "title": "Bluetooth: one central, 61 links (two boards)",
+      "hint": "The peripheral makes a new Bluetooth identity for every connection and advertises it while its other links stay up; the central connects to each one it hears. Both stop at 61 links, as upstream's configurations have it: the central would take 62, the peripheral offers 61.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 15000,
+      "endless": true,
+      "ci_link_frames_at_least": 20,
+      "boards": [
+        {
+          "label": "Peripheral",
+          "app": "zephyr/samples/bluetooth/peripheral_identity",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Advertising successfully started",
+            "Using current id: 60",
+            "Connected (61): C0:DE:00:00:00:02 (public)",
+            "Waiting for stable connections..."
+          ]
+        },
+        {
+          "label": "Central",
+          "app": "zephyr/samples/bluetooth/central_multilink",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Scanning successfully started",
+            "Connected (1): ",
+            "Connected (61): "
+          ]
+        }
+      ]
+    },
+    {
       "name": "beacon",
       "kind": "sample",
       "title": "Bluetooth beacon and observer (two boards)",

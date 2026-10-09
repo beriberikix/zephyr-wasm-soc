@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **109**. 62 pass upstream's own criterion, and 47 more are counted
+today: **111**. 62 pass upstream's own criterion, and 49 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -36,8 +36,9 @@ server, zperf, which is both ends of its own pair, and `dns_resolve` with
 `mqtt_publisher`, whose peer
 is the host's own network; `promiscuous_mode` and `pkt_filter`, which the
 host's network pings; `net_mgmt`, `stats`, `virtual` and `vlan`, which
-need an interface but no one to talk to; and thirteen Bluetooth samples
-the radio pairs run: `peripheral_hr` with `central_hr`, `peripheral_ht`
+need an interface but no one to talk to; and fifteen Bluetooth samples
+the radio pairs run: `central_multilink` with `peripheral_identity`, 61
+links between two boards, `peripheral_hr` with `central_hr`, `peripheral_ht`
 with `central_ht`, `peripheral_gatt_write` with `central_gatt_write`, which
 pair and encrypt, `central` with `peripheral_csc`, and `observer` hearing
 `beacon`, `broadcaster`, `ibeacon` and `eddystone`.
@@ -302,7 +303,8 @@ heart-rate sensor and monitor, and a beacon and an observer. Encryption in
 the controller took it to 102 with the GATT write pair, which pairs and
 encrypts before it writes, and five more pairs the controller already
 supported took it to 109: the health thermometer, `central` with a cycling
-sensor, and three beacons for the observer.
+sensor, and three beacons for the observer. Many links per controller took
+it to 111 with `central_multilink` and `peripheral_identity`.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -1015,8 +1017,10 @@ wants an interrupt-driven UART, and this port's UART was polled.
       Refresh on both sides. `central_gatt_write` and
       `peripheral_gatt_write` pair with Secure Connections, encrypt the link
       at level 2 and stream writes over it.
-- [ ] **More than one connection per controller**, for
-      `central_multilink` and a peripheral that is also a central.
+- [x] **More than one connection per controller** (`DESIGN.md` D8p).
+      `peripheral_identity` makes an identity per connection and advertises
+      each while its other links stay up; `central_multilink` connects to
+      every one, 61 links between the two boards.
 - [ ] **Web Serial to a real HCI dongle**, behind the same UART.
 
 ## Two levers on the score that no phase covers

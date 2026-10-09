@@ -64,6 +64,7 @@ const OK = 0x00;
 const UNKNOWN_COMMAND = 0x01;
 const UNKNOWN_CONN = 0x02;
 const KEY_MISSING = 0x06;
+const CONN_LIMIT = 0x09;
 const DISALLOWED = 0x0c;
 const LOCAL_HOST_TERMINATED = 0x16;
 const MIC_FAILURE = 0x3d;
@@ -81,6 +82,10 @@ const SCAN_RSP = 0x04;
  * upstream centrals that only connect to a nearby device (RSSI >= -50)
  * will. */
 const RSSI = -40;
+
+/* How many links one controller keeps at once. Upstream's multilink
+ * samples ask for 61 and 62. */
+const MAX_LINKS = 64;
 
 /* The LE buffer this controller offers the host: the minimum ACL payload,
  * and as many packets as Zephyr's host keeps by default. */
@@ -178,7 +183,11 @@ export class BtController {
              enabled: false, nextNs: null },
       scan: { active: false, enabled: false, filterDup: false, seen: [] },
       initiating: null,
-      conn: null,
+      /* Links, by handle. Each has a key, the central's handle for it,
+       * which every PDU about the link carries: one central can use the
+       * same address for all its links, so the addresses cannot tell them
+       * apart. */
+      conns: [],
       /* PDUs from the other board's controller, by arrival time. */
       air: [],
       airSent: 0,
@@ -235,11 +244,22 @@ export class BtController {
     const s = this.s;
     let at = s.rx.length > 0 && s.rxReadyNs > nowNs ? s.rxReadyNs : null;
     if (s.adv.enabled) at = minBig(at, s.adv.nextNs);
-    if (s.conn && (s.conn.tx.length > 0 || s.conn.pending.length > 0)) {
-      at = minBig(at, this.connEventAt(s.conn.since));
-    }
+    const link = this.nextLink();
+    if (link) at = minBig(at, link.at);
     if (s.air.length > 0) at = minBig(at, s.air[0].atNs);
     return at;
+  }
+
+  /* The link whose next connection event comes first among those with
+   * something to send, and when; ties go to the lower handle. */
+  nextLink() {
+    let best = null;
+    for (const c of this.s.conns) {
+      if (c.tx.length === 0 && c.pending.length === 0) continue;
+      const at = this.connEventAt(c, c.since);
+      if (best === null || at < best.at) best = { c, at };
+    }
+    return best;
   }
 
   /* Do everything due by nowNs, in time order. */
@@ -247,22 +267,21 @@ export class BtController {
     for (;;) {
       const s = this.s;
       const advAt = s.adv.enabled ? s.adv.nextNs : null;
-      const connAt = s.conn && (s.conn.tx.length > 0 || s.conn.pending.length > 0)
-        ? this.connEventAt(s.conn.since) : null;
+      const link = this.nextLink();
+      const connAt = link ? link.at : null;
       const airAt = s.air.length > 0 ? s.air[0].atNs : null;
       const at = minBig(minBig(advAt, connAt), airAt);
       if (at === null || at > nowNs) return;
       /* Ties: what arrived first, then the connection, then advertising,
        * so the order is fixed. */
       if (airAt === at) this.receive(s.air.shift(), at);
-      else if (connAt === at) this.connEvent(at);
+      else if (connAt === at) this.connEvent(link.c, at);
       else this.advEvent(at);
     }
   }
 
-  /* The first connection event at or after t. */
-  connEventAt(t) {
-    const c = this.s.conn;
+  /* The first connection event of link c at or after t. */
+  connEventAt(c, t) {
     if (t <= c.anchorNs) return c.anchorNs;
     const n = (t - c.anchorNs + c.intervalNs - 1n) / c.intervalNs;
     return c.anchorNs + n * c.intervalNs;
@@ -310,6 +329,26 @@ export class BtController {
     }
     this.s.rng = x;
     return out;
+  }
+
+  byHandle(handle) {
+    return this.s.conns.find((c) => c.handle === handle) ?? null;
+  }
+
+  byKey(key) {
+    return this.s.conns.find((c) => c.key === key) ?? null;
+  }
+
+  /* A link is gone: whatever it still had to send goes with it, and no
+   * Number Of Completed Packets follows, since the host takes those
+   * packets back itself. */
+  drop(c) {
+    this.s.conns = this.s.conns.filter((x) => x !== c);
+  }
+
+  /* A PDU about link c, to the other end of it. */
+  sendOn(c, pdu, atNs) {
+    this.send({ ...pdu, key: c.key }, atNs);
   }
 
   /* The address this controller advertises or connects with. */
@@ -387,11 +426,6 @@ export class BtController {
         this.complete(op, [OK]);
         return;
       case OP.LE_SET_ADV_ENABLE:
-        if (p[0] && s.conn && s.adv.type !== ADV_NONCONN_IND && s.adv.type !== ADV_SCAN_IND) {
-          /* One connection is all this controller keeps. */
-          this.complete(op, [DISALLOWED]);
-          return;
-        }
         s.adv.enabled = !!p[0];
         s.adv.nextNs = s.adv.enabled ? nowNs : null;
         this.complete(op, [OK]);
@@ -408,7 +442,8 @@ export class BtController {
         this.complete(op, [OK]);
         return;
       case OP.LE_CREATE_CONN:
-        if (s.initiating || s.conn) { this.status(op, DISALLOWED); return; }
+        if (s.initiating) { this.status(op, DISALLOWED); return; }
+        if (s.conns.length >= MAX_LINKS) { this.status(op, CONN_LIMIT); return; }
         s.initiating = {
           peerType: p[5], peerAddr: p.slice(6, 12), ownType: p[12],
           interval: rd16(p, 13), latency: rd16(p, 17), timeout: rd16(p, 19),
@@ -430,8 +465,8 @@ export class BtController {
       case OP.LE_LTK_REPLY:
       case OP.LE_LTK_NEG_REPLY: {
         const handle = rd16(p, 0) & 0x0fff;
-        const c = s.conn;
-        if (!c || handle !== c.handle || !c.encPending) {
+        const c = this.byHandle(handle);
+        if (!c || !c.encPending) {
           this.complete(op, [DISALLOWED, ...le16(handle)]);
           return;
         }
@@ -439,19 +474,19 @@ export class BtController {
         const theirs = c.encPending.ltk;
         c.encPending = null;
         if (op === OP.LE_LTK_NEG_REPLY) {
-          this.send({ kind: 'enc_rsp', ok: false }, nowNs);
+          this.sendOn(c, { kind: 'enc_rsp', ok: false }, nowNs);
         } else if (p.slice(2, 18).every((b, i) => b === theirs[i])) {
           /* At once, not at the next connection event: the central hears
            * that the link is encrypted before anything this side's host
            * sends now that it is. */
-          this.encrypted(OK);
-          this.send({ kind: 'enc_rsp', ok: true }, nowNs);
+          this.encrypted(c, OK);
+          this.sendOn(c, { kind: 'enc_rsp', ok: true }, nowNs);
         } else {
           /* The keys differ, so neither side can read the other's first
            * encrypted packet: both drop the link. */
-          this.send({ kind: 'terminate', reason: MIC_FAILURE }, nowNs);
+          this.sendOn(c, { kind: 'terminate', reason: MIC_FAILURE }, nowNs);
           this.event(EVT_DISCONN_COMPLETE, [OK, ...le16(c.handle), MIC_FAILURE]);
-          s.conn = null;
+          this.drop(c);
         }
         return;
       }
@@ -460,12 +495,12 @@ export class BtController {
       case OP.LE_READ_REMOTE_FEATURES:
       case OP.READ_REMOTE_VERSION:
       case OP.DISCONNECT: {
-        const handle = rd16(p, 0) & 0x0fff;
-        if (!s.conn || handle !== s.conn.handle) { this.status(op, UNKNOWN_CONN); return; }
+        const c = this.byHandle(rd16(p, 0) & 0x0fff);
+        if (!c) { this.status(op, UNKNOWN_CONN); return; }
         this.status(op, OK);
         /* Done at the next connection event, where the other side would
          * hear of it. */
-        s.conn.pending.push({ op, p: [...p] });
+        c.pending.push({ op, p: [...p] });
         return;
       }
       default:
@@ -478,12 +513,12 @@ export class BtController {
   aclFromHost(pkt, nowNs) {
     const s = this.s;
     const hdr = rd16(pkt, 0);
-    const handle = hdr & 0x0fff;
-    if (!s.conn || handle !== s.conn.handle) return;
+    const c = this.byHandle(hdr & 0x0fff);
+    if (!c) return;
     /* Packet boundary: what the host calls "first non-flushable" (0b00)
      * arrives at the other host as "first flushable" (0b10). */
     const pb = (hdr >> 12) & 0x3;
-    s.conn.tx.push({ pb: pb === 0x1 ? 0x1 : 0x2, data: pkt.slice(4) });
+    c.tx.push({ pb: pb === 0x1 ? 0x1 : 0x2, data: pkt.slice(4) });
   }
 
   /* ---- The radio ---------------------------------------------------------- */
@@ -496,43 +531,41 @@ export class BtController {
                 data: s.adv.data, scanRsp: s.adv.scanRsp }, atNs);
   }
 
-  connEvent(atNs) {
-    const c = this.s.conn;
+  connEvent(c, atNs) {
     const sent = c.tx.length;
-    for (const pkt of c.tx) this.send({ kind: 'acl', pb: pkt.pb, data: pkt.data }, atNs);
+    for (const pkt of c.tx) this.sendOn(c, { kind: 'acl', pb: pkt.pb, data: pkt.data }, atNs);
     c.tx = [];
     if (sent > 0) this.event(EVT_NUM_COMPLETED, [1, ...le16(c.handle), ...le16(sent)]);
     const pending = c.pending;
     c.pending = [];
     for (const { op, p } of pending) {
-      if (!this.s.conn) break;
+      if (!this.s.conns.includes(c)) break;
       if (op === OP.DISCONNECT) {
-        this.send({ kind: 'terminate', reason: p[2] }, atNs);
+        this.sendOn(c, { kind: 'terminate', reason: p[2] }, atNs);
         this.event(EVT_DISCONN_COMPLETE, [OK, ...le16(c.handle), LOCAL_HOST_TERMINATED]);
-        this.s.conn = null;
+        this.drop(c);
       } else if (op === OP.LE_CONN_UPDATE) {
         const upd = { interval: rd16(p, 4), latency: rd16(p, 6), timeout: rd16(p, 8) };
-        this.send({ kind: 'update', ...upd }, atNs);
-        this.applyUpdate(upd, atNs);
+        this.sendOn(c, { kind: 'update', ...upd }, atNs);
+        this.applyUpdate(c, upd, atNs);
       } else if (op === OP.LE_START_ENCRYPTION) {
         /* After the ACL queued before it, which went first above: the
          * peripheral's host must have it before it is asked for a key. */
-        this.send({ kind: 'enc_req', rand: p.slice(2, 10), ediv: p.slice(10, 12),
-                    ltk: p.slice(12, 28) }, atNs);
+        this.sendOn(c, { kind: 'enc_req', rand: p.slice(2, 10), ediv: p.slice(10, 12),
+                         ltk: p.slice(12, 28) }, atNs);
       } else if (op === OP.LE_READ_REMOTE_FEATURES) {
         this.leMeta(LE_REMOTE_FEATURES, [OK, ...le16(c.handle), 0x01, 0, 0, 0, 0, 0, 0, 0]);
       } else if (op === OP.READ_REMOTE_VERSION) {
         this.event(EVT_REMOTE_VERSION, [OK, ...le16(c.handle), 0x09, ...le16(0xffff), ...le16(0)]);
       }
     }
-    if (this.s.conn) this.s.conn.since = atNs + 1n;
+    c.since = atNs + 1n;
   }
 
   /* Encryption is on: a change for a link that was not encrypted, a key
    * refresh for one that was, since the host ignores an Encryption Change
    * that changes nothing. */
-  encrypted(status) {
-    const c = this.s.conn;
+  encrypted(c, status) {
     if (status !== OK) {
       this.event(EVT_ENCRYPT_CHANGE, [status, ...le16(c.handle), 0x00]);
     } else if (c.encrypted) {
@@ -543,8 +576,7 @@ export class BtController {
     }
   }
 
-  applyUpdate(upd, atNs) {
-    const c = this.s.conn;
+  applyUpdate(c, upd, atNs) {
     c.intervalNs = BigInt(upd.interval) * UNIT_CONN_NS;
     c.anchorNs = atNs;
     c.interval = upd.interval;
@@ -554,16 +586,22 @@ export class BtController {
                                           ...le16(upd.latency), ...le16(upd.timeout)]);
   }
 
-  connect(role, peerType, peerAddr, params, atNs) {
-    this.s.conn = {
-      handle: 0x0000, role, peerType, peerAddr: [...peerAddr],
+  /* A new link, on the lowest free handle; key as for conns above. Returns
+   * it. */
+  connect(role, key, peerType, peerAddr, params, atNs) {
+    let handle = 0;
+    while (this.byHandle(handle)) handle++;
+    const c = {
+      handle, key: key ?? handle, role, peerType, peerAddr: [...peerAddr],
       interval: params.interval, latency: params.latency, timeout: params.timeout,
       intervalNs: BigInt(params.interval) * UNIT_CONN_NS,
       anchorNs: atNs, since: atNs, tx: [], pending: [], encrypted: false, encPending: null,
     };
-    this.leMeta(LE_CONN_COMPLETE, [OK, ...le16(0x0000), role, peerType, ...peerAddr,
+    this.s.conns.push(c);
+    this.leMeta(LE_CONN_COMPLETE, [OK, ...le16(handle), role, peerType, ...peerAddr,
                                    ...le16(params.interval), ...le16(params.latency),
                                    ...le16(params.timeout), 0x00]);
+    return c;
   }
 
   report(type, addrType, addr, data) {
@@ -590,8 +628,10 @@ export class BtController {
           s.initiating = null;
           const own = this.ownAddress(ini.ownType);
           const params = { interval: ini.interval, latency: ini.latency, timeout: ini.timeout };
-          this.send({ kind: 'connect', addrType: own.type, addr: own.addr, ...params }, atNs);
-          this.connect(0x00, pdu.addrType, pdu.addr, params, atNs);
+          const c = this.connect(0x00, null, pdu.addrType, pdu.addr, params, atNs);
+          /* To that advertiser, and no other that might be listening. */
+          this.sendOn(c, { kind: 'connect', addrType: own.type, addr: own.addr,
+                           targetType: pdu.addrType, target: pdu.addr, ...params }, atNs);
           return;
         }
         if (!s.scan.enabled) return;
@@ -602,37 +642,38 @@ export class BtController {
         if (s.scan.active && scannable) this.report(SCAN_RSP, pdu.addrType, pdu.addr, pdu.scanRsp);
         return;
       }
-      case 'connect':
-        /* Only an advertiser that is still connectable takes it. */
-        if (!s.adv.enabled || s.conn ||
+      case 'connect': {
+        /* Only an advertiser that is still connectable, at the address the
+         * initiator heard, takes it. */
+        const own = this.ownAddress(s.adv.ownType);
+        if (!s.adv.enabled || s.conns.length >= MAX_LINKS ||
             !(s.adv.type === ADV_IND || s.adv.type === ADV_DIRECT_IND ||
-              s.adv.type === ADV_DIRECT_IND_LOW)) return;
+              s.adv.type === ADV_DIRECT_IND_LOW) ||
+            pdu.targetType !== own.type || pdu.target.some((b, i) => b !== own.addr[i])) return;
         s.adv.enabled = false;
         s.adv.nextNs = null;
-        this.connect(0x01, pdu.addrType, pdu.addr, pdu, atNs);
+        this.connect(0x01, pdu.key, pdu.addrType, pdu.addr, pdu, atNs);
         return;
-      case 'acl':
-        if (!s.conn) return;
-        s.rx.push(H4_ACL, ...le16(s.conn.handle | (pdu.pb << 12)), ...le16(pdu.data.length),
-                  ...pdu.data);
-        return;
-      case 'update':
-        if (s.conn) this.applyUpdate(pdu, atNs);
-        return;
-      case 'enc_req':
-        if (!s.conn) return;
-        s.conn.encPending = { ltk: pdu.ltk };
-        this.leMeta(LE_LTK_REQUEST, [...le16(s.conn.handle), ...pdu.rand, ...pdu.ediv]);
-        return;
-      case 'enc_rsp':
-        if (s.conn) this.encrypted(pdu.ok ? OK : KEY_MISSING);
-        return;
-      case 'terminate':
-        if (!s.conn) return;
-        this.event(EVT_DISCONN_COMPLETE, [OK, ...le16(s.conn.handle), pdu.reason]);
-        s.conn = null;
-        return;
-      default:
+      }
+      default: {
+        /* Everything else is about a link, which the key names. */
+        const c = this.byKey(pdu.key);
+        if (!c) return;
+        if (pdu.kind === 'acl') {
+          s.rx.push(H4_ACL, ...le16(c.handle | (pdu.pb << 12)), ...le16(pdu.data.length),
+                    ...pdu.data);
+        } else if (pdu.kind === 'update') {
+          this.applyUpdate(c, pdu, atNs);
+        } else if (pdu.kind === 'enc_req') {
+          c.encPending = { ltk: pdu.ltk };
+          this.leMeta(LE_LTK_REQUEST, [...le16(c.handle), ...pdu.rand, ...pdu.ediv]);
+        } else if (pdu.kind === 'enc_rsp') {
+          this.encrypted(c, pdu.ok ? OK : KEY_MISSING);
+        } else if (pdu.kind === 'terminate') {
+          this.event(EVT_DISCONN_COMPLETE, [OK, ...le16(c.handle), pdu.reason]);
+          this.drop(c);
+        }
+      }
     }
   }
 }

@@ -1265,6 +1265,15 @@ does (D10). An idle connection costs nothing. Nothing reads the wall clock
 or an unseeded random number, so a Bluetooth pair repeats as an Ethernet
 one does, and the Node check runs each twice and compares.
 
+**Many links.** A controller keeps up to 64 connections, by handle, and
+advertises connectably while it has them, as a real one does. A connect
+request names the advertiser it answers, so only that one takes it. On the
+air every PDU about a link carries a key, the central's handle for it: a
+central can use one address for all its links, as `central_multilink`
+does, so the addresses cannot tell them apart. Each link has its own
+connection events; a link that goes takes its queued data with it, with no
+Number Of Completed Packets, since the host takes those packets back.
+
 **Encryption is the procedure, not the cipher.** Pairing is the hosts'
 business, over ACL with their own PSA crypto; the controller's part is
 starting encryption. The central's LE Start Encryption goes over the air at
