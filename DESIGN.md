@@ -902,7 +902,11 @@ checks could only be thresholds. Now:
   board does. The kernel's "nothing soon" clamp counts as nothing to wake
   for there too: a board whose only alarm is the clamp, as one with an
   interrupt-driven shell often is, would otherwise jump days ahead in one
-  step, past the page's limit.
+  step, past the page's limit. And a paced pair runs a board at most 50 ms
+  of guest time at a stretch, even with the other asleep: unbounded, it
+  went from timer to timer through the whole run before the pace had a
+  turn. A board asleep is not stepped, so a state report its last step
+  held back (they are throttled to ten a second) is sent by the pair.
 - **Pacing is the pair's.** Unpaced, in Node, a pair runs as fast as it
   can. On the page, the pair's time, the earlier of its busy boards, is
   held to the wall clock with the single board's anchor logic. That

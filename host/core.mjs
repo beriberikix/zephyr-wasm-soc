@@ -1228,8 +1228,13 @@ export class Host {
     const nowMs = Number(this.timeNs / 1_000_000n);
     if (!force && !this.paused && this.lastReportAt !== undefined &&
         Date.now() - this.lastReportAt < 100) {
+      /* Owed: a board of a pair that now sleeps is not stepped again, and
+       * the pair sends it (host/pair.mjs), or what changed last would never
+       * be shown. */
+      this.reportOwed = true;
       return;
     }
+    this.reportOwed = false;
     this.lastReportAt = Date.now();
     this.platform.onState({
       threads: this.snapshotThreads(),

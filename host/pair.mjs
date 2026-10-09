@@ -150,6 +150,11 @@ export class Pair {
     if (paced) reanchor();
 
     while (!this.done) {
+      /* A board asleep is not stepped, so it reports nothing more: send what
+       * it last held back, once the throttle allows. */
+      for (let k = 0; k < 2; k++) {
+        if (this.boards[k].reportOwed && this.asleep(k)) this.boards[k].report();
+      }
       /* Nothing on either board can happen again. */
       if (this.asleep(0) && this.asleep(1)) {
         if (!paced) break;
@@ -187,6 +192,14 @@ export class Pair {
         limit = this.seen[j].next === null ? null
           : max(this.time(j), this.seen[j].next) + LINK_LATENCY_NS;
       } else limit = this.time(j) + LINK_LATENCY_NS;
+      /* Paced, a board runs a little at a time even when nothing could
+       * reach it, so the pace gets a turn: with the other board asleep it
+       * would otherwise jump from timer to timer through a whole run's
+       * worth of guest time in one go, as fast as the host can. */
+      if (paced) {
+        const step = h.globalNs + PACE_YIELD_NS;
+        if (limit === null || step < limit) limit = step;
+      }
 
       const r = await h.runUntil(limit);
       if (r.reason === 'done') {

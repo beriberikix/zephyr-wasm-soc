@@ -2154,3 +2154,14 @@ Seven samples, score 109. `peripheral_esp`, `peripheral_ans`,
 each would be a pair for one sample, and the menu is long enough.
 `central_otc` does not build on this board: the sample refuses any board
 without four buttons, so `peripheral_ots` has no client.
+
+The `central` pair passed in Node and failed on the page, where its radio
+counts stayed at zero. Two things, one under the other. A paced pair let a
+board run without limit while the other board slept, and `central`, once it
+has hung up, sleeps; the sensor then jumped from timer to timer through all
+ten minutes of its run in about a second, and the page never heard from it
+again. A paced pair now runs a board 50 ms of guest time at a stretch, so
+the pace has its turn. And a board that falls asleep is not stepped again,
+so the state report its last step held back by the throttle was never sent;
+the pair now sends it. The shell's 10 ms poll had kept every pair awake
+enough to hide both.
