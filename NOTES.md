@@ -2165,3 +2165,18 @@ the pace has its turn. And a board that falls asleep is not stepped again,
 so the state report its last step held back by the throttle was never sent;
 the pair now sends it. The shell's 10 ms poll had kept every pair awake
 enough to hide both.
+
+### Tick 88 — 61 links
+
+The controller kept one connection, and refused to advertise while it had
+it. Now it keeps up to 64, by handle, and advertises connectably while
+connected. The one subtlety was the air: `central_multilink` uses one
+address for every link it makes, so a PDU cannot be routed by address.
+Every PDU about a link carries a key, the central's handle for it, and a
+connect request names the advertiser it answers.
+
+`peripheral_identity` makes a new identity for each connection and
+advertises it while its other links stay up; `central_multilink` connects to
+each one it hears. Both stop at 61, as upstream configures them (the
+central would take 62), in about a second of guest time, the same every
+run. Score 111.

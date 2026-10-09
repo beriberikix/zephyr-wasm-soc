@@ -76,7 +76,8 @@ log, including what did not work. `BRIEF.md` is the original task.
   `peripheral_hr` and `central_hr` connect and stream heart-rate
   notifications, and their health-thermometer twins indications;
   `central_gatt_write` and `peripheral_gatt_write` pair, encrypt the link
-  and stream writes; `central` connects to a cycling sensor; `observer`
+  and stream writes; `central_multilink` holds 61 links to
+  `peripheral_identity`; `central` connects to a cycling sensor; `observer`
   hears `beacon`, `broadcaster`, `ibeacon` and `eddystone`.
 * The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
   the Linux host upstream's networking samples expect. It offers DHCP, DNS,
