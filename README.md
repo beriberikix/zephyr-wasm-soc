@@ -74,8 +74,10 @@ log, including what did not work. `BRIEF.md` is the original task.
   driver, on a second UART whose far end is a controller the page
   emulates, with a radio between the two on the pair's clock.
   `peripheral_hr` and `central_hr` connect and stream heart-rate
-  notifications; `observer` hears `beacon`; `central_gatt_write` and
-  `peripheral_gatt_write` pair, encrypt the link and stream writes.
+  notifications, and their health-thermometer twins indications;
+  `central_gatt_write` and `peripheral_gatt_write` pair, encrypt the link
+  and stream writes; `central` connects to a cycling sensor; `observer`
+  hears `beacon`, `broadcaster`, `ibeacon` and `eddystone`.
 * The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
   the Linux host upstream's networking samples expect. It offers DHCP, DNS,
   SNTP, TFTP, HTTP, a WebSocket echo, CoAP over TCP, FTP, an MQTT broker

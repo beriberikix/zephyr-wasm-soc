@@ -2135,3 +2135,22 @@ nothing.
 `central_gatt_write` and `peripheral_gatt_write` ran on the first try:
 Secure Connections, Just Works, level 2, then writes at about 20 kbps both
 ways and a connection-parameter update every few seconds. Score 102.
+
+### Tick 87 — more pairs for the radio
+
+The controller was built for the heart-rate pair and the observer, and the
+question was how much more of `samples/bluetooth` it already covered. A
+batch built fourteen candidates without extended advertising, ISO, mesh or
+several connections, and ran each pair twice in Node. Everything that built
+ran and repeated exactly, with no change to the controller:
+- `peripheral_ht` and `central_ht` connect, subscribe, and a temperature
+  arrives by indication every second;
+- `central` connects to the first device it hears and hangs up at once, over
+  and over; `peripheral_csc` is the device here;
+- `observer` hears `broadcaster`'s counter from a new random address each
+  time, `ibeacon`, and `eddystone` with its scan response.
+Seven samples, score 109. `peripheral_esp`, `peripheral_ans`,
+`peripheral_nus` and `peripheral_gap_svc` ran against `central` as well, but
+each would be a pair for one sample, and the menu is long enough.
+`central_otc` does not build on this board: the sample refuses any board
+without four buttons, so `peripheral_ots` has no client.

@@ -1083,6 +1083,190 @@
       ]
     },
     {
+      "name": "ht",
+      "kind": "sample",
+      "title": "Bluetooth health thermometer (two boards)",
+      "hint": "The thermometer advertises its service; the collector scans for it, connects, finds the temperature characteristic and subscribes, and a reading arrives by indication every second. Zephyr's Bluetooth host on both boards, over the H4 driver, to a controller the page emulates.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 5,
+      "boards": [
+        {
+          "label": "Thermometer",
+          "app": "zephyr/samples/bluetooth/peripheral_ht",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Advertising successfully started",
+            "Connected",
+            "Indication success"
+          ]
+        },
+        {
+          "label": "Collector",
+          "app": "zephyr/samples/bluetooth/central_ht",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Connected: C0:DE:00:00:00:01 (public)",
+            "[SUBSCRIBED]",
+            "Temperature 22C."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "csc",
+      "kind": "sample",
+      "title": "Bluetooth central and a cycling sensor (two boards)",
+      "hint": "The central connects to the first connectable device it hears nearby and hangs up at once, again and again; here that is a cycling speed and cadence sensor, which sees each connection come and go.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 1,
+      "boards": [
+        {
+          "label": "Sensor",
+          "app": "zephyr/samples/bluetooth/peripheral_csc",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Advertising successfully started",
+            "Connected",
+            "Disconnected, reason 0x13"
+          ]
+        },
+        {
+          "label": "Central",
+          "app": "zephyr/samples/bluetooth/central",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Device found: C0:DE:00:00:00:01 (public) (RSSI -40)",
+            "Connected: C0:DE:00:00:00:01 (public)",
+            "Disconnected: C0:DE:00:00:00:01 (public), reason 0x16"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "broadcaster",
+      "kind": "sample",
+      "title": "Bluetooth broadcaster and observer (two boards)",
+      "hint": "The broadcaster sends a counter in non-connectable advertising from a fresh random address each time; the observer reports every one it hears.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 0,
+      "boards": [
+        {
+          "label": "Broadcaster",
+          "app": "zephyr/samples/bluetooth/broadcaster",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Sending advertising data: 0x01"
+          ]
+        },
+        {
+          "label": "Observer",
+          "app": "zephyr/samples/bluetooth/observer",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "(random) (RSSI -40), type 3, AD data len 5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ibeacon",
+      "kind": "sample",
+      "title": "Bluetooth iBeacon and observer (two boards)",
+      "hint": "An iBeacon advertises its UUID, major, minor and measured power; the observer hears it.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 0,
+      "boards": [
+        {
+          "label": "iBeacon",
+          "app": "zephyr/samples/bluetooth/ibeacon",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "iBeacon started"
+          ]
+        },
+        {
+          "label": "Observer",
+          "app": "zephyr/samples/bluetooth/observer",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "(random) (RSSI -40), type 3, AD data len 30"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "eddystone",
+      "kind": "sample",
+      "title": "Bluetooth Eddystone beacon and observer (two boards)",
+      "hint": "An Eddystone beacon advertises its URL, connectable for configuration; the observer hears the advertisement and its scan response.",
+      "upstream": true,
+      "clock": "paced",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 10000,
+      "endless": true,
+      "ci_link_frames_at_least": 0,
+      "boards": [
+        {
+          "label": "Eddystone",
+          "app": "zephyr/samples/bluetooth/eddystone",
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Configuration mode: waiting connections..."
+          ]
+        },
+        {
+          "label": "Observer",
+          "app": "zephyr/samples/bluetooth/observer",
+          "start_after_ms": 1000,
+          "args": [
+            "-DSNIPPET=wasm-bt"
+          ],
+          "expect": [
+            "Device found: C0:DE:00:00:00:01 (public) (RSSI -40), type 0, AD data len 21",
+            "Device found: C0:DE:00:00:00:01 (public) (RSSI -40), type 4, AD data len 18"
+          ]
+        }
+      ]
+    },
+    {
       "name": "beacon",
       "kind": "sample",
       "title": "Bluetooth beacon and observer (two boards)",

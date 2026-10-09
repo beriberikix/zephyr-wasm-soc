@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **102**. 62 pass upstream's own criterion, and 40 more are counted
+today: **109**. 62 pass upstream's own criterion, and 47 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -36,10 +36,11 @@ server, zperf, which is both ends of its own pair, and `dns_resolve` with
 `mqtt_publisher`, whose peer
 is the host's own network; `promiscuous_mode` and `pkt_filter`, which the
 host's network pings; `net_mgmt`, `stats`, `virtual` and `vlan`, which
-need an interface but no one to talk to; and six Bluetooth samples the
-radio pairs run, `peripheral_hr` with `central_hr`, `beacon` with
-`observer`, and `peripheral_gatt_write` with `central_gatt_write`, which
-pair and encrypt.
+need an interface but no one to talk to; and thirteen Bluetooth samples
+the radio pairs run: `peripheral_hr` with `central_hr`, `peripheral_ht`
+with `central_ht`, `peripheral_gatt_write` with `central_gatt_write`, which
+pair and encrypt, `central` with `peripheral_csc`, and `observer` hearing
+`beacon`, `broadcaster`, `ibeacon` and `eddystone`.
 Upstream gives those no criterion twister can run, because it has no
 way to watch an LED, press a button or a screen, type, or give a board a
 peer, so
@@ -299,7 +300,9 @@ typed into on the page as `basic/button` is pressed. A Bluetooth controller
 behind H4, the second step, took it to 100 with two radio pairs: the
 heart-rate sensor and monitor, and a beacon and an observer. Encryption in
 the controller took it to 102 with the GATT write pair, which pairs and
-encrypts before it writes.
+encrypts before it writes, and five more pairs the controller already
+supported took it to 109: the health thermometer, `central` with a cycling
+sensor, and three beacons for the observer.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
