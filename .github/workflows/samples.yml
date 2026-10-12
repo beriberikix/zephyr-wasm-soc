@@ -64,9 +64,7 @@ jobs:
           west init -l zephyr-wasm
           west update --narrow -o=--filter=blob:none
           pip install --break-system-packages -r zephyr/scripts/requirements-base.txt
-          # check_samples.py evaluates each entry's twister filter with
-          # twister's own parser, which needs ply.
-          pip install --break-system-packages ply
+          pip install --break-system-packages -r zephyr-wasm/scripts/requirements-ci.txt
 
       - name: Apply the patches to Zephyr and picolibc
         run: ./zephyr-wasm/scripts/apply_patches.sh

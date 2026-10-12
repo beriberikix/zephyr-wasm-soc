@@ -1,0 +1,11 @@
+# Python packages CI needs beyond Zephyr's scripts/requirements-base.txt.
+# Both workflows install this one list, so the demo's build and the weekly
+# samples sweep cannot drift apart: they did once, and the sweep failed on
+# nanopb for two weeks while the demo built it fine.
+#
+# The samples sweep evaluates each entry's twister filter with twister's
+# own parser, which needs ply.
+ply
+# nanopb's sample generates its C from a .proto file as it builds, with the
+# protobuf compiler grpcio-tools carries.
+grpcio-tools

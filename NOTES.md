@@ -2180,3 +2180,16 @@ advertises it while its other links stay up; `central_multilink` connects to
 each one it hears. Both stop at 61, as upstream configures them (the
 central would take 62), in about a second of guest time, the same every
 run. Score 111.
+
+### Tick 89 — the sweep's missing compiler
+
+The weekly samples sweep failed on 5 and 12 October, each time on one entry:
+`sample.modules.nanopb`, recorded as passing, failed to build. The demo's
+own nanopb build passed throughout. nanopb's sample generates C from a
+`.proto` file as it builds, with the protobuf compiler `grpcio-tools`
+carries; when the module came in, the demo's workflow was given
+`grpcio-tools` and the sweep's never was, and the last green sweep was
+from before nanopb was recorded. Hiding `grpc_tools` reproduces it locally:
+nanopb's `protoc` wrapper fails on its first file. Both workflows now
+install one list, `scripts/requirements-ci.txt`, so they cannot drift
+apart again.
