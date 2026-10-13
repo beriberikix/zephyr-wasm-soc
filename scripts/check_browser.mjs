@@ -131,6 +131,15 @@ const until = async (what, fn, arg, timeout = 10_000) => {
     throw new Error(`${what}; the screen showed:`);
   }
 };
+/* Choose a build as a person does: press the build's name, then its row in
+ * the gallery. The gallery is the only way to choose one. */
+const choose = async (name) => {
+  await page.click('#build');
+  await page.waitForSelector('#gallery[open]');
+  await page.click(`#galleryList .gpick[data-build="${name}"]`);
+  await page.waitForFunction((n) => window.zephyrSelected() === n &&
+    !document.getElementById('gallery').open, name, { timeout: 10_000 });
+};
 /* The row the cursor is on, as shown. */
 const cursorRow = () => page.evaluate(() => window.zephyrScreen()[window.zephyrCursor().y]);
 const canvasHash = () => page.evaluate(() => {
@@ -379,9 +388,9 @@ if (listed.length !== manifest.builds.length) {
   const uplinkBuild = manifest.builds.find((b) => b.uplink);
   const plain = manifest.builds.find((b) => !b.uplink && !b.boards);
   if (uplinkBuild && plain) {
-    await page.selectOption('#build', plain.name);
+    await choose(plain.name);
     const hiddenForPlain = await page.evaluate(() => document.getElementById('uplinkRow').hidden);
-    await page.selectOption('#build', uplinkBuild.name);
+    await choose(uplinkBuild.name);
     const shown = await page.evaluate(() => !document.getElementById('uplinkRow').hidden);
     const value = await page.inputValue('#uplink');
     if (!hiddenForPlain || !shown) {
@@ -400,7 +409,7 @@ if (listed.length !== manifest.builds.length) {
  * the link both ways, and Stop ending both. */
 async function checkPair(b) {
   const [first, second] = b.boards;
-  await page.selectOption('#build', b.name);
+  await choose(b.name);
   const shown = await page.evaluate(() =>
     ['term2', 'link', 'term2Label'].every((id) => !document.getElementById(id).hidden) &&
     !document.getElementById('kernel').classList.contains('on'));
@@ -471,11 +480,11 @@ let skipped = 0;
  * starting with an HCI Reset. */
 async function checkSerialHci(b) {
   const plain = manifest.builds.find((x) => !x.boards && !x.hci);
-  await page.selectOption('#build', plain.name);
+  await choose(plain.name);
   if (!(await page.evaluate(() => document.getElementById('hciRow').hidden))) {
     throw new Error(`the controller row shows for ${plain.name}`);
   }
-  await page.selectOption('#build', b.name);
+  await choose(b.name);
   const [shown, waits] = await page.evaluate(() => [!document.getElementById('hciRow').hidden,
                                                     document.getElementById('run').disabled]);
   if (!shown) throw new Error('the controller row is hidden');
@@ -526,13 +535,13 @@ for (const b of manifest.builds) {
       console.log(`  skip  ${b.name.padEnd(8)} ${b.title}: needs --uplink-relay <ws-url>`);
       continue;
     }
-    await page.selectOption('#build', b.name);
+    await choose(b.name);
     await page.fill('#uplink', relay ?? '');
     await page.dispatchEvent('#uplink', 'change');
   }
   const expect = b.expect ?? [];
 
-  await page.selectOption('#build', b.name);
+  await choose(b.name);
   await page.click('#run');
 
   /* A build that waits for a button press gets one: the mouse held down on
@@ -679,7 +688,7 @@ for (const b of manifest.builds) {
 const stepper = manifest.builds.find((b) => b.clock === 'paced' && !b.interactive);
 if (stepper) {
   try {
-    await page.selectOption('#build', stepper.name);
+    await choose(stepper.name);
     await page.click('#run');
     await page.waitForFunction(() => (window.zephyrState()?.threads ?? []).length > 0,
                                null, { timeout: 60_000, polling: 200 });
@@ -790,7 +799,7 @@ const pageChecks = [
     /* The page levels the board with a reading as it starts, before the
      * guest has booted and before its driver enables the interrupt. That
      * once held the clock back for eight seconds. */
-    await page.selectOption('#build', 'accel');
+    await choose('accel');
     const t0 = Date.now();
     await page.click('#run');
     await until('the accelerometer build never booted',
@@ -802,7 +811,7 @@ const pageChecks = [
     return `the accelerometer build boots in ${ms} ms, with a reading already waiting`;
   }],
   ['stop', async () => {
-    await page.selectOption('#build', 'blinky');
+    await choose('blinky');
     await page.click('#run');
     await until('LED 0 never lit', () => (window.zephyrLeds() & 1) === 1, null, 30_000);
     await page.click('#stop');
@@ -813,17 +822,17 @@ const pageChecks = [
     return 'Stop ends the run within 5 s, says "Stopped." and turns the LEDs off';
   }],
   ['select', async () => {
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     const [out, shown] = await page.evaluate(() =>
       [window.zephyrOutput(), window.zephyrScreen().join('').trim()]);
     if (out || shown) throw new Error('the previous build\'s output was still shown');
     return 'choosing another build clears the previous one\'s output';
   }],
   ['switch', async () => {
-    await page.selectOption('#build', 'philo');
+    await choose('philo');
     await page.click('#run');
     await until('the philosophers never started', () => window.zephyrOutput().includes('Philosopher'), null, 30_000);
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     await until('choosing another build did not stop the run', () => !window.zephyrRunning(), null, 5_000);
     const out = await page.evaluate(() => window.zephyrOutput());
     if (out) throw new Error('output from the stopped run reached the new selection');
@@ -832,7 +841,7 @@ const pageChecks = [
   /* Stop ends the run's Worker outright, so a Run straight after it boots
    * as fast as the first. It used to wait on the old Worker noticing. */
   ['restart', async () => {
-    await page.selectOption('#build', 'accel');
+    await choose('accel');
     await page.click('#run');
     await until('the accelerometer build never booted',
                 () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 30_000);
@@ -850,10 +859,10 @@ const pageChecks = [
    * step: LVGL draws its first screen in one, for seconds, and a Worker left
    * to notice on its own kept a core busy through the next run's boot. */
   ['switch-busy', async () => {
-    await page.selectOption('#build', 'lvgl');
+    await choose('lvgl');
     await page.click('#run');
     await page.waitForTimeout(300);
-    await page.selectOption('#build', 'accel');
+    await choose('accel');
     const t0 = Date.now();
     await page.click('#run', { timeout: 2000 });
     await until('the accelerometer build never booted',
@@ -868,7 +877,7 @@ const pageChecks = [
   /* Stopping a pair ends both boards: nothing either was still sending
    * reaches the terminals afterwards, and the next run is left alone. */
   ['pair-stop', async () => {
-    await page.selectOption('#build', 'echo');
+    await choose('echo');
     await page.click('#run');
     await until('the echo server never started',
                 () => window.zephyrOutputs()[0].includes('uart:~$'), null, 30_000);
@@ -879,7 +888,7 @@ const pageChecks = [
     if (left.some((o) => o && o !== 'uart:~$')) {
       throw new Error(`output arrived after Stop and Clear: ${JSON.stringify(left)}`);
     }
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     await page.click('#run');
     await until('hello never finished after the pair',
                 () => document.getElementById('status').textContent.startsWith('Finished'), null, 30_000);
@@ -888,7 +897,7 @@ const pageChecks = [
     return 'Stop ends both boards of a pair; nothing arrives after Clear, and the next run is untouched';
   }],
   ['pause', async () => {
-    await page.selectOption('#build', 'philo');
+    await choose('philo');
     await page.click('#run');
     await until('the philosophers never started', () => (window.zephyrState()?.threads ?? []).length > 0, null, 30_000);
     await page.click('#pause');
@@ -907,9 +916,9 @@ const pageChecks = [
      * steps, then Run, Pause and Step until the table shows a philosopher
      * waiting for a fork that another one holds. */
     const pos = () => page.evaluate(() => document.getElementById('lessonPos').textContent);
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     if (await page.isVisible('#lesson')) throw new Error('a build with no lesson showed one');
-    await page.selectOption('#build', 'philo');
+    await choose('philo');
     if (!(await page.isVisible('#lesson'))) throw new Error('the philosophers showed no lesson');
     const steps = manifest.builds.find((b) => b.name === 'philo').lesson.length;
     if (await pos() !== `step 1 of ${steps}`) throw new Error(`the lesson opened at ${JSON.stringify(await pos())}`);
@@ -918,8 +927,8 @@ const pageChecks = [
     await page.click('#lessonPrev');
     if (await pos() !== `step 2 of ${steps}`) throw new Error(`Next, Next, Previous left it at ${JSON.stringify(await pos())}`);
     /* Looking at another build and back keeps the place. */
-    await page.selectOption('#build', 'hello');
-    await page.selectOption('#build', 'philo');
+    await choose('hello');
+    await choose('philo');
     if (await pos() !== `step 2 of ${steps}`) throw new Error('coming back to the lesson started it over');
     await page.click('#lessonPrev');
 
@@ -963,7 +972,7 @@ const pageChecks = [
     return `the lesson steps through and remembers its place; in ${taken} steps: ${seen}`;
   }],
   ['final', async () => {
-    await page.selectOption('#build', 'sem');
+    await choose('sem');
     await page.click('#run');
     await until('the ztest never finished', () => !window.zephyrRunning(), null, 60_000);
     const [sw, kstat] = await page.evaluate(() =>
@@ -975,7 +984,7 @@ const pageChecks = [
     return `after the run the stats are its last: ${kstat}`;
   }],
   ['clear', async () => {
-    await page.selectOption('#build', 'shell');
+    await choose('shell');
     await page.click('#run');
     await until('the shell never prompted', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
     await page.click('#clear');
@@ -993,20 +1002,20 @@ const pageChecks = [
   ['cursor', async () => {
     /* No cursor where nothing reads the keyboard, a blinking one where
      * something does -- including after the one before hid it. */
-    await page.selectOption('#build', 'philo');
+    await choose('philo');
     await page.click('#run');
     await until('the philosophers never started', () => window.zephyrOutput().includes('Philosopher'), null, 30_000);
     if (!(await page.evaluate(() => window.zephyrCursor().hidden))) {
       throw new Error('a build that reads no keyboard showed a cursor');
     }
     /* Touch waits for a person but reads no keys: no cursor either. */
-    await page.selectOption('#build', 'touch');
+    await choose('touch');
     await page.click('#run');
     await until('the touch sample never started', () => window.zephyrState() !== null, null, 30_000);
     if (!(await page.evaluate(() => window.zephyrCursor().hidden))) {
       throw new Error('touch, which reads no keyboard, showed a cursor');
     }
-    await page.selectOption('#build', 'shell');
+    await choose('shell');
     await page.click('#run');
     await until('the shell never prompted', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
     const cur = await page.evaluate(() => window.zephyrCursor());
@@ -1019,7 +1028,7 @@ const pageChecks = [
     /* A click with no hold at all, as a script or a quick tap gives, and a
      * press from the keyboard: each has to reach the guest as a press long
      * enough to get through gpio-keys' debounce. */
-    await page.selectOption('#build', 'button');
+    await choose('button');
     await page.click('#run');
     await until('the button sample never started', () => window.zephyrOutput().includes('Press the button'), null, 30_000);
     const presses = () => page.evaluate(() => window.zephyrOutput().split(' pressed ').length - 1);
@@ -1048,7 +1057,7 @@ const pageChecks = [
      * board is level, so gravity is all on Z. A real drag of the dot to the
      * right edge tips it over, and the driver has to see it: gravity moves
      * onto X. */
-    await page.selectOption('#build', 'accel');
+    await choose('accel');
     await page.click('#run');
     const readings = () => page.evaluate(() => window.zephyrOutput().split('\n')
       .map((l) => /\[m\/s\^2\]:\s*\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)/.exec(l))
@@ -1079,13 +1088,13 @@ const pageChecks = [
      * hidden, which a display rule once overrode. */
     const shown = () => page.evaluate(() => [...document.querySelectorAll('#board .group')]
       .map((g) => !!(g.offsetWidth || g.offsetHeight)));
-    await page.selectOption('#build', 'blinky');
+    await choose('blinky');
     const blinky = await shown();
-    await page.selectOption('#build', 'button');
+    await choose('button');
     const button = await shown();
-    await page.selectOption('#build', 'accel');
+    await choose('accel');
     const accel = await shown();
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     const hello = await page.evaluate(() => !!document.getElementById('board').offsetHeight);
     if (blinky.join() !== 'true,false,false') throw new Error(`blinky shows LEDs,buttons,tilt = ${blinky}`);
     if (button.join() !== 'true,true,false') throw new Error(`button shows LEDs,buttons,tilt = ${button}`);
@@ -1101,7 +1110,7 @@ const pageChecks = [
      * narrow width, where a longer status line once wrapped and pushed the
      * board down under the pointer. Idle, the kernel controls are hidden. */
     await page.setViewportSize({ width: 700, height: 900 });
-    await page.selectOption('#build', 'button');
+    await choose('button');
     const top = () => page.evaluate(() => document.getElementById('board').getBoundingClientRect().top);
     const idle = await top();
     await page.click('#run');
@@ -1126,7 +1135,7 @@ const pageChecks = [
      * (touch redraws every frame) or it is waiting on a person with no
      * timer running (touch between presses): a five-second press has to
      * be logged as five seconds. */
-    await page.selectOption('#build', 'touch');
+    await choose('touch');
     await page.click('#run');
     await until('the touch sample never started', () => window.zephyrState() !== null, null, 30_000);
     const g0 = await page.evaluate(() => window.zephyrState().nowMs);
@@ -1145,7 +1154,7 @@ const pageChecks = [
     /* The gallery as a person uses it: Ctrl+K, a few letters, Enter. It
      * chooses through the menu, so the build is selected and the address
      * says so. Every upstream sample in it links to its documentation. */
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     await page.click('h1');
     await page.keyboard.press('Control+k');
     await until('Ctrl+K did not open the gallery', () => document.getElementById('gallery').open);
@@ -1160,10 +1169,10 @@ const pageChecks = [
     if (hits.length !== 1 || hits[0] !== 'multilink') throw new Error(`the search found ${JSON.stringify(hits)}`);
     await page.keyboard.press('Enter');
     await until('Enter did not choose the build', () =>
-      !document.getElementById('gallery').open && document.getElementById('build').value === 'multilink');
+      !document.getElementById('gallery').open && window.zephyrSelected() === 'multilink');
     if (!page.url().includes('build=multilink')) throw new Error(`the address did not follow: ${page.url()}`);
     /* In a terminal that reads keys, Ctrl+K is the shell's. */
-    await page.selectOption('#build', 'shell');
+    await choose('shell');
     await page.click('#run');
     await until('the shell never started', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
     await page.click('#term');
@@ -1185,19 +1194,19 @@ const pageChecks = [
     if (await pos() !== `step 3 of ${steps}`) throw new Error(`?step=3 opened ${JSON.stringify(await pos())}`);
     await page.click('#lessonNext');
     if (!page.url().includes('step=4')) throw new Error(`Next left the address at ${page.url()}`);
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     const url = page.url();
     if (!url.includes('build=hello') || url.includes('step=')) throw new Error(`a build with no lesson left ${url}`);
     await page.goto(`${base}?build=nonesuch`, { waitUntil: 'load' });
     await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null, { timeout: 15_000 });
-    const chosen = await page.evaluate(() => document.getElementById('build').value);
+    const chosen = await page.evaluate(() => window.zephyrSelected());
     if (chosen !== 'hello') throw new Error(`an unknown build fell back to ${chosen}, not the last one chosen`);
     return '?build=philo&step=3 opens step 3; the address follows Next and a new build; an unknown name is ignored';
   }],
   ['output', async () => {
     /* What was printed, taken away: copied, and saved as a file. */
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     await page.click('#run');
     await until('hello did not finish', () => !window.zephyrRunning() &&
       window.zephyrOutput().includes('Hello World'), null, 30_000);
@@ -1226,7 +1235,7 @@ const pageChecks = [
       new MutationObserver(() => window.statusSeen.push(document.getElementById('status').textContent))
         .observe(document.getElementById('status'), { childList: true, characterData: true, subtree: true });
     });
-    await page.selectOption('#build', 'calculator');
+    await choose('calculator');
     await page.click('#run');
     await until('the calculator never booted', () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 60_000);
     await page.click('#stop');
@@ -1259,13 +1268,45 @@ const pageChecks = [
     await page.setViewportSize({ width: 390, height: 844 });
     const wide = [];
     for (const name of ['hello', 'calculator', 'button', 'hr', 'shell']) {
-      await page.selectOption('#build', name);
+      await choose(name);
       const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
       if (sw > iw) wide.push(`${name} ${sw} px`);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
     if (wide.length) throw new Error(`wider than a 390 px phone: ${wide.join(', ')}`);
     return 'dark, light and system themes; nothing wider than a 390 px phone';
+  }],
+  ['hardware', async () => {
+    /* The Hardware section says what each build was linked with, from its
+     * devicetree, and marks what the page lets you touch; a row opens the
+     * build's zephyr.dts at its node. */
+    const rows = () => page.evaluate(() => [...document.querySelectorAll('#hwList tr[data-node]')]
+      .map((tr) => ({ node: tr.dataset.node, touch: tr.classList.contains('touch'),
+                      text: tr.textContent })));
+    await choose('accel');
+    const accel = await rows();
+    const bmi = accel.find((r) => r.node === 'bmi160@68');
+    if (!bmi || !bmi.touch || !bmi.text.includes('on i2c@100') || !bmi.text.includes('bosch,bmi160')) {
+      throw new Error(`accel's bmi160 row is ${JSON.stringify(bmi)}`);
+    }
+    if (accel.some((r) => r.node === 'ethernet')) throw new Error('accel lists an Ethernet');
+    await choose('http-get');
+    if (!(await rows()).some((r) => r.node === 'ethernet')) throw new Error('http-get lists no Ethernet');
+    await choose('hr');
+    const hr = (await rows()).filter((r) => r.node === 'bt_hci_uart');
+    if (hr.length !== 2) throw new Error(`the heart-rate pair lists ${hr.length} HCI UARTs, not 2`);
+    await choose('blinky');
+    const leds = await page.evaluate(() => [...document.querySelectorAll('#board .led')]
+      .map((e) => e.getAttribute('aria-label')));
+    if (leds.join() !== 'LED 0 off,LED 1 off,LED 2 off,LED 3 off') throw new Error(`blinky's LEDs: ${leds}`);
+    await choose('accel');
+    await page.click('#hwList tr[data-node="bmi160@68"]');
+    await until('the devicetree did not open at the bmi160', () =>
+      document.getElementById('dtsDialog').open &&
+      /bmi160@68 \{[\s\S]*bosch,bmi160/.test(document.querySelector('#dtsText mark')?.textContent ?? ''));
+    await page.keyboard.press('Escape');
+    return `accel's bmi160@68 on i2c@100, marked; http-get's Ethernet; the pair's two HCI UARTs; ` +
+           'blinky\'s four LEDs from the devicetree; zephyr.dts opens at the node';
   }],
   ['fetch', async () => {
     /* A server error on the module: one is retried and the run goes
@@ -1274,7 +1315,7 @@ const pageChecks = [
     let failures = 1;
     await page.route('**/m/hello.wasm', (route) =>
       (failures-- > 0 ? route.fulfill({ status: 503, body: 'busy' }) : route.continue()));
-    await page.selectOption('#build', 'hello');
+    await choose('hello');
     await page.click('#run');
     await until('a single 503 was not retried', () => window.zephyrOutput().includes('Hello World'), null, 30_000);
     failures = 1000;
@@ -1307,7 +1348,7 @@ for (const [name, check] of pageChecks) {
  * second run has to find what the first one stored. */
 for (const b of manifest.builds.filter((x) => x.persist_expect)) {
   const runToEnd = async () => {
-    await page.selectOption('#build', b.name);
+    await choose(b.name);
     await page.click('#run');
     await page.waitForFunction((w) => window.zephyrOutput().includes(w), b.expect.at(-1),
                                { timeout: 60_000, polling: 250 });
@@ -1346,7 +1387,7 @@ for (const b of manifest.builds.filter((x) => x.persist_expect)) {
   const uplinkBuild = manifest.builds.find((b) => b.uplink);
   if (uplinkBuild) {
     try {
-      await page.selectOption('#build', uplinkBuild.name);
+      await choose(uplinkBuild.name);
       await page.fill('#uplink', 'ws://127.0.0.1:9/');
       await page.dispatchEvent('#uplink', 'change');
       await page.click('#run');

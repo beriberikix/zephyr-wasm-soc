@@ -48,8 +48,8 @@
 
 	/*
 	 * A board's worth of LEDs and buttons, drawn by the page. The pins are
-	 * on the emulated controller below; host/web/index.html mirrors this
-	 * numbering and says so.
+	 * on the emulated controller below; the page reads them, and the
+	 * labels, from each build's own devicetree (scripts/devices.py).
 	 */
 	leds {
 		compatible = "gpio-leds";

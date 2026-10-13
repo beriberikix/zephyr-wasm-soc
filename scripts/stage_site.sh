@@ -19,7 +19,7 @@ topdir="$(cd "$module/.." && pwd)"
 site="${SITE_DIR:-$topdir/_site}"
 
 rm -rf "$site"
-mkdir -p "$site/m"
+mkdir -p "$site/m" "$site/dts"
 # Flat, apart from vendor/, because worker.js imports ./core.mjs,
 # ./pair.mjs, ./uplink.mjs, ./lan.mjs and ./lan_services.mjs, core.mjs
 # imports ./irq_lines.mjs and ./bt.mjs, worker.js ./hci_serial.mjs too, and
@@ -58,6 +58,8 @@ while IFS=$'\t' read -r name app args; do
     exit 1
   fi
   cp "$build/zephyr/zephyr.wasm" "$site/m/$name.wasm"
+  # Its devicetree as built, which the page shows (DESIGN.md D16).
+  cp "$build/zephyr/zephyr.dts" "$site/dts/$name.dts"
   printf "  %-6s %s\n" "$name" "$(du -h "$site/m/$name.wasm" | cut -f1)"
 done < <(python3 "$here/apps.py" --module "$module" list)
 
@@ -73,5 +75,5 @@ SITE_COMMIT="$commit" \
 SITE_ZEPHYR="$(git -C "$topdir/zephyr" rev-parse HEAD 2>/dev/null || echo unknown)" \
 SITE_BUILT="$(date -u +%Y-%m-%dT%H:%MZ)" \
 SITE_DIR="$site" \
-  python3 "$here/apps.py" --module "$module" manifest > "$site/manifest.json"
+  python3 "$here/apps.py" --module "$module" --topdir "$topdir" manifest > "$site/manifest.json"
 echo "staged $site"
