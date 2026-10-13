@@ -1304,9 +1304,10 @@ The controller it was built for is an nRF54L15-DK running upstream's
 `samples/bluetooth/hci_uart`, which puts H4 on `uart20` at 1 Mbaud with
 hardware flow control. That reaches USB as the DK's *second* port (`if02`,
 `/dev/ttyACM1` on Linux); the first does not answer. Its Read BD_ADDR
-answers 00:00:00:00:00:00. CI has no DK, so the browser check gives the page
-a Web Serial port whose far end is `bt.mjs`, which exercises everything but
-the radio.
+answers 00:00:00:00:00:00. On the DK, a phone connects to the tab over the
+air and receives its notifications. CI has no DK, so the browser check gives
+the page a Web Serial port whose far end is `bt.mjs`, which exercises
+everything but the radio.
 
 ### D9. The link goes through the clang driver, which runs wasm-opt
 
