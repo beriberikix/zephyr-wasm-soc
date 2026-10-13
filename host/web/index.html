@@ -52,6 +52,9 @@
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
   }
   button { cursor: pointer; }
+  /* A select is as wide as its longest option, and some titles are long:
+   * on a phone it gives way rather than widening the page. */
+  #build { max-width: 100%; text-overflow: ellipsis; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
   /* xterm.js draws inside; this is the frame around it. It scrolls
@@ -1575,7 +1578,7 @@ function chooseBuild(name) {
 }
 
 browseEl.onclick = openGallery;
-gallerySearchEl.oninput = showGallery;
+gallerySearchEl.oninput = () => { showGallery(); galleryEl.scrollTop = 0; };
 /* Enter takes the first match, so typing a name and Enter is enough. */
 gallerySearchEl.onkeydown = (e) => {
   if (e.key !== 'Enter') return;
