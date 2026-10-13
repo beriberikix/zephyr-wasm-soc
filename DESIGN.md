@@ -1582,6 +1582,43 @@ matched, and `check_samples.py` now does the same. Without that, a sample
 whose thread entry has the wrong signature could pass on the strength of its
 other threads' output, with one thread dead.
 
+### D15. The page finds builds by what they are about
+
+The page started with a menu of a dozen builds, and a native `<select>` was
+enough. At fifty-eight it was not: the Bluetooth pairs sat under the kernel
+samples, and nothing said which builds wanted a keyboard, a relay or a real
+radio, or where a sample came from. The gallery (Samples…, or Ctrl+K) lists
+every build by category with a search box, what it needs, how big its
+download is, and links to its source and to its page in Zephyr's
+documentation.
+
+None of that is written into `scripts/apps.json`. `apps.py manifest` works
+it out: the category from the application's path (`samples/net/…` is
+Networking, a build with a display is Display and input, a test is a Test),
+the links from the path and the pinned revisions, what it needs from fields
+the page already reads (`boards`, `lan`, `uplink`, `hci`, `display`, a
+`terminal` use, `lesson`), and the size from the staged file. An entry may
+name its category outright. Written-down fields would drift from the entry
+they describe, and these cannot; `check_site.mjs` checks that each size is
+its file's and each category one the page lists.
+
+The `<select>` stays, grouped by the same categories, and the gallery
+chooses through it. Every check drives the menu, and so does a person on a
+phone, where a native select is the better control.
+
+The address follows the selection: `?build=philo&step=3` opens the
+philosophers' lesson at its third step, and it is replaced as the
+selection changes rather than pushed, since choosing a build is not
+navigating. A named build wins over the one remembered from last time, and a
+name the site does not have is ignored.
+
+A build is fetched a chunk at a time, and the status line says how much has
+arrived, since the larger builds are several megabytes and "Running." over
+an empty terminal while one downloaded looked like a hang. The theme
+(system, light or dark) is the person's choice, remembered, and what was
+printed can be copied or saved as text: the text the checks read, with the
+escape sequences already applied.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.

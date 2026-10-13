@@ -72,5 +72,6 @@ if ! git -C "$module" diff --quiet HEAD 2>/dev/null; then commit="$commit-dirty"
 SITE_COMMIT="$commit" \
 SITE_ZEPHYR="$(git -C "$topdir/zephyr" rev-parse HEAD 2>/dev/null || echo unknown)" \
 SITE_BUILT="$(date -u +%Y-%m-%dT%H:%MZ)" \
+SITE_DIR="$site" \
   python3 "$here/apps.py" --module "$module" manifest > "$site/manifest.json"
 echo "staged $site"

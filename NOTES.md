@@ -2227,3 +2227,21 @@ counts up from 91 to 159 and wraps to 90, and the battery level counts
 down: both are the sample's own simulation, one step a second. That is
 Zephyr's host in a browser tab, talking to a phone through a real
 controller, and the last of Phase 7.
+
+### Tick 92 — the page, measured against two others
+
+The page was compared with kartben's zephyr-in-the-browser, which runs QEMU
+compiled to wasm, and with zephyr-v86 and qemu-wasm-zephyr, two earlier
+experiments. The engine here is the lighter one: no emulator, a build of
+0.1 to 4.7 MB rather than 9 to 21 MB before the first line, any browser,
+and stepping backwards. The page was what trailed. A select of 58 titles,
+with the Bluetooth pairs among the kernel samples; no way to link to a
+build; "Running." over an empty terminal while 4.7 MB downloaded; no
+viewport, so a phone drew it at desktop width and zoomed out.
+
+The first pass is the gallery, links, progress and the basics. Everything
+the gallery shows is worked out by `apps.py` from what `apps.json` already
+says, so it cannot drift from the entries. Ctrl+K opens it except in a
+terminal that reads keys, where it is the shell's: delete to the end of the
+line. The rest of what kartben's page does, tours above all, is in the
+roadmap under "The page".

@@ -57,8 +57,35 @@ const browserPlatform = {
     }
     /* Deliberately not instantiateStreaming: that insists on an
      * application/wasm content type, and a plain static server may not send
-     * one. An ArrayBuffer sidesteps the question entirely. */
-    return await res.arrayBuffer();
+     * one. An ArrayBuffer sidesteps the question entirely.
+     *
+     * Read a chunk at a time, so the page can say how much of a large build
+     * has arrived: the calculator is nearly 5 MB, and "Running." over a
+     * blank terminal while it downloads looked like a hang. The length is
+     * the header's when the server sends one (it is the compressed length
+     * when the server compresses, so the count can pass it). */
+    const total = Number(res.headers.get('content-length')) || 0;
+    if (!res.body) return await res.arrayBuffer();
+    const reader = res.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    let lastSaid = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      const now = performance.now();
+      if (now - lastSaid > 100) {
+        lastSaid = now;
+        self.postMessage({ type: 'progress', url, loaded, total });
+      }
+    }
+    self.postMessage({ type: 'progress', url, loaded, total, done: true });
+    const bytes = new Uint8Array(loaded);
+    let at = 0;
+    for (const c of chunks) { bytes.set(c, at); at += c.length; }
+    return bytes.buffer;
   },
 
   writeOut(bytes) {

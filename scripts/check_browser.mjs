@@ -1141,6 +1141,132 @@ const pageChecks = [
     }
     return `the guest clock moved ${g1 - g0} ms in ${wall} ms of wall time`;
   }],
+  ['gallery', async () => {
+    /* The gallery as a person uses it: Ctrl+K, a few letters, Enter. It
+     * chooses through the menu, so the build is selected and the address
+     * says so. Every upstream sample in it links to its documentation. */
+    await page.selectOption('#build', 'hello');
+    await page.click('h1');
+    await page.keyboard.press('Control+k');
+    await until('Ctrl+K did not open the gallery', () => document.getElementById('gallery').open);
+    const rows = await page.evaluate(() => document.querySelectorAll('#galleryList .gpick').length);
+    if (rows < listed.length) throw new Error(`the gallery lists ${rows} of ${listed.length} builds`);
+    const docs = await page.evaluate(() => document.querySelectorAll('#galleryList a[href*="docs.zephyrproject.org"]').length);
+    const upstream = manifest.builds.filter((b) => b.docs).length;
+    if (upstream === 0 || docs < upstream) throw new Error(`${docs} docs links for ${upstream} documented samples`);
+    await page.keyboard.type('peripheral_identity');
+    const hits = await page.evaluate(() => [...document.querySelectorAll('#galleryList .gpick')]
+      .map((e) => e.dataset.build));
+    if (hits.length !== 1 || hits[0] !== 'multilink') throw new Error(`the search found ${JSON.stringify(hits)}`);
+    await page.keyboard.press('Enter');
+    await until('Enter did not choose the build', () =>
+      !document.getElementById('gallery').open && document.getElementById('build').value === 'multilink');
+    if (!page.url().includes('build=multilink')) throw new Error(`the address did not follow: ${page.url()}`);
+    /* In a terminal that reads keys, Ctrl+K is the shell's. */
+    await page.selectOption('#build', 'shell');
+    await page.click('#run');
+    await until('the shell never started', () => window.zephyrOutput().includes('uart:~$'), null, 30_000);
+    await page.click('#term');
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(200);
+    const opened = await page.evaluate(() => document.getElementById('gallery').open);
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    if (opened) throw new Error('Ctrl+K in the shell opened the gallery');
+    return `Ctrl+K lists all ${rows} builds with ${docs} docs links; a search and Enter choose one; not from the shell`;
+  }],
+  ['address', async () => {
+    /* A link opens the build it names, and a lesson at its step; the
+     * address follows what is chosen after. */
+    const steps = manifest.builds.find((b) => b.name === 'philo').lesson.length;
+    await page.goto(`${base}?build=philo&step=3`, { waitUntil: 'load' });
+    await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null, { timeout: 15_000 });
+    const pos = () => page.evaluate(() => document.getElementById('lessonPos').textContent);
+    if (await pos() !== `step 3 of ${steps}`) throw new Error(`?step=3 opened ${JSON.stringify(await pos())}`);
+    await page.click('#lessonNext');
+    if (!page.url().includes('step=4')) throw new Error(`Next left the address at ${page.url()}`);
+    await page.selectOption('#build', 'hello');
+    const url = page.url();
+    if (!url.includes('build=hello') || url.includes('step=')) throw new Error(`a build with no lesson left ${url}`);
+    await page.goto(`${base}?build=nonesuch`, { waitUntil: 'load' });
+    await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null, { timeout: 15_000 });
+    const chosen = await page.evaluate(() => document.getElementById('build').value);
+    if (chosen !== 'hello') throw new Error(`an unknown build fell back to ${chosen}, not the last one chosen`);
+    return '?build=philo&step=3 opens step 3; the address follows Next and a new build; an unknown name is ignored';
+  }],
+  ['output', async () => {
+    /* What was printed, taken away: copied, and saved as a file. */
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+    await page.selectOption('#build', 'hello');
+    await page.click('#run');
+    await until('hello did not finish', () => !window.zephyrRunning() &&
+      window.zephyrOutput().includes('Hello World'), null, 30_000);
+    await page.click('#copyOut');
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    if (!copied.includes('Hello World! wasm_node')) throw new Error(`copied ${JSON.stringify(copied.slice(0, 200))}`);
+    if (copied.includes('\u001b')) throw new Error('the copy has escape sequences in it');
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#saveOut')]);
+    const saved = await readFile(await download.path(), 'utf8');
+    if (!saved.includes('Hello World! wasm_node')) throw new Error(`saved ${JSON.stringify(saved.slice(0, 200))}`);
+    if (!/^hello-\d{4}-\d\d-\d\d-\d\d-\d\d-\d\d\.txt$/.test(download.suggestedFilename())) {
+      throw new Error(`the file is called ${download.suggestedFilename()}`);
+    }
+    return `copied and saved ${saved.split('\n').length - 1} lines as ${download.suggestedFilename()}`;
+  }],
+  ['loading', async () => {
+    /* A slow link: the status says how much of the build has arrived
+     * before it says Running. */
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Network.enable');
+    await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+    await cdp.send('Network.emulateNetworkConditions',
+      { offline: false, latency: 20, downloadThroughput: 1_000_000, uploadThroughput: -1 });
+    await page.evaluate(() => {
+      window.statusSeen = [];
+      new MutationObserver(() => window.statusSeen.push(document.getElementById('status').textContent))
+        .observe(document.getElementById('status'), { childList: true, characterData: true, subtree: true });
+    });
+    await page.selectOption('#build', 'calculator');
+    await page.click('#run');
+    await until('the calculator never booted', () => window.zephyrOutput().includes('*** Booting Zephyr'), null, 60_000);
+    await page.click('#stop');
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    await cdp.send('Network.emulateNetworkConditions',
+      { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    await cdp.send('Network.setCacheDisabled', { cacheDisabled: false });
+    await cdp.detach();
+    const seen = await page.evaluate(() => window.statusSeen);
+    const progress = seen.filter((t) => /^Downloading calculator\.wasm: [\d.]+ [KM]B( of [\d.]+ MB)?…$/.test(t));
+    if (progress.length < 2) throw new Error(`no progress shown: ${JSON.stringify(seen.slice(0, 6))}`);
+    const after = seen.slice(seen.indexOf(progress.at(-1)) + 1);
+    if (!after.some((t) => t.startsWith('Running'))) throw new Error(`it never said Running after: ${JSON.stringify(after)}`);
+    return `${progress.length} progress lines, the last ${JSON.stringify(progress.at(-1))}, then Running`;
+  }],
+  ['theme', async () => {
+    /* The theme control, and a phone's width: nothing wider than the
+     * screen, whatever the build shows. */
+    const bg = () => page.evaluate(() => [document.documentElement.dataset.theme ?? null,
+      getComputedStyle(document.body).backgroundColor]);
+    await page.selectOption('#theme', 'dark');
+    const [dark, darkBg] = await bg();
+    await page.selectOption('#theme', 'light');
+    const [light, lightBg] = await bg();
+    await page.selectOption('#theme', 'system');
+    const [system] = await bg();
+    if (dark !== 'dark' || light !== 'light' || system !== null || darkBg === lightBg) {
+      throw new Error(`dark ${dark} ${darkBg}, light ${light} ${lightBg}, system ${system}`);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    const wide = [];
+    for (const name of ['hello', 'calculator', 'button', 'hr', 'shell']) {
+      await page.selectOption('#build', name);
+      const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+      if (sw > iw) wide.push(`${name} ${sw} px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+    if (wide.length) throw new Error(`wider than a 390 px phone: ${wide.join(', ')}`);
+    return 'dark, light and system themes; nothing wider than a 390 px phone';
+  }],
   ['fetch', async () => {
     /* A server error on the module: one is retried and the run goes
      * ahead; one that persists is reported, and leaves nothing broken for

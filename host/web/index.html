@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <title>Zephyr on WebAssembly</title>
 <link rel="stylesheet" href="./vendor/xterm.css">
@@ -51,6 +52,9 @@
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
   }
   button { cursor: pointer; }
+  /* A select is as wide as its longest option, and some titles are long:
+   * on a phone it gives way rather than widening the page. */
+  #build { max-width: 100%; text-overflow: ellipsis; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
   /* xterm.js draws inside; this is the frame around it. It scrolls
@@ -173,12 +177,82 @@
     font: 12px ui-monospace, monospace; border: 1px solid var(--line);
     border-radius: 4px; padding: 1px 5px; background: var(--bg);
   }
+  /* Read by a screen reader, not shown. */
+  .sr {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header .tools { display: flex; align-items: center; gap: 6px; }
+  header select { padding: 3px 6px; font-size: 13px; }
+  /* Under the output: taking it away, as text. */
+  #termTools { display: flex; justify-content: flex-end; gap: 6px; margin: 6px 0 0; }
+  #termTools button { padding: 3px 10px; font-size: 13px; }
+  #termTools span { color: var(--muted); font-size: 12px; margin-right: auto; align-self: center; }
+  /* The gallery: every build, findable by what it is about. */
+  #gallery {
+    width: min(760px, calc(100vw - 24px)); max-height: min(80vh, 900px);
+    padding: 0; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--fg);
+  }
+  #gallery::backdrop { background: rgba(0, 0, 0, .45); }
+  #gallery .ghead {
+    position: sticky; top: 0; display: flex; gap: 8px; align-items: center;
+    padding: 12px 14px; background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  #gallerySearch {
+    flex: 1; min-width: 0; font: inherit; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  }
+  #galleryList { padding: 4px 14px 14px; }
+  #galleryList h2 {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 14px 0 4px;
+  }
+  .grow {
+    display: flex; gap: 10px; align-items: flex-start; padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .grow[aria-current="true"] .gpick strong { color: var(--accent); }
+  .gpick {
+    flex: 1; min-width: 0; text-align: left; border: 0; padding: 4px 6px; margin: 0;
+    background: none; display: block;
+  }
+  .gpick:hover { background: var(--term-bg); }
+  .gpick span {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; color: var(--muted); font-size: 13px;
+  }
+  .gmeta {
+    display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: flex-end;
+    align-items: center; max-width: 45%; padding-top: 5px; font-size: 12px;
+  }
+  .gmeta .size { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip {
+    font-size: 11px; padding: 0 6px; border-radius: 9px; white-space: nowrap;
+    border: 1px solid var(--line); color: var(--muted);
+  }
+  #galleryEmpty { color: var(--muted); padding: 16px 0; }
+  /* A phone: less margin, and terminals that leave room for the controls. */
+  @media (max-width: 600px) {
+    body { padding: 12px 10px; }
+    #term, #term2 { height: min(400px, 60vh); }
+    #terms.pair #term, #terms.pair #term2 { height: min(260px, 40vh); }
+    .grow { flex-direction: column; gap: 2px; }
+    .gmeta { max-width: none; justify-content: flex-start; padding: 0 6px; }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Zephyr on WebAssembly</h1>
+    <div class="tools">
+    <select id="theme" aria-label="colour theme" title="Colour theme">
+      <option value="system">System theme</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
     <!-- GitHub's mark, from Primer Octicons (MIT): mark-github, 16px. -->
     <a class="octocat" href="https://github.com/beriberikix/zephyr-wasm-soc"
        target="_blank" rel="noopener"
@@ -186,18 +260,22 @@
        aria-label="Source on GitHub">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
     </a>
+    </div>
   </header>
   <p class="sub">
-    The kernel runs freestanding in one wasm32 linear memory. This page is the
-    SoC: it provides the <code>zephyr_host</code> imports and drives the
-    Asyncify loop that makes context switching possible. The guest runs in a
-    Worker, because it blocks its thread between suspensions.
+    Upstream Zephyr samples, built unmodified for a board whose CPU is
+    WebAssembly, running in this tab: no emulator and nothing to install. The
+    kernel runs freestanding in one wasm32 linear memory; this page is the
+    SoC around it.
   </p>
 
   <div class="bar">
+    <label for="build" class="sr">Build</label>
     <select id="build" disabled>
       <option>loading…</option>
     </select>
+    <button id="browse" disabled aria-haspopup="dialog"
+            title="Every build, with search, by category (Ctrl+K)">Samples&hellip;</button>
     <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
@@ -241,7 +319,7 @@
     </select>
     <span id="hciState">No controller.</span>
   </div>
-  <div id="status">Loading the list of builds…</div>
+  <div id="status" role="status" aria-live="polite">Loading the list of builds…</div>
 
   <!-- A guided lesson, for a build whose apps.json entry has one. The steps
        are text; nothing checks that they were followed. -->
@@ -270,6 +348,11 @@
     <div id="term2" hidden></div>
     <div id="link" hidden></div>
   </div>
+  <div id="termTools">
+    <span id="termToolsNote" aria-live="polite"></span>
+    <button id="copyOut" type="button" title="Copy everything printed to the clipboard, as text">Copy output</button>
+    <button id="saveOut" type="button" title="Save everything printed as a text file">Save output</button>
+  </div>
 
   <!-- The host brokers every context switch, so it can simply be asked what
        the kernel looks like between them. Nothing here reads Zephyr struct
@@ -283,6 +366,7 @@
       <span id="kstat"></span>
     </div>
     <table class="threads">
+      <caption class="sr">The guest's threads</caption>
       <thead><tr><th>thread</th><th>prio</th><th>state</th><th>stack pointer</th><th>waiting for</th></tr></thead>
       <tbody id="threads"></tbody>
     </table>
@@ -298,8 +382,20 @@
     build, which changes how fast it goes and not what it does; one that
     waits for you keeps to your time. Choosing another build stops the one
     running. A build with a lesson shows it above the output, one step at a
-    time.
+    time. <em>Samples…</em> (<kbd>Ctrl</kbd>+<kbd>K</kbd>) lists every build
+    by category, with a search box and links to each sample's source and
+    documentation. The address follows the build, and a lesson's step, so
+    it can be copied to share.
   </p>
+  <!-- Every build, by category, with search: see the gallery below. -->
+  <dialog id="gallery" aria-label="Samples">
+    <div class="ghead">
+      <input id="gallerySearch" type="search" placeholder="Search: blinky, shell, mqtt, two boards…"
+             aria-label="search builds" autocomplete="off" spellcheck="false">
+      <button id="galleryClose" type="button" aria-label="close">Close</button>
+    </div>
+    <div id="galleryList"></div>
+  </dialog>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
 </main>
@@ -364,6 +460,71 @@ let builds = [];
 let lastState = null;
 let currentBuild = null;
 let stopping = false;
+/* The manifest's categories, in order: the menu's groups and the
+ * gallery's sections. */
+let categories = [];
+const browseEl = document.getElementById('browse');
+/* What the status line says while a run goes, which a download's progress
+ * stands in for until the build has arrived. */
+let runStatus = 'Running.';
+const downloads = new Map();
+
+/* The colour theme: the system's, unless the person chose one, which is
+ * remembered. The CSS does the rest from data-theme. */
+const themeEl = document.getElementById('theme');
+function applyTheme(mode) {
+  if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode;
+  else delete document.documentElement.dataset.theme;
+  themeEl.value = mode === 'light' || mode === 'dark' ? mode : 'system';
+}
+function themeIsDark() {
+  const set = document.documentElement.dataset.theme;
+  return set ? set === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+}
+/* Read here rather than through `remembered` below, which is not defined
+ * yet: the terminals are made with the theme already applied. */
+let savedTheme = null;
+try { savedTheme = JSON.parse(localStorage.getItem('zephyr-wasm.theme')); } catch { /* none */ }
+applyTheme(savedTheme);
+themeEl.onchange = () => {
+  applyTheme(themeEl.value);
+  remembered.set('theme', themeEl.value);
+};
+
+/* The address says which build is shown, and for a lesson which step, so
+ * that it can be copied and sent: ?build=philo&step=3 opens the lesson
+ * there. Replaced, not pushed: choosing builds is not navigating. Anything
+ * else in it, such as ?uplink=, is kept. */
+function showInAddress() {
+  const build = builds.find((b) => b.name === buildEl.value);
+  if (!build) return;
+  const params = new URLSearchParams(location.search);
+  params.set('build', build.name);
+  if (lesson?.name === build.name) params.set('step', String((lessonSteps.get(build.name) ?? 0) + 1));
+  else params.delete('step');
+  const url = `${location.pathname}?${params}${location.hash}`;
+  if (url !== `${location.pathname}${location.search}${location.hash}`) history.replaceState(null, '', url);
+}
+
+/* Sizes as a person reads them. */
+function megabytes(n) {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`;
+}
+
+/* A build downloading, said on the status line until it has all arrived:
+ * a large one over a slow link otherwise looked like a run that hung. */
+function showProgress({ url, loaded, total, done }) {
+  if (!running) return;
+  downloads.set(url, { loaded, total, done });
+  const going = [...downloads.values()].filter((d) => !d.done);
+  if (going.length === 0) { statusEl.textContent = runStatus; return; }
+  const got = going.reduce((n, d) => n + d.loaded, 0);
+  const of = going.every((d) => d.total) ? going.reduce((n, d) => n + d.total, 0) : 0;
+  const file = going.length === 1 ? url.split('/').pop() : `${going.length} boards`;
+  statusEl.textContent = of && got <= of
+    ? `Downloading ${file}: ${megabytes(got)} of ${megabytes(of)}…`
+    : `Downloading ${file}: ${megabytes(got)}…`;
+}
 
 /* The menu comes from the manifest scripts/stage_site.sh writes, which is
  * generated from scripts/apps.json. The page used to carry its own copy of
@@ -402,22 +563,38 @@ async function loadManifest() {
     const manifest = await res.json();
     builds = manifest.builds;
     showBuildInfo(manifest.site);
+    categories = manifest.categories ?? [];
     buildEl.innerHTML = '';
-    /* Two-board builds after the rest, in a group of their own, so a
-     * dozen pairs do not bury the single boards. */
-    const pairs = document.createElement('optgroup');
-    pairs.label = 'Two boards';
-    for (const b of builds) {
-      const opt = document.createElement('option');
-      opt.value = b.name;
-      opt.textContent = b.boards ? b.title.replace(/ \(two boards\)$/, '') : b.title;
-      (b.boards ? pairs : buildEl).append(opt);
+    /* Grouped by what each build is about, in the manifest's order of
+     * categories (scripts/apps.py works them out from each app's path), so
+     * the Bluetooth pairs are not under the kernel samples. */
+    for (const cat of categories) {
+      const group = document.createElement('optgroup');
+      group.label = cat;
+      for (const b of builds.filter((x) => x.category === cat)) {
+        const opt = document.createElement('option');
+        opt.value = b.name;
+        opt.textContent = b.title;
+        group.append(opt);
+      }
+      if (group.children.length) buildEl.append(group);
     }
-    if (pairs.children.length) buildEl.append(pairs);
-    /* The build last chosen, if this site still has it. */
+    /* A link to a build wins over the build last chosen here; either only
+     * if this site still has it. A lesson's link can name its step, counted
+     * from one as the lesson counts. */
+    const params = new URLSearchParams(location.search);
+    const has = (name) => builds.some((b) => b.name === name);
+    const linked = params.get('build');
     const last = remembered.get('build');
-    if (builds.some((b) => b.name === last)) buildEl.value = last;
+    if (has(linked)) {
+      buildEl.value = linked;
+      const step = Number(params.get('step'));
+      if (Number.isInteger(step) && step >= 1) lessonSteps.set(linked, step - 1);
+    } else if (has(last)) {
+      buildEl.value = last;
+    }
     buildEl.disabled = false;
+    browseEl.disabled = false;
     runEl.disabled = false;
     showSelected();
   } catch (err) {
@@ -446,7 +623,7 @@ function termTheme() {
   /* xterm's default palette is for a dark background. On a light one the
    * shell's green prompt and the logger's yellow warnings wash out, so
    * those get darker shades. */
-  if (v('--bg') === '#ffffff') {
+  if (!themeIsDark()) {
     Object.assign(theme, {
       green: '#1f7a1f', brightGreen: '#1f7a1f', yellow: '#8a6100',
       brightYellow: '#8a6100', cyan: '#0e6f7c', brightCyan: '#0e6f7c',
@@ -652,6 +829,9 @@ function buildBoard() {
     const dot = document.createElement('div');
     dot.className = 'led';
     dot.title = led.alias;
+    dot.setAttribute('role', 'img');
+    dot.dataset.label = led.label;
+    dot.setAttribute('aria-label', `${led.label} off`);
     const name = document.createElement('small');
     name.textContent = led.label;
     part.append(dot, name);
@@ -780,7 +960,10 @@ function buildTilt() {
 
 function showLeds(values) {
   for (const [pin, el] of ledEls) {
-    el.classList.toggle('on', (values & (1 << pin)) !== 0);
+    const on = (values & (1 << pin)) !== 0;
+    if (el.classList.contains('on') === on) continue;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-label', `${el.dataset.label} ${on ? 'on' : 'off'}`);
   }
 }
 
@@ -1043,6 +1226,7 @@ function showSelected() {
   hciRowEl.hidden = build.hci !== 'serial';
   if (!running) runEl.disabled = !canRun(build);
   showLesson(build);
+  showInAddress();
   statusEl.textContent = 'Ready.';
 }
 
@@ -1071,6 +1255,7 @@ function showLessonStep(step) {
   showText(lessonTextEl, steps[step]);
   lessonPrevEl.disabled = step === 0;
   lessonNextEl.disabled = step === steps.length - 1;
+  showInAddress();
 }
 
 lessonPrevEl.addEventListener('click', () =>
@@ -1193,6 +1378,7 @@ async function start() {
     else if (data.type === 'out') t.write(new Uint8Array(data.buf));
     else if (data.type === 'err') t.note(data.text, data.line);
     else if (data.type === 'hci-tx') hciWrite(data.bytes);
+    else if (data.type === 'progress') showProgress(data);
     else if (data.type === 'power' && data.board === 1) {
       /* A client plugged in after its server, as a person would, at a
        * stated time into the server's run. */
@@ -1224,7 +1410,7 @@ async function start() {
   };
 
   showSelected();
-  statusEl.textContent = build.hci === 'serial'
+  runStatus = build.hci === 'serial'
     ? 'Running, with a real Bluetooth controller.'
     : build.uplink && uplinkUrl()
     ? 'Running, on a real network through the relay.'
@@ -1233,6 +1419,8 @@ async function start() {
       : build.uplink
         ? 'Running, with no uplink: the board has no network to ask.'
         : 'Running.';
+  statusEl.textContent = runStatus;
+  downloads.clear();
   /* Only a paced build that runs by itself has a speed worth changing:
    * under virtual time the run is over before the control could be
    * reached, and an interactive one goes at the pace of the person. */
@@ -1291,6 +1479,157 @@ buildEl.onchange = () => {
 };
 
 runEl.onclick = start;
+
+/* The gallery: every build, by category, with a search box. Choosing one is
+ * choosing it in the menu, which stays the one control everything else
+ * listens to. Lessons come first, since they are where to start. */
+const galleryEl = document.getElementById('gallery');
+const gallerySearchEl = document.getElementById('gallerySearch');
+const galleryListEl = document.getElementById('galleryList');
+
+function galleryText(b) {
+  return [b.name, b.title, b.hint, b.category, ...(b.needs ?? []),
+          ...(b.boards ?? [b]).map((u) => u.app)].join(' ').toLowerCase();
+}
+
+function galleryRow(b) {
+  const row = document.createElement('div');
+  row.className = 'grow';
+  row.setAttribute('aria-current', String(b.name === buildEl.value));
+  const pick = document.createElement('button');
+  pick.type = 'button';
+  pick.className = 'gpick';
+  pick.dataset.build = b.name;
+  const title = document.createElement('strong');
+  title.textContent = b.title;
+  const hint = document.createElement('span');
+  hint.textContent = String(b.hint ?? '').replaceAll('`', '');
+  pick.append(title, hint);
+  pick.onclick = () => chooseBuild(b.name);
+  const meta = document.createElement('div');
+  meta.className = 'gmeta';
+  for (const need of b.needs ?? []) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = need;
+    meta.append(chip);
+  }
+  if (b.size) {
+    const size = document.createElement('span');
+    size.className = 'size';
+    size.textContent = megabytes(b.size);
+    size.title = 'download size';
+    meta.append(size);
+  }
+  for (const [text, href] of [['Source', b.source], ['Docs', b.docs]]) {
+    if (!href) continue;
+    const a = document.createElement('a');
+    a.textContent = text;
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = text === 'Docs' ? "The sample's page in Zephyr's documentation"
+      : 'The application, as this site built it';
+    meta.append(a);
+  }
+  row.append(pick, meta);
+  return row;
+}
+
+function showGallery() {
+  const words = gallerySearchEl.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const match = (b) => words.every((w) => galleryText(b).includes(w));
+  const sections = [['Lessons', builds.filter((b) => b.lesson?.length)],
+                    ...categories.map((c) => [c, builds.filter((b) => b.category === c)])];
+  galleryListEl.replaceChildren();
+  let shown = 0;
+  for (const [name, list] of sections) {
+    const hits = list.filter(match);
+    if (!hits.length) continue;
+    const h = document.createElement('h2');
+    h.textContent = `${name} (${hits.length})`;
+    galleryListEl.append(h, ...hits.map(galleryRow));
+    shown += hits.length;
+  }
+  if (!shown) {
+    const none = document.createElement('p');
+    none.id = 'galleryEmpty';
+    none.textContent = 'No build matches.';
+    galleryListEl.append(none);
+  }
+}
+
+function openGallery() {
+  if (!builds.length || galleryEl.open) return;
+  gallerySearchEl.value = '';
+  showGallery();
+  galleryEl.showModal();
+  gallerySearchEl.focus();
+  galleryListEl.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'center' });
+}
+
+function chooseBuild(name) {
+  galleryEl.close();
+  if (buildEl.value !== name) {
+    buildEl.value = name;
+    buildEl.dispatchEvent(new Event('change'));
+  }
+  runEl.focus();
+}
+
+browseEl.onclick = openGallery;
+gallerySearchEl.oninput = () => { showGallery(); galleryEl.scrollTop = 0; };
+/* Enter takes the first match, so typing a name and Enter is enough. */
+gallerySearchEl.onkeydown = (e) => {
+  if (e.key !== 'Enter') return;
+  const first = galleryListEl.querySelector('.gpick');
+  if (first) { e.preventDefault(); chooseBuild(first.dataset.build); }
+};
+document.getElementById('galleryClose').onclick = () => galleryEl.close();
+/* A click on the backdrop closes it, as Esc does. */
+galleryEl.addEventListener('click', (e) => { if (e.target === galleryEl) galleryEl.close(); });
+/* Ctrl+K (Cmd+K) opens it, except where a running build reads the keys:
+ * there it is the shell's own, which deletes to the end of the line. */
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'k' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  if (document.activeElement?.closest?.('#terms, #screen')) return;
+  e.preventDefault();
+  openGallery();
+});
+
+/* The output, taken away as text: everything printed, with the escape
+ * sequences already dropped (the same text the checks read). A pair gives
+ * both boards', each under its name. */
+function outputText() {
+  const pair = builds.find((b) => b.name === buildEl.value)?.boards ?? null;
+  const text = (l) => l.lines.join('\n').replace(/\s+$/, '') + '\n';
+  if (!pair) return text(log);
+  return `== ${pair[0].label} ==\n${text(log)}\n== ${pair[1].label} ==\n${text(peer.log)}`;
+}
+const termToolsNoteEl = document.getElementById('termToolsNote');
+function toolNote(text) {
+  termToolsNoteEl.textContent = text;
+  clearTimeout(toolNote.timer);
+  toolNote.timer = setTimeout(() => { termToolsNoteEl.textContent = ''; }, 3000);
+}
+document.getElementById('copyOut').onclick = async () => {
+  const text = outputText();
+  try {
+    await navigator.clipboard.writeText(text);
+    const n = text.split('\n').length - 1;
+    toolNote(`Copied ${n} line${n === 1 ? '' : 's'}.`);
+  } catch (err) {
+    toolNote(`Could not copy: ${err.message}`);
+  }
+};
+document.getElementById('saveOut').onclick = () => {
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([outputText()], { type: 'text/plain' }));
+  a.download = `${buildEl.value || 'zephyr'}-${stamp}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 
 /* A real Bluetooth controller, through Web Serial (host/hci_serial.mjs).
  * The page holds the port, since that is where Web Serial is, and passes
