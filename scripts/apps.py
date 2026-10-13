@@ -92,6 +92,87 @@ def units(b: dict) -> list[dict]:
     return [dict(board, name=f"{b['name']}-{i}") for i, board in enumerate(b["boards"])]
 
 
+# The page's gallery groups builds by what they are about, in this order.
+# Worked out from the application's path, so a new entry needs no field of
+# its own; an entry may still name its category outright.
+CATEGORIES = ("Kernel", "Drivers and sensors", "Display and input", "Storage",
+              "Networking", "Bluetooth", "Subsystems", "Libraries", "Tests")
+
+
+def category(b: dict, path: str) -> str:
+    if b.get("category"):
+        if b["category"] not in CATEGORIES:
+            sys.exit(f"apps.json: {b['name']}: category is one of {', '.join(CATEGORIES)}")
+        return b["category"]
+    if b.get("kind") == "test":
+        return "Tests"
+    if "/bluetooth/" in path:
+        return "Bluetooth"
+    if "/net/" in path:
+        return "Networking"
+    if b.get("display"):
+        return "Display and input"
+    if "/drivers/" in path or "/sensor/" in path:
+        return "Drivers and sensors"
+    if any(f"/{d}/" in path for d in ("kvss", "fs", "settings")):
+        return "Storage"
+    if any(f"/{d}" in path for d in ("basic/", "kernel/", "synchronization", "philosophers",
+                                     "hello_world")):
+        return "Kernel"
+    if "/modules/" in path or "/cpp/" in path:
+        return "Libraries"
+    return "Subsystems"
+
+
+def gallery(b: dict, module: str, zephyr_rev: str, commit: str) -> dict:
+    """What the page's gallery shows for an entry beyond apps.json's own
+    fields: its category, where its source and upstream documentation are,
+    and what it asks of the person running it. All worked out, none written
+    down, so they cannot disagree with the entry."""
+    app = units(b)[0]["app"]
+    out = {}
+    if app.startswith("zephyr/"):
+        rel = app[len("zephyr/"):]
+        out["source"] = (f"https://github.com/zephyrproject-rtos/zephyr/tree/"
+                         f"{zephyr_rev or 'main'}/{rel}")
+        if rel.startswith("samples/"):
+            out["docs"] = f"https://docs.zephyrproject.org/latest/{rel}/README.html"
+    elif app.startswith(module):
+        rel = app[len(module):].lstrip("/")
+        out["source"] = (f"https://github.com/beriberikix/zephyr-wasm-soc/tree/"
+                         f"{commit.split('-')[0] or 'main'}/{rel}")
+    out["category"] = category(b, "/" + app)
+    reads = any("terminal" in u.get("uses", []) for u in units(b))
+    needs = []
+    if "boards" in b:
+        needs.append("two boards")
+    if b.get("hci"):
+        needs.append("real radio")
+    # A board on the page's own network needs nothing from the person; one
+    # that can only reach the real one needs their relay.
+    if b.get("lan"):
+        needs.append("network")
+    elif b.get("uplink"):
+        needs.append("relay")
+    if b.get("display"):
+        needs.append("screen")
+    if reads:
+        needs.append("keyboard")
+    if b.get("lesson"):
+        needs.append("lesson")
+    out["needs"] = needs
+    return out
+
+
+def size(site: str, name: str) -> int | None:
+    """The bytes of a staged build, for the gallery to say how big a
+    download it is; None when the manifest is made without a site."""
+    if not site:
+        return None
+    p = pathlib.Path(site) / "m" / f"{name}.wasm"
+    return p.stat().st_size if p.exists() else None
+
+
 def load(module: str) -> list[dict]:
     builds = json.loads(APPS.read_text())["builds"]
     for b in builds:
@@ -274,13 +355,23 @@ def main() -> int:
             "built": os.environ.get("SITE_BUILT", ""),
         },
         "score": score(builds),
-        "builds": [dict(b, boards=[dict(u, path=f"m/{u['name']}.wasm") for u in units(b)])
-                   if "boards" in b else
-                   dict(b, path=f"m/{b['name']}.wasm",
-                        **({"board_files": list(sweeplib.board_files(b["app"]))}
-                           if sweeplib.board_files(b["app"]) else {}))
-                   for b in builds],
+        "categories": list(CATEGORIES),
+        "builds": [],
     }
+    site = os.environ.get("SITE_DIR", "")
+    for b in builds:
+        extra = gallery(b, args.module, out["site"]["zephyr"], out["site"]["commit"])
+        if "boards" in b:
+            entry = dict(b, **extra, boards=[dict(u, path=f"m/{u['name']}.wasm",
+                                                  size=size(site, u["name"]))
+                                             for u in units(b)])
+            sizes = [u["size"] for u in entry["boards"]]
+            entry["size"] = sum(sizes) if None not in sizes else None
+        else:
+            entry = dict(b, **extra, path=f"m/{b['name']}.wasm", size=size(site, b["name"]),
+                         **({"board_files": list(sweeplib.board_files(b["app"]))}
+                            if sweeplib.board_files(b["app"]) else {}))
+        out["builds"].append(entry)
     json.dump(out, sys.stdout, indent=2)
     print()
     return 0

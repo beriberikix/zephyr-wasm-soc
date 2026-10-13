@@ -1142,6 +1142,49 @@ sample, and nobody learning Zephyr has tried it yet.
 The score stays the measure. A lesson is how the page gets tested by the
 people it is for.
 
+## The page
+
+Two other projects put Zephyr in a browser tab, and both are worth learning
+from. kartben's [zephyr-in-the-browser](https://github.com/kartben/zephyr-in-the-browser)
+runs QEMU compiled to wasm for five boards. Its page is the more mature
+one: a searchable gallery with links to each sample's documentation, deep
+links down to the step of a guided tour, tours that stop on a line of stock
+upstream source and show live state, a device dock built from the running
+build's devicetree, a trace timeline and a debugger. The
+[zephyr-v86](https://github.com/beriberikix/zephyr-v86) experiment runs a
+native_sim binary inside Linux on v86, and has a theme switch and a VM
+saved to a file. This port's engine is the lighter one: a build is 0.1 to
+4.7 MB, against about 9 MB of QEMU and its image or 21 MB of Linux, it
+needs no SharedArrayBuffer or JSPI, and it steps backwards and runs two
+boards in lockstep. The page is where it trailed.
+
+- [x] **Finding builds, sharing them, and seeing them load** (`DESIGN.md`
+      D15). The gallery: every build by category, searchable, with what it
+      needs, its download size, and links to its source and documentation,
+      all worked out from `apps.json` rather than written into it. Links to
+      a build and a lesson's step. Download progress on the status line.
+      A theme control, copy and save of the output, a page that fits a
+      phone, and status, LEDs and the thread table that a screen reader
+      can read.
+- [ ] **Tours.** The lesson grown into steps that wait for something the
+      page can see (a line printed, a thread blocked, the kernel paused, an
+      LED lit), with buttons that type a command, and a check that the step
+      was done. The browser check already follows the lesson, so tours stay
+      checked in CI, as kartben's are. Then more of them: blinky and the
+      button, the shell, a network pair.
+- [ ] **The board panel from the devicetree.** The LEDs, buttons, tilt pad
+      and display are drawn from a table in the page that mirrors
+      `wasm_node.dts`. Generated from the build's own devicetree instead,
+      a build would show exactly the parts it has.
+- [ ] **Bring your own build.** Drop a `zephyr.wasm` built for `wasm_node`
+      onto the page, as kartben's takes an ELF.
+- [ ] **A thread timeline.** Context switches over time, from the hook the
+      thread table already uses, which step back can scrub through.
+- [ ] **Run it from Zephyr's documentation.** A sample's page links here,
+      by `?build=`.
+- [ ] **A phone's own tilt** for the accelerometer, through the device's
+      orientation.
+
 ## Decisions that cut across phases
 
 **Every capability is an import, and there are three hosts.** The ABI is a

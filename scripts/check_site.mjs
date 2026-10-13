@@ -18,7 +18,7 @@
 
 import { spawn } from 'node:child_process';
 import os from 'node:os';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -115,6 +115,22 @@ const manifest = JSON.parse(await readFile(path.join(site, 'manifest.json'), 'ut
 let failures = 0;
 let skipped = 0;
 let ran = 0;
+
+/* The gallery says how big each download is, and which category it is in:
+ * the size has to be the file's, and the category one the page lists. */
+for (const b of manifest.builds) {
+  for (const u of b.boards ?? [b]) {
+    const bytes = (await stat(path.join(site, u.path))).size;
+    if (u.size !== bytes) {
+      console.log(`  FAIL  ${u.name}: the manifest says ${u.size} bytes, the file has ${bytes}`);
+      failures++;
+    }
+  }
+  if (!manifest.categories?.includes(b.category)) {
+    console.log(`  FAIL  ${b.name}: category ${b.category} is not one the page lists`);
+    failures++;
+  }
+}
 
 for (const b of manifest.builds) {
   if (only && !only.has(b.name)) continue;

@@ -331,6 +331,14 @@ blocks both Workers and `fetch`; this one is bound to the loopback address.
 `stage_site.sh` is what CI runs too, so what you see locally is what is
 published.
 
+To find a build, press Samples… (or <kbd>Ctrl</kbd>+<kbd>K</kbd>): every
+build by category, with a search box, what each needs (two boards, a
+keyboard, a screen, the network, a real radio), its download size, and
+links to its source and to its page in Zephyr's documentation. The address
+follows the build, and a lesson's step, so a link opens the same thing:
+`?build=philo&step=3`. Copy output and Save output take what was printed as
+text, and the theme can be set to light or dark rather than the system's.
+
 `scripts/check_browser.mjs` runs every build in Chromium the way a person
 would: real key presses into the terminal, the mouse held on a button, a drag
 across the display. It checks what the screen shows as well as what was
