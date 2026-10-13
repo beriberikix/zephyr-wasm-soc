@@ -1172,10 +1172,12 @@ boards in lockstep. The page is where it trailed.
       was done. The browser check already follows the lesson, so tours stay
       checked in CI, as kartben's are. Then more of them: blinky and the
       button, the shell, a network pair.
-- [ ] **The board panel from the devicetree.** The LEDs, buttons, tilt pad
-      and display are drawn from a table in the page that mirrors
-      `wasm_node.dts`. Generated from the build's own devicetree instead,
-      a build would show exactly the parts it has.
+- [x] **The board from the devicetree** (`DESIGN.md` D16). The LEDs and
+      buttons are drawn from each build's own devicetree, and a Hardware
+      section lists every device the build was linked with, which the link
+      map says, since the devicetree alone is nearly the same for every
+      build. A row opens the build's `zephyr.dts` at its node. The single
+      build button, which opens the gallery, replaced the menu beside it.
 - [ ] **Bring your own build.** Drop a `zephyr.wasm` built for `wasm_node`
       onto the page, as kartben's takes an ELF.
 - [ ] **A thread timeline.** Context switches over time, from the hook the

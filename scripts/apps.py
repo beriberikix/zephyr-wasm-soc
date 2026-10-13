@@ -24,6 +24,7 @@ import os
 import pathlib
 import sys
 
+import devices
 import sweeplib
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -305,6 +306,24 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
             if part in shown and "gpio" not in on:
                 problems.append(f"{b['name']}: the page shows the {part} "
                                 "but CONFIG_GPIO is unset")
+        # And against the devices the image was linked with (DESIGN.md
+        # D16): what the page offers has to be a device the build has, and
+        # a radio or a network snippet has to have made one.
+        board = devices.describe(topdir / f"build-site-{b['name']}", topdir)
+        if board is None:
+            problems.append(f"{b['name']}: no devicetree or link map in build-site-{b['name']}")
+            continue
+        compats = {d["compat"] for d in board["devices"]}
+        args = b.get("args", [])
+        for compat, wanted, why in (
+                ("bosch,bmi160", "accel" in shown, "the tilt pad"),
+                ("wasm,host-display", "display" in shown, "the display"),
+                ("zephyr,sim-flash", "flash" in shown, "Erase flash"),
+                ("zephyr,bt-hci-uart", "-DSNIPPET=wasm-bt" in args, "the wasm-bt snippet"),
+                ("wasm,host-ethernet", "-DSNIPPET=wasm-ethernet" in args, "the wasm-ethernet snippet")):
+            if (compat in compats) != wanted:
+                problems.append(f"{b['name']}: the image {'has' if compat in compats else 'has no'} "
+                                f"a {compat} device, but {why} says otherwise")
     return problems
 
 
@@ -359,16 +378,25 @@ def main() -> int:
         "builds": [],
     }
     site = os.environ.get("SITE_DIR", "")
+    topdir = pathlib.Path(args.topdir)
+
+    def board(name: str) -> dict:
+        # The board this unit was built with, from its devicetree and its
+        # link map; nothing when it has not been built here.
+        d = devices.describe(topdir / f"build-site-{name}", topdir)
+        return {"devicetree": d, "dts": f"dts/{name}.dts"} if d else {}
+
     for b in builds:
         extra = gallery(b, args.module, out["site"]["zephyr"], out["site"]["commit"])
         if "boards" in b:
             entry = dict(b, **extra, boards=[dict(u, path=f"m/{u['name']}.wasm",
-                                                  size=size(site, u["name"]))
+                                                  size=size(site, u["name"]), **board(u["name"]))
                                              for u in units(b)])
             sizes = [u["size"] for u in entry["boards"]]
             entry["size"] = sum(sizes) if None not in sizes else None
         else:
             entry = dict(b, **extra, path=f"m/{b['name']}.wasm", size=size(site, b["name"]),
+                         **board(b["name"]),
                          **({"board_files": list(sweeplib.board_files(b["app"]))}
                             if sweeplib.board_files(b["app"]) else {}))
         out["builds"].append(entry)

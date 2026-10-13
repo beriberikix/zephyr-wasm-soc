@@ -466,6 +466,11 @@ own `ngpios`. And `gpio_emul` initialises at `POST_KERNEL`, not
 `CONFIG_WASM_GPIO_BRIDGE_INIT_PRIORITY`, which sits between the ports at 40
 and `gpio-leds` and `gpio-keys` at 90.
 
+The page draws the LEDs and buttons from each build's own devicetree: the
+`gpio-leds` and `gpio-keys` children, their pins, labels, aliases and
+active-low flags (D16). It used to keep its own copy of these pins, which
+had to be changed by hand with the board's.
+
 ### D8d. Interrupt lines have one home
 
 `include/zephyr/arch/wasm/wasm_irq_lines.h` is where a line number is
@@ -1587,7 +1592,7 @@ other threads' output, with one thread dead.
 The page started with a menu of a dozen builds, and a native `<select>` was
 enough. At fifty-eight it was not: the Bluetooth pairs sat under the kernel
 samples, and nothing said which builds wanted a keyboard, a relay or a real
-radio, or where a sample came from. The gallery (Samples…, or Ctrl+K) lists
+radio, or where a sample came from. The gallery (the build's name, or Ctrl+K) lists
 every build by category with a search box, what it needs, how big its
 download is, and links to its source and to its page in Zephyr's
 documentation.
@@ -1602,9 +1607,11 @@ name its category outright. Written-down fields would drift from the entry
 they describe, and these cannot; `check_site.mjs` checks that each size is
 its file's and each category one the page lists.
 
-The `<select>` stays, grouped by the same categories, and the gallery
-chooses through it. Every check drives the menu, and so does a person on a
-phone, where a native select is the better control.
+The gallery is the only way to choose a build. A native `<select>` was
+kept beside it at first, since every browser check drove that and a phone
+has a good control for one, but two controls for one choice is one too
+many, and the gallery fits a phone. The checks now choose as a person
+does: press the build's name, then its row.
 
 The address follows the selection: `?build=philo&step=3` opens the
 philosophers' lesson at its third step, and it is replaced as the
@@ -1618,6 +1625,40 @@ an empty terminal while one downloaded looked like a hang. The theme
 (system, light or dark) is the person's choice, remembered, and what was
 printed can be copied or saved as text: the text the checks read, with the
 escape sequences already applied.
+
+### D16. What a build has: its devicetree and its link map
+
+kartben's page builds its panel of devices from the running build's
+devicetree, and the link between a devicetree and what you see is one of
+the first things Zephyr teaches. Here the devicetree alone would not do:
+every build of this board has nearly the same one, since only a snippet
+adds a node (the HCI UART for Bluetooth, the Ethernet for a network), so
+every build would show the same board.
+
+The link map says what a build has. Each device object Zephyr creates is a
+symbol, `__device_dts_ord_<N>`, named by its node's dependency ordinal, and
+`zephyr.map` lists the ones the image was linked with. edtlib's
+`dep_ordinal` joins them to the nodes in `edt.pickle`. So blinky has the
+GPIO controller, the entropy source and the UART; `accel_polling` the
+emulated I2C bus, the bmi160 and bmp581 on it, and the sensor bridge; an
+HTTP client the Ethernet; the NVS sample the flash controller.
+`scripts/devices.py` reads both when the site is staged, and the manifest
+carries, per board: the LEDs and buttons with their pins, labels and
+aliases; the display's size; and every device linked in, with its
+compatible, labels, aliases, the bus it is on and the `chosen` roles that
+name it. The page's Hardware section lists them, marks the ones the page
+lets you touch, and opens the build's own `zephyr.dts`, copied to the site,
+at a device's node.
+
+Which parts a sample *uses* is in neither. blinky drives LED 0 through a
+`gpio_dt_spec`, and no LED device exists; the LVGL builds have `gpio-keys`,
+pulled in by the input subsystem, and use no button. So `uses` in
+`apps.json` still says which controls the page shows. `apps.py check-uses`
+now checks it from both sides: against `.config` as before, and against
+the linked devices, so the tilt pad is offered only where a bmi160 is
+linked, the display only where the display is, Erase flash only with the
+flash controller, and the radio and network snippets only where they made
+an HCI UART or an Ethernet.
 
 ## 4. Kernel features forced off
 

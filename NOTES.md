@@ -2245,3 +2245,19 @@ says, so it cannot drift from the entries. Ctrl+K opens it except in a
 terminal that reads keys, where it is the shell's: delete to the end of the
 line. The rest of what kartben's page does, tours above all, is in the
 roadmap under "The page".
+
+### Tick 93 — what a build has
+
+The board panel now comes from the devicetree, and the page lists what each
+build has. The devicetree alone did not say: every build of this board has
+nearly the same one. The link map did. Every device Zephyr creates is a
+symbol named by its node's dependency ordinal, `__device_dts_ord_<N>`, so
+`zephyr.map` lists exactly the devices an image has, and edtlib maps each
+back to its node. blinky has three, the LVGL demos seven. That also gave
+`check-uses` a second witness: the tilt pad, the display, Erase flash and
+the radio and network snippets are now checked against the devices linked
+in as well as against `.config`.
+
+The build menu went too. The gallery had made it redundant, and the
+browser checks, which all drove the menu, now press the build's name and
+its row in the gallery, as a person does.

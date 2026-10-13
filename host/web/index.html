@@ -52,9 +52,14 @@
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
   }
   button { cursor: pointer; }
-  /* A select is as wide as its longest option, and some titles are long:
-   * on a phone it gives way rather than widening the page. */
-  #build { max-width: 100%; text-overflow: ellipsis; }
+  /* The build's title, which can be long: on a phone it is cut short
+   * rather than widening the page. */
+  #build {
+    display: inline-flex; align-items: center; max-width: 100%; min-width: 0;
+    text-align: left; font-weight: 600;
+  }
+  #buildTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #build .caret { margin-left: .5em; color: var(--muted); font-weight: 400; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
   /* xterm.js draws inside; this is the frame around it. It scrolls
@@ -196,7 +201,7 @@
     background: var(--bg); color: var(--fg);
   }
   #gallery::backdrop { background: rgba(0, 0, 0, .45); }
-  #gallery .ghead {
+  #gallery .ghead, #dtsDialog .ghead {
     position: sticky; top: 0; display: flex; gap: 8px; align-items: center;
     padding: 12px 14px; background: var(--bg); border-bottom: 1px solid var(--line);
   }
@@ -233,6 +238,36 @@
     border: 1px solid var(--line); color: var(--muted);
   }
   #galleryEmpty { color: var(--muted); padding: 16px 0; }
+  /* The hardware: one row per device the build was linked with. */
+  #hardware { margin: 16px 0 0; font-size: 13px; }
+  #hardware summary { cursor: pointer; font-weight: 600; }
+  #hardware summary span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  #hwList h3 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 10px 0 2px; }
+  table.hw { border-collapse: collapse; width: 100%; margin: 6px 0 8px; }
+  table.hw td, table.hw th {
+    text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.hw th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  table.hw code { font-size: 12px; }
+  table.hw tr { cursor: pointer; }
+  table.hw tr:hover td { background: var(--term-bg); }
+  table.hw td.dev small { display: block; color: var(--muted); }
+  table.hw td.page { color: var(--muted); }
+  table.hw tr.touch td.page { color: var(--fg); }
+  table.hw tr.touch td.page::before { content: "\25CF"; color: var(--accent); margin-right: .4em; }
+  #dtsDialog {
+    width: min(860px, calc(100vw - 24px)); height: min(85vh, 900px); padding: 0;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg);
+  }
+  #dtsDialog[open] { display: flex; flex-direction: column; }
+  #dtsDialog::backdrop { background: rgba(0, 0, 0, .45); }
+  #dtsDialog .ghead { justify-content: space-between; }
+  #dtsText {
+    margin: 0; padding: 10px 14px; overflow: auto; flex: 1;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--term-bg);
+  }
+  #dtsText mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; }
   /* A phone: less margin, and terminals that leave room for the controls. */
   @media (max-width: 600px) {
     body { padding: 12px 10px; }
@@ -240,6 +275,7 @@
     #terms.pair #term, #terms.pair #term2 { height: min(260px, 40vh); }
     .grow { flex-direction: column; gap: 2px; }
     .gmeta { max-width: none; justify-content: flex-start; padding: 0 6px; }
+    table.hw th:nth-child(3), table.hw td:nth-child(3) { display: none; }
   }
 </style>
 </head>
@@ -270,12 +306,11 @@
   </p>
 
   <div class="bar">
-    <label for="build" class="sr">Build</label>
-    <select id="build" disabled>
-      <option>loading…</option>
-    </select>
-    <button id="browse" disabled aria-haspopup="dialog"
-            title="Every build, with search, by category (Ctrl+K)">Samples&hellip;</button>
+    <!-- The build, and the way to choose another: the gallery below. -->
+    <button id="build" class="picker" disabled aria-haspopup="dialog"
+            title="Choose a build: every one, by category, with search (Ctrl+K)">
+      <span id="buildTitle">Loading builds…</span><span aria-hidden="true" class="caret">&#9662;</span>
+    </button>
     <button id="run" class="primary" disabled>Run</button>
     <button id="stop" disabled>Stop</button>
     <button id="clear">Clear</button>
@@ -371,6 +406,20 @@
       <tbody id="threads"></tbody>
     </table>
   </div>
+  <!-- What the build has, from its devicetree and its link map: see
+       scripts/devices.py and DESIGN.md D16. -->
+  <details id="hardware">
+    <summary>Hardware <span>what this build has, from its devicetree</span></summary>
+    <div id="hwList"></div>
+    <button id="viewDts" type="button">View zephyr.dts</button>
+  </details>
+  <dialog id="dtsDialog" aria-labelledby="dtsTitle">
+    <div class="ghead">
+      <strong id="dtsTitle"></strong>
+      <button id="dtsClose" type="button">Close</button>
+    </div>
+    <pre id="dtsText"></pre>
+  </dialog>
   <p class="sub" id="help">
     Pick a build and press Run. Where a build reads the keyboard, click the
     output first, then type; <kbd>Ctrl</kbd>+<kbd>C</kbd> goes to the guest.
@@ -382,9 +431,10 @@
     build, which changes how fast it goes and not what it does; one that
     waits for you keeps to your time. Choosing another build stops the one
     running. A build with a lesson shows it above the output, one step at a
-    time. <em>Samples…</em> (<kbd>Ctrl</kbd>+<kbd>K</kbd>) lists every build
-    by category, with a search box and links to each sample's source and
-    documentation. The address follows the build, and a lesson's step, so
+    time. Press the build's name (or <kbd>Ctrl</kbd>+<kbd>K</kbd>) to choose
+    another: every build by category, with a search box and links to each
+    sample's source and documentation. Under the output, Hardware lists the
+    devices the build has, from its own devicetree. The address follows the build, and a lesson's step, so
     it can be copied to share.
   </p>
   <!-- Every build, by category, with search: see the gallery below. -->
@@ -463,7 +513,10 @@ let stopping = false;
 /* The manifest's categories, in order: the menu's groups and the
  * gallery's sections. */
 let categories = [];
-const browseEl = document.getElementById('browse');
+/* The build shown, by name. The gallery is the only way to choose one
+ * (selectBuild); the button above the output says which it is. */
+let selected = null;
+const buildTitleEl = document.getElementById('buildTitle');
 /* What the status line says while a run goes, which a download's progress
  * stands in for until the build has arrived. */
 let runStatus = 'Running.';
@@ -496,7 +549,7 @@ themeEl.onchange = () => {
  * there. Replaced, not pushed: choosing builds is not navigating. Anything
  * else in it, such as ?uplink=, is kept. */
 function showInAddress() {
-  const build = builds.find((b) => b.name === buildEl.value);
+  const build = builds.find((b) => b.name === selected);
   if (!build) return;
   const params = new URLSearchParams(location.search);
   params.set('build', build.name);
@@ -564,21 +617,6 @@ async function loadManifest() {
     builds = manifest.builds;
     showBuildInfo(manifest.site);
     categories = manifest.categories ?? [];
-    buildEl.innerHTML = '';
-    /* Grouped by what each build is about, in the manifest's order of
-     * categories (scripts/apps.py works them out from each app's path), so
-     * the Bluetooth pairs are not under the kernel samples. */
-    for (const cat of categories) {
-      const group = document.createElement('optgroup');
-      group.label = cat;
-      for (const b of builds.filter((x) => x.category === cat)) {
-        const opt = document.createElement('option');
-        opt.value = b.name;
-        opt.textContent = b.title;
-        group.append(opt);
-      }
-      if (group.children.length) buildEl.append(group);
-    }
     /* A link to a build wins over the build last chosen here; either only
      * if this site still has it. A lesson's link can name its step, counted
      * from one as the lesson counts. */
@@ -586,15 +624,17 @@ async function loadManifest() {
     const has = (name) => builds.some((b) => b.name === name);
     const linked = params.get('build');
     const last = remembered.get('build');
+    /* Otherwise the first build of the first category: Hello world. */
     if (has(linked)) {
-      buildEl.value = linked;
+      selected = linked;
       const step = Number(params.get('step'));
       if (Number.isInteger(step) && step >= 1) lessonSteps.set(linked, step - 1);
     } else if (has(last)) {
-      buildEl.value = last;
+      selected = last;
+    } else {
+      selected = (builds.find((b) => b.category === categories[0]) ?? builds[0]).name;
     }
     buildEl.disabled = false;
-    browseEl.disabled = false;
     runEl.disabled = false;
     showSelected();
   } catch (err) {
@@ -796,39 +836,41 @@ const linkEl = document.getElementById('link');
  * clock with it; its terminal types into it by board number. */
 const peer = makeTerminal(peerTermEl, () => worker, 1);
 
-/* The virtual board.
- *
- * The pins are the ones in boards/wasm/wasm_node/wasm_node.dts and the two
- * have to agree: there is nothing to derive this from at run time, because
- * the guest does not describe its own devicetree to the page.
- *
- * Buttons are wired active low with a pull-up, so not-pressed is 1. Each
+/* The virtual board, as the build's own devicetree describes it: its
+ * gpio-leds and gpio-keys nodes, which pin each is on, what it is called
+ * and how it is wired (scripts/devices.py). The page used to carry its own
+ * copy of wasm_node.dts's pins, which had to be kept in step by hand. Each
  * part is named by its devicetree label, the name a sample prints; the alias
  * a sample looks it up by is in the tooltip.
  */
-const BOARD = {
-  leds: [{ pin: 0, label: 'LED 0', alias: 'led0' }, { pin: 1, label: 'LED 1', alias: 'led1' },
-         { pin: 2, label: 'LED 2', alias: 'led2' }, { pin: 3, label: 'LED 3', alias: 'led3' }],
-  buttons: [{ pin: 4, label: 'Button 0', alias: 'sw0' },
-            { pin: 5, label: 'Button 1', alias: 'sw1' }],
-};
-
 const ledEls = new Map();
 const ledGroup = document.createElement('div');
 const buttonGroup = document.createElement('div');
 const tiltGroup = document.createElement('div');
+let boardDrawn = null;
 
 function buildBoard() {
   boardEl.innerHTML = '';
   ledGroup.className = buttonGroup.className = tiltGroup.className = 'group';
   boardEl.append(ledGroup, buttonGroup, tiltGroup);
   buildTilt();
-  for (const led of BOARD.leds) {
+}
+
+/* The LEDs and buttons of one board's devicetree. Redrawn only when a build
+ * describes them differently from the last. */
+function drawParts(dt) {
+  const key = JSON.stringify([dt?.leds, dt?.buttons]);
+  if (key === boardDrawn) return;
+  boardDrawn = key;
+  ledGroup.replaceChildren();
+  buttonGroup.replaceChildren();
+  ledEls.clear();
+  for (const led of dt?.leds ?? []) {
     const part = document.createElement('div');
     part.className = 'part';
     const dot = document.createElement('div');
     dot.className = 'led';
-    dot.title = led.alias;
+    dot.title = `${led.alias ?? led.node}: gpio0 pin ${led.pin}`;
     dot.setAttribute('role', 'img');
     dot.dataset.label = led.label;
     dot.setAttribute('aria-label', `${led.label} off`);
@@ -838,13 +880,13 @@ function buildBoard() {
     ledGroup.append(part);
     ledEls.set(led.pin, dot);
   }
-  for (const button of BOARD.buttons) {
+  for (const button of dt?.buttons ?? []) {
     const part = document.createElement('div');
     part.className = 'part';
     const el = document.createElement('button');
     el.className = 'btn';
     el.textContent = button.label;
-    el.title = `${button.alias}: hold to press`;
+    el.title = `${button.alias ?? button.node}: gpio0 pin ${button.pin}, hold to press`;
     el.dataset.pin = button.pin;
     /* A finger holds a button for tens of milliseconds at the least, and
      * gpio-keys debounces for 30 ms, so a press shorter than that is one
@@ -861,8 +903,10 @@ function buildBoard() {
     let nextAt = 0;           // the earliest the next edge may go out
     const send = (down) => {
       el.classList.toggle('down', down);
-      /* Physical level: pulled up, so pressing pulls it to 0. */
-      worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level: down ? 0 : 1 });
+      /* The physical level: an active-low button, pulled up as the
+       * devicetree says, reads 0 while pressed. */
+      const level = down !== button.activeLow ? 1 : 0;
+      worker?.postMessage({ type: 'gpio-in', port: 0, pin: button.pin, level });
     };
     const press = (down) => {
       if (down === isDown) return;
@@ -1178,8 +1222,11 @@ let hciWriter = null;
 /* Show what the selected build needs, before it runs as well as while: the
  * controls appearing only after Run moved everything under the pointer. */
 function showSelected() {
-  const build = builds.find((b) => b.name === buildEl.value);
+  const build = builds.find((b) => b.name === selected);
   if (!build) return;
+  buildTitleEl.textContent = build.title;
+  drawParts((build.boards?.[0] ?? build).devicetree);
+  showHardware(build);
   const uses = build.uses ?? [];
   ledGroup.hidden = !uses.includes('leds');
   buttonGroup.hidden = !uses.includes('buttons');
@@ -1325,7 +1372,7 @@ function showLink() {
 }
 
 async function start() {
-  const build = builds.find((b) => b.name === buildEl.value);
+  const build = builds.find((b) => b.name === selected);
   if (!build) return;
   currentBuild = build;
   stopping = false;
@@ -1338,7 +1385,7 @@ async function start() {
   const flashImage = await loadFlash(build.name);
   /* The menu stays live while the flash loads. Another choice, or Stop, in
    * that moment means this run is no longer wanted. */
-  if (buildEl.value !== build.name || stopping) {
+  if (selected !== build.name || stopping) {
     setRunning(false);
     return;
   }
@@ -1471,12 +1518,13 @@ buildBoard();
 loadManifest();
 /* A new selection stops what is running and clears what it left behind,
  * so the page never shows one build's output under another's name. */
-buildEl.onchange = () => {
-  remembered.set('build', buildEl.value);
+function selectBuild(name) {
+  selected = name;
+  remembered.set('build', name);
   stopRun({ detach: true });
   resetBoard();
   showSelected();
-};
+}
 
 runEl.onclick = start;
 
@@ -1495,7 +1543,7 @@ function galleryText(b) {
 function galleryRow(b) {
   const row = document.createElement('div');
   row.className = 'grow';
-  row.setAttribute('aria-current', String(b.name === buildEl.value));
+  row.setAttribute('aria-current', String(b.name === selected));
   const pick = document.createElement('button');
   pick.type = 'button';
   pick.className = 'gpick';
@@ -1570,14 +1618,11 @@ function openGallery() {
 
 function chooseBuild(name) {
   galleryEl.close();
-  if (buildEl.value !== name) {
-    buildEl.value = name;
-    buildEl.dispatchEvent(new Event('change'));
-  }
+  if (selected !== name) selectBuild(name);
   runEl.focus();
 }
 
-browseEl.onclick = openGallery;
+buildEl.onclick = openGallery;
 gallerySearchEl.oninput = () => { showGallery(); galleryEl.scrollTop = 0; };
 /* Enter takes the first match, so typing a name and Enter is enough. */
 gallerySearchEl.onkeydown = (e) => {
@@ -1597,11 +1642,162 @@ document.addEventListener('keydown', (e) => {
   openGallery();
 });
 
+/* The hardware: every device the build was linked with, from its
+ * devicetree (scripts/devices.py), and what the page does with it. A row
+ * whose part can be touched here is marked; a click on a row shows its
+ * node in the build's zephyr.dts. */
+const hardwareEl = document.getElementById('hardware');
+const hwListEl = document.getElementById('hwList');
+const dtsDialogEl = document.getElementById('dtsDialog');
+const dtsTitleEl = document.getElementById('dtsTitle');
+const dtsTextEl = document.getElementById('dtsText');
+hardwareEl.open = remembered.get('hardwareOpen') ?? true;
+hardwareEl.addEventListener('toggle', () => remembered.set('hardwareOpen', hardwareEl.open));
+
+/* What the page does with a device: [words, whether it can be touched]. */
+function onThePage(dev, build, unit) {
+  const uses = unit.uses ?? [];
+  const peer = build.boards ? 'the other board' : null;
+  switch (dev.compat) {
+    case 'wasm,host-uart':
+      return dev.roles.includes('console')
+        ? [uses.includes('terminal') ? 'the terminal: type into it' : 'the terminal', uses.includes('terminal')]
+        : ['the Bluetooth controller\'s UART', false];
+    case 'zephyr,bt-hci-uart':
+      return build.hci ? ['a real controller: Connect controller', true]
+        : [`the radio the page emulates, to ${peer ?? 'nobody'}`, false];
+    case 'zephyr,gpio-emul': {
+      const parts = [uses.includes('leds') && 'the LEDs', uses.includes('buttons') && 'the buttons']
+        .filter(Boolean);
+      return parts.length ? [parts.join(' and '), true] : ['GPIO, with nothing on the page', false];
+    }
+    case 'gpio-keys': return ['the buttons, as input events', uses.includes('buttons')];
+    case 'gpio-leds': return ['the LEDs, through the LED API', uses.includes('leds')];
+    case 'bosch,bmi160': return ['the Tilt pad', uses.includes('accel')];
+    case 'bosch,bmp581': return ['a pressure sensor, read as the host sets it', false];
+    case 'zephyr,i2c-emul-controller': return ['the bus the sensors are on', false];
+    case 'wasm,host-sensor-bridge': return ['how the page sets what the sensors read', false];
+    case 'wasm,host-display': return ['the display', true];
+    case 'wasm,host-input': return ['touch and keys on the display', true];
+    case 'zephyr,lvgl-pointer-input': return ['touch, for LVGL', false];
+    case 'zephyr,sim-flash': return ['flash, kept in this browser: Erase flash', true];
+    case 'zephyr,sim-eeprom': return ['an EEPROM in memory', false];
+    case 'wasm,host-entropy': return ['random numbers, from a fixed seed so runs repeat', false];
+    case 'wasm,host-ethernet':
+      return [peer ? `the wire to ${peer}`
+        : build.lan ? 'the page\'s own network' : 'a network', false];
+    default: return ['', false];
+  }
+}
+
+function hardwareTable(build, unit) {
+  const table = document.createElement('table');
+  table.className = 'hw';
+  table.innerHTML = '<thead><tr><th>device</th><th>compatible</th><th>chosen as</th>' +
+    '<th>on the page</th></tr></thead>';
+  const body = document.createElement('tbody');
+  for (const dev of unit.devicetree.devices) {
+    const tr = document.createElement('tr');
+    const [words, touch] = onThePage(dev, build, unit);
+    if (touch) tr.className = 'touch';
+    tr.dataset.node = dev.name;
+    tr.title = `${dev.path}: show it in zephyr.dts`;
+    const name = document.createElement('td');
+    name.className = 'dev';
+    const code = document.createElement('code');
+    code.textContent = dev.name;
+    const also = [...new Set([...dev.aliases, ...dev.labels])];
+    const small = document.createElement('small');
+    small.textContent = [also.join(', '), dev.on && `on ${dev.on}`].filter(Boolean).join(' · ');
+    name.append(code, small);
+    const compat = document.createElement('td');
+    const c = document.createElement('code');
+    c.textContent = dev.compat ?? '';
+    compat.append(c);
+    const chosen = document.createElement('td');
+    chosen.textContent = dev.roles.join(', ');
+    const page = document.createElement('td');
+    page.className = 'page';
+    page.textContent = words;
+    tr.append(name, compat, chosen, page);
+    tr.onclick = () => showDts(unit, dev.name);
+    body.append(tr);
+  }
+  table.append(body);
+  return table;
+}
+
+function showHardware(build) {
+  const units = build.boards ?? [build];
+  hardwareEl.hidden = !units.every((u) => u.devicetree);
+  hwListEl.replaceChildren();
+  if (hardwareEl.hidden) return;
+  for (const unit of units) {
+    if (build.boards) {
+      const h = document.createElement('h3');
+      h.textContent = unit.label;
+      hwListEl.append(h);
+    }
+    hwListEl.append(hardwareTable(build, unit));
+  }
+}
+
+/* The build's devicetree source, as it was built, with one node marked:
+ * its line through the line that closes it. */
+const dtsCache = new Map();
+async function showDts(unit, node) {
+  dtsTitleEl.textContent = `${unit.label ? `${unit.label}: ` : ''}zephyr.dts`;
+  dtsTextEl.textContent = 'Loading…';
+  if (!dtsDialogEl.open) dtsDialogEl.showModal();
+  let text = dtsCache.get(unit.dts);
+  if (text === undefined) {
+    try {
+      const res = await fetch(`./${unit.dts}`);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      text = await res.text();
+      dtsCache.set(unit.dts, text);
+    } catch (err) {
+      dtsTextEl.textContent = `Could not load ${unit.dts}: ${err.message}`;
+      return;
+    }
+  }
+  const lines = text.split('\n');
+  let from = -1, to = -1;
+  if (node) {
+    const esc = node.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const open = new RegExp(`^\\s*(?:[\\w-]+:\\s*)*${esc}\\s*\\{`);
+    from = lines.findIndex((l) => open.test(l));
+    if (from >= 0) {
+      let depth = 0;
+      for (to = from; to < lines.length; to++) {
+        depth += (lines[to].match(/\{/g) ?? []).length - (lines[to].match(/\}/g) ?? []).length;
+        if (depth <= 0) break;
+      }
+    }
+  }
+  dtsTextEl.replaceChildren();
+  if (from < 0) {
+    dtsTextEl.textContent = text;
+    dtsTextEl.scrollTop = 0;
+    return;
+  }
+  const mark = document.createElement('mark');
+  mark.textContent = `${lines.slice(from, to + 1).join('\n')}\n`;
+  dtsTextEl.append(`${lines.slice(0, from).join('\n')}\n`, mark, lines.slice(to + 1).join('\n'));
+  mark.scrollIntoView({ block: 'center' });
+}
+document.getElementById('viewDts').onclick = () => {
+  const build = builds.find((b) => b.name === selected);
+  if (build) showDts((build.boards ?? [build])[0], null);
+};
+document.getElementById('dtsClose').onclick = () => dtsDialogEl.close();
+dtsDialogEl.addEventListener('click', (e) => { if (e.target === dtsDialogEl) dtsDialogEl.close(); });
+
 /* The output, taken away as text: everything printed, with the escape
  * sequences already dropped (the same text the checks read). A pair gives
  * both boards', each under its name. */
 function outputText() {
-  const pair = builds.find((b) => b.name === buildEl.value)?.boards ?? null;
+  const pair = builds.find((b) => b.name === selected)?.boards ?? null;
   const text = (l) => l.lines.join('\n').replace(/\s+$/, '') + '\n';
   if (!pair) return text(log);
   return `== ${pair[0].label} ==\n${text(log)}\n== ${pair[1].label} ==\n${text(peer.log)}`;
@@ -1626,7 +1822,7 @@ document.getElementById('saveOut').onclick = () => {
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([outputText()], { type: 'text/plain' }));
-  a.download = `${buildEl.value || 'zephyr'}-${stamp}.txt`;
+  a.download = `${selected || 'zephyr'}-${stamp}.txt`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
@@ -1699,7 +1895,7 @@ clearEl.onclick = () => {
   }
 };
 eraseFlashEl.onclick = async () => {
-  await eraseFlash(buildEl.value);
+  await eraseFlash(selected);
   statusEl.textContent = 'Flash erased: the next run starts on a new board.';
 };
 pauseEl.onclick = () =>
@@ -1707,7 +1903,7 @@ pauseEl.onclick = () =>
 stepEl.onclick = () => worker?.postMessage({ type: 'step', count: 1 });
 backEl.onclick = () => worker?.postMessage({ type: 'back' });
 speedEl.onchange = () => {
-  speeds.set(buildEl.value, speedEl.value);
+  speeds.set(selected, speedEl.value);
   remembered.set('speeds', Object.fromEntries(speeds));
   worker?.postMessage({ type: 'speed', timeScale: Number(speedEl.value) });
 };
@@ -1796,6 +1992,7 @@ window.zephyrDisplay = () => screenInfo;
 window.zephyrEraseFlash = (name) => eraseFlash(name);
 window.zephyrFlashSaved = () => flashSaving;
 window.zephyrBuilds = () => builds;
+window.zephyrSelected = () => selected;
 window.zephyrLeds = () => {
   let v = 0;
   for (const [pin, el] of ledEls) if (el.classList.contains('on')) v |= 1 << pin;

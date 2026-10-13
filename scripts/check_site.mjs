@@ -125,6 +125,12 @@ for (const b of manifest.builds) {
       console.log(`  FAIL  ${u.name}: the manifest says ${u.size} bytes, the file has ${bytes}`);
       failures++;
     }
+    /* And the board it was built with, which the page's Hardware shows. */
+    const dts = u.dts && await stat(path.join(site, u.dts)).catch(() => null);
+    if (!u.devicetree?.devices?.length || !dts) {
+      console.log(`  FAIL  ${u.name}: no devicetree in the manifest, or no ${u.dts ?? 'dts file'}`);
+      failures++;
+    }
   }
   if (!manifest.categories?.includes(b.category)) {
     console.log(`  FAIL  ${b.name}: category ${b.category} is not one the page lists`);
