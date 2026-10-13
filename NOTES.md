@@ -2216,3 +2216,14 @@ There is no DK in CI. A pty with the emulated controller behind it checked
 comes, which kept the process from exiting; a `tty.ReadStream` does not),
 and the browser check gives the page a Web Serial port whose far end is
 `bt.mjs`.
+
+### Tick 91 — over the air
+
+Checked on the DK. In Chrome, "Bluetooth heart rate on a real radio",
+connected to the DK's `if02` port with hardware flow control, initialised
+Bluetooth and advertised; nRF Connect on a phone found "Zephyr Heartrate
+Sensor", connected to it, and received heart-rate notifications. The rate
+counts up from 91 to 159 and wraps to 90, and the battery level counts
+down: both are the sample's own simulation, one step a second. That is
+Zephyr's host in a browser tab, talking to a phone through a real
+controller, and the last of Phase 7.

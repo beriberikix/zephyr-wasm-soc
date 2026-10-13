@@ -305,7 +305,11 @@ the controller took it to 102 with the GATT write pair, which pairs and
 encrypts before it writes, and five more pairs the controller already
 supported took it to 109: the health thermometer, `central` with a cycling
 sensor, and three beacons for the observer. Many links per controller took
-it to 111 with `central_multilink` and `peripheral_identity`.
+it to 111 with `central_multilink` and `peripheral_identity`. The last
+step put a real controller behind the same UART, through Web Serial: an
+nRF54L15-DK, with a phone connecting to `peripheral_hr` in a tab over the
+air. That ends Phase 7, and adds nothing to the score, which counts the
+sample already.
 
 **A browser test, 28 September.** A browser agent ran every build on the
 live site as a person would, from a written test plan, and read the output
@@ -1022,12 +1026,13 @@ wants an interrupt-driven UART, and this port's UART was polled.
       `peripheral_identity` makes an identity per connection and advertises
       each while its other links stay up; `central_multilink` connects to
       every one, 61 links between the two boards.
-- [ ] **Web Serial to a real HCI dongle**, behind the same UART (`DESIGN.md`
-      D8p). Implemented, and awaiting a check on the hardware: the page's
-      "Bluetooth heart rate on a real radio" runs `peripheral_hr` against an
-      nRF54L15-DK running upstream's `hci_uart`, through Web Serial, and
-      `run.mjs --hci-tty` does the same from a terminal. CI checks the page's
-      side with a stand-in port.
+- [x] **Web Serial to a real HCI dongle**, behind the same UART (`DESIGN.md`
+      D8p). The page's "Bluetooth heart rate on a real radio" runs
+      `peripheral_hr` against an nRF54L15-DK running upstream's `hci_uart`,
+      through Web Serial, and `run.mjs --hci-tty` does the same from a
+      terminal. Checked on the DK: a phone running nRF Connect connected to
+      the tab over the air and received its heart-rate notifications. CI
+      checks the page's side with a stand-in port.
 
 ## Two levers on the score that no phase covers
 
