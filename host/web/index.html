@@ -78,6 +78,9 @@
   #overrides[hidden] { display: none; }
   #uplinkRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
   #uplinkRow[hidden] { display: none; }
+  #hciRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px;
+            flex-wrap: wrap; }
+  #hciRow[hidden] { display: none; }
   #uplink { flex: 1; min-width: 0; max-width: 22em; font: inherit; padding: 2px 4px; }
   #status {
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
@@ -224,6 +227,19 @@
            title="A relay that speaks v86's wsproxy protocol, such as RootlessRelay. Used from the next Run.">Uplink</label>
     <input id="uplink" type="url" placeholder="ws://127.0.0.1:8086/"
            spellcheck="false" autocomplete="off" aria-label="relay URL">
+  </div>
+  <!-- For a build whose Bluetooth controller is a real one on a serial port,
+       through Web Serial: an nRF54L15-DK running upstream's
+       samples/bluetooth/hci_uart, for one. See host/hci_serial.mjs. -->
+  <div id="hciRow" hidden>
+    <button id="hciConnect" type="button"
+            title="Choose the controller's serial port. On an nRF54L15-DK that is the second one (if02, ttyACM1 on Linux).">Connect controller</button>
+    <label for="hciFlow">Flow control</label>
+    <select id="hciFlow" aria-label="flow control">
+      <option value="hardware">hardware</option>
+      <option value="none">none</option>
+    </select>
+    <span id="hciState">No controller.</span>
   </div>
   <div id="status">Loading the list of builds…</div>
 
@@ -854,7 +870,7 @@ function showText(el, text) {
 
 function setRunning(state) {
   running = state;
-  runEl.disabled = state;
+  runEl.disabled = state || !canRun(currentBuild);
   stopEl.disabled = !state;
   eraseFlashEl.disabled = state;
   /* The kernel panel stays up after a run, to be read, but there is
@@ -967,6 +983,14 @@ const uplinkEl = document.getElementById('uplink');
 uplinkEl.value = new URLSearchParams(location.search).get('uplink') ?? remembered.get('uplink') ?? '';
 uplinkEl.onchange = () => remembered.set('uplink', uplinkEl.value.trim());
 const uplinkUrl = () => (/^wss?:\/\/\S+$/.test(uplinkEl.value.trim()) ? uplinkEl.value.trim() : null);
+/* The real Bluetooth controller's row, and its port when one is open (see
+ * hciPump below). */
+const hciRowEl = document.getElementById('hciRow');
+const hciConnectEl = document.getElementById('hciConnect');
+const hciFlowEl = document.getElementById('hciFlow');
+const hciStateEl = document.getElementById('hciState');
+let hciPort = null;
+let hciWriter = null;
 
 /* Show what the selected build needs, before it runs as well as while: the
  * controls appearing only after Run moved everything under the pointer. */
@@ -1016,6 +1040,8 @@ function showSelected() {
   overridesEl.hidden = notes.length === 0;
   overridesEl.textContent = notes.join('. ');
   uplinkRowEl.hidden = !build.uplink;
+  hciRowEl.hidden = build.hci !== 'serial';
+  if (!running) runEl.disabled = !canRun(build);
   showLesson(build);
   statusEl.textContent = 'Ready.';
 }
@@ -1166,6 +1192,7 @@ async function start() {
     else if (data.type === 'gpio') showLeds(data.values);
     else if (data.type === 'out') t.write(new Uint8Array(data.buf));
     else if (data.type === 'err') t.note(data.text, data.line);
+    else if (data.type === 'hci-tx') hciWrite(data.bytes);
     else if (data.type === 'power' && data.board === 1) {
       /* A client plugged in after its server, as a person would, at a
        * stated time into the server's run. */
@@ -1197,7 +1224,9 @@ async function start() {
   };
 
   showSelected();
-  statusEl.textContent = build.uplink && uplinkUrl()
+  statusEl.textContent = build.hci === 'serial'
+    ? 'Running, with a real Bluetooth controller.'
+    : build.uplink && uplinkUrl()
     ? 'Running, on a real network through the relay.'
     : build.lan
       ? 'Running, on the simulated network the page plays.'
@@ -1238,6 +1267,7 @@ async function start() {
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
       lan: build.lan ?? null,
+      hci: build.hci ?? null,
     });
   }
   /* The board starts as the tilt pad has it: level, unless someone tilted
@@ -1261,6 +1291,63 @@ buildEl.onchange = () => {
 };
 
 runEl.onclick = start;
+
+/* A real Bluetooth controller, through Web Serial (host/hci_serial.mjs).
+ * The page holds the port, since that is where Web Serial is, and passes
+ * bytes between it and the Worker: what the controller sends goes to the
+ * board as it arrives, what the board writes goes to the controller. The
+ * port stays open between runs; the board's H4 driver throws away anything
+ * stale when it starts, and resets the controller. */
+
+/* Whether this build can run now: one that needs a controller waits for
+ * one. */
+function canRun(build) {
+  return !build || build.hci !== 'serial' || hciPort !== null;
+}
+
+function hciWrite(bytes) {
+  hciWriter?.write(bytes).catch((err) => { hciStateEl.textContent = `Write failed: ${err.message}`; });
+}
+
+async function hciPump(port) {
+  const reader = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      /* Only to a board that is running: before it starts, the bytes are
+       * stale, and its driver would throw them away anyway. */
+      if (value?.length && running && worker) worker.postMessage({ type: 'hci-rx', bytes: value });
+    }
+  } catch (err) {
+    hciStateEl.textContent = `Controller lost: ${err.message}`;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+hciConnectEl.onclick = async () => {
+  if (!('serial' in navigator)) {
+    hciStateEl.textContent = 'Web Serial needs Chrome or Edge.';
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    if (hciPort) {
+      hciWriter?.releaseLock();
+      await hciPort.close().catch(() => {});
+      hciPort = hciWriter = null;
+    }
+    await port.open({ baudRate: 1000000, flowControl: hciFlowEl.value });
+    hciPort = port;
+    hciWriter = port.writable.getWriter();
+    hciStateEl.textContent = `Connected, ${hciFlowEl.value} flow control.`;
+    hciPump(port);
+  } catch (err) {
+    hciStateEl.textContent = `Not connected: ${err.message}`;
+  }
+  if (!running) runEl.disabled = !canRun(currentBuild);
+};
 stopEl.onclick = () => stopRun();
 /* Clear, then hand the keyboard back to whatever the running build reads
  * it from: the button took focus away from it. */

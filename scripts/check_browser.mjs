@@ -307,6 +307,47 @@ const fail = (name, why, extra = '') => {
   if (extra) for (const l of extra.split('\n').slice(-12)) console.log(`        | ${l}`);
 };
 
+/* Web Serial, as a build with a real Bluetooth controller uses it
+ * (host/hci_serial.mjs), with no controller on this machine: the port the
+ * page is given is the emulated controller, bt.mjs, from the site itself.
+ * So the page's side of it all runs -- choosing the port, opening it, and
+ * the bytes both ways between the port and the board -- and only the far
+ * end is not real. What the board sent first, and how the port was opened,
+ * are kept for the check below. */
+await page.addInitScript(() => {
+  const seen = { first: [], opened: null };
+  window.zephyrSerialMock = seen;
+  Object.defineProperty(navigator, 'serial', { configurable: true, value: {
+    async requestPort() {
+      const { BtController } = await import('./bt.mjs');
+      const ctl = new BtController({ address: [0x66, 0x55, 0x44, 0x33, 0x22, 0x11], seed: 9 });
+      const t0 = performance.now();
+      const now = () => BigInt(Math.round((performance.now() - t0) * 1e6));
+      let out = null;
+      let pump = null;
+      return {
+        async open(o) {
+          seen.opened = o;
+          pump = setInterval(() => {
+            ctl.advance(now());
+            if (ctl.s.rx.length && out) { out.enqueue(Uint8Array.from(ctl.s.rx)); ctl.s.rx = []; }
+          }, 5);
+        },
+        readable: new ReadableStream({ start(c) { out = c; } }),
+        writable: new WritableStream({
+          write(chunk) {
+            for (const b of chunk) {
+              if (seen.first.length < 4) seen.first.push(b);
+              ctl.fromHost(b, now());
+            }
+          },
+        }),
+        async close() { clearInterval(pump); },
+      };
+    },
+  } });
+});
+
 await page.goto(base, { waitUntil: 'load' });
 
 /* The menu is built from the manifest, so its contents are the first thing
@@ -424,9 +465,56 @@ async function checkPair(b) {
 }
 
 let skipped = 0;
+/* A build with a real Bluetooth controller, through the mock above: the
+ * row shows for it alone, Run waits for a port, the port is opened as
+ * hci_uart wants it, and the board's host gets its controller through it,
+ * starting with an HCI Reset. */
+async function checkSerialHci(b) {
+  const plain = manifest.builds.find((x) => !x.boards && !x.hci);
+  await page.selectOption('#build', plain.name);
+  if (!(await page.evaluate(() => document.getElementById('hciRow').hidden))) {
+    throw new Error(`the controller row shows for ${plain.name}`);
+  }
+  await page.selectOption('#build', b.name);
+  const [shown, waits] = await page.evaluate(() => [!document.getElementById('hciRow').hidden,
+                                                    document.getElementById('run').disabled]);
+  if (!shown) throw new Error('the controller row is hidden');
+  if (!waits) throw new Error('Run is enabled before a controller is connected');
+  await page.click('#hciConnect');
+  await page.waitForFunction(() => !document.getElementById('run').disabled, null, { timeout: 10_000 });
+  const opened = await page.evaluate(() => window.zephyrSerialMock.opened);
+  if (opened?.baudRate !== 1000000 || opened?.flowControl !== 'hardware') {
+    throw new Error(`the port was opened with ${JSON.stringify(opened)}`);
+  }
+  await page.click('#run');
+  for (const want of b.expect ?? []) {
+    try {
+      await page.waitForFunction((w) => window.zephyrOutput().includes(w), want,
+                                 { timeout: 60_000, polling: 250 });
+    } catch {
+      throw Object.assign(new Error(`never printed ${JSON.stringify(want)}`),
+                          { extra: await page.evaluate(() => window.zephyrOutput()) });
+    }
+  }
+  const first = await page.evaluate(() => window.zephyrSerialMock.first);
+  if (first.join(',') !== '1,3,12,0') throw new Error(`the board's first bytes were ${first}, not HCI Reset`);
+  await page.click('#stop');
+  await page.waitForFunction(() => !window.zephyrRunning(), null, { timeout: 15_000 });
+  return 'connected through Web Serial, reset the controller and advertised';
+}
+
 for (const b of manifest.builds) {
   if (b.boards) {
     await checkPair(b);
+    continue;
+  }
+  if (b.hci === 'serial') {
+    try {
+      console.log(`  ok    ${b.name.padEnd(8)} ${b.title}: ${await checkSerialHci(b)}`);
+    } catch (err) {
+      fail(b.name, err.message, err.extra);
+      await page.click('#stop', { timeout: 1000 }).catch(() => {});
+    }
     continue;
   }
   /* A build on a real network, through the relay given, typed into the

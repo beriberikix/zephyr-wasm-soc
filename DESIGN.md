@@ -1287,8 +1287,26 @@ Encryption Change that changes nothing. Keys that differ drop the link with
 a MIC failure, as on a real one. The bytes on the emulated air are not
 enciphered: nothing could listen to them.
 
-The same UART is also what a real controller would sit behind: Web Serial to
-an HCI dongle replaces the far end, not the guest.
+**A real controller.** The far end of the same UART can instead be a real
+controller on a serial port (`host/hci_serial.mjs`): the guest, its H4 driver
+and the sample are exactly as in a pair. `SerialHci` gives the core what
+`BtController` does, but it is only a wire: the board's bytes go to the
+port when the run loop next yields, and the port's come down to the guest at
+the UART's line rate from the moment they arrive. The page holds the port,
+through Web Serial (Chrome and Edge), and passes bytes to and from the
+Worker; run.mjs opens a tty (`--hci-tty`). A real controller answers in real
+time, so the board follows the wall clock while it waits, as an uplinked one
+does (D5b), and its entropy is the machine's: upstream's `hci_uart` has no
+public address, so Zephyr's host makes a random static one from the board's
+entropy, and a fixed seed would give every tab the same address.
+
+The controller it was built for is an nRF54L15-DK running upstream's
+`samples/bluetooth/hci_uart`, which puts H4 on `uart20` at 1 Mbaud with
+hardware flow control. That reaches USB as the DK's *second* port (`if02`,
+`/dev/ttyACM1` on Linux); the first does not answer. Its Read BD_ADDR
+answers 00:00:00:00:00:00. CI has no DK, so the browser check gives the page
+a Web Serial port whose far end is `bt.mjs`, which exercises everything but
+the radio.
 
 ### D9. The link goes through the clang driver, which runs wasm-opt
 

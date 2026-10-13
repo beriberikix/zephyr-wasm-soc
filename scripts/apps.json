@@ -1002,6 +1002,26 @@
       ]
     },
     {
+      "name": "hr-dk",
+      "kind": "sample",
+      "title": "Bluetooth heart rate on a real radio",
+      "hint": "Zephyr's Bluetooth host in this tab, over the H4 driver, to a real controller on a serial port: an nRF54L15-DK running upstream's samples/bluetooth/hci_uart. Press Connect controller and choose the DK's second port (if02; ttyACM1 on Linux), then Run. A phone running nRF Connect sees \"Zephyr Heartrate Sensor\", connects, and gets a reading every second. Needs Chrome or Edge, for Web Serial.",
+      "upstream": true,
+      "clock": "paced",
+      "endless": true,
+      "hci": "serial",
+      "max_time_ms": 600000,
+      "ci_max_time_ms": 3000,
+      "app": "zephyr/samples/bluetooth/peripheral_hr",
+      "args": [
+        "-DSNIPPET=wasm-bt"
+      ],
+      "expect": [
+        "Bluetooth initialized",
+        "Advertising successfully started"
+      ]
+    },
+    {
       "name": "hr",
       "kind": "sample",
       "title": "Bluetooth heart rate (two boards)",

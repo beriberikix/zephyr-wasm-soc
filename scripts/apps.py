@@ -126,6 +126,18 @@ def load(module: str) -> list[dict]:
             if extra or "-DSNIPPET=wasm-ethernet" not in b.get("args", []):
                 sys.exit(f"apps.json: {b['name']} has an uplink, so it is built with "
                          "-DSNIPPET=wasm-ethernet and nothing else")
+        if b.get("hci"):
+            # A board whose Bluetooth controller is a real one on a serial
+            # port (host/hci_serial.mjs), which the page reaches through Web
+            # Serial. It is built as upstream ships it with the radio's UART
+            # turned on, and nothing else.
+            if b["hci"] != "serial":
+                sys.exit(f"apps.json: {b['name']}: hci is \"serial\" or absent")
+            if "boards" in b:
+                sys.exit(f"apps.json: {b['name']}: a real controller is for one board, not a pair")
+            if b.get("args", []) != ["-DSNIPPET=wasm-bt"]:
+                sys.exit(f"apps.json: {b['name']} has a real controller, so it is built with "
+                         "-DSNIPPET=wasm-bt and nothing else")
         if b.get("lan"):
             # A board on the host's own network (host/lan.mjs), which plays
             # the Linux host the samples expect at 192.0.2.2. Its args are

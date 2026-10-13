@@ -53,7 +53,8 @@ own files for the sample where it has them (below). A pair's boards
 may also be given build arguments that put two boards on one network, and
 nothing else:
 - the link itself (`-DSNIPPET=wasm-ethernet`), or for a Bluetooth pair the
-  radio (`-DSNIPPET=wasm-bt`);
+  radio (`-DSNIPPET=wasm-bt`), which is also all a single board with a real
+  controller on a serial port is given;
 - addresses (`NET_CONFIG_MY_*` and `PEER_*`);
 - sample-specific peers, ports and resource names;
 - switching off an IP version the other board does not speak.
@@ -1021,7 +1022,12 @@ wants an interrupt-driven UART, and this port's UART was polled.
       `peripheral_identity` makes an identity per connection and advertises
       each while its other links stay up; `central_multilink` connects to
       every one, 61 links between the two boards.
-- [ ] **Web Serial to a real HCI dongle**, behind the same UART.
+- [ ] **Web Serial to a real HCI dongle**, behind the same UART (`DESIGN.md`
+      D8p). Implemented, and awaiting a check on the hardware: the page's
+      "Bluetooth heart rate on a real radio" runs `peripheral_hr` against an
+      nRF54L15-DK running upstream's `hci_uart`, through Web Serial, and
+      `run.mjs --hci-tty` does the same from a terminal. CI checks the page's
+      side with a stand-in port.
 
 ## Two levers on the score that no phase covers
 

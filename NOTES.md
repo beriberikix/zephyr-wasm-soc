@@ -2193,3 +2193,26 @@ from before nanopb was recorded. Hiding `grpc_tools` reproduces it locally:
 nanopb's `protoc` wrapper fails on its first file. Both workflows now
 install one list, `scripts/requirements-ci.txt`, so they cannot drift
 apart again.
+
+### Tick 90 — a real controller
+
+The far end of the board's HCI UART can now be a real controller on a
+serial port. Nothing in the guest changed: `host/hci_serial.mjs` is a wire
+standing where the emulated controller stands, the page holds the port
+through Web Serial and passes bytes to and from the Worker, and run.mjs
+opens a tty with `--hci-tty`. A board with one follows the wall clock and
+takes the machine's entropy.
+
+The controller is an nRF54L15-DK running upstream's `hci_uart`, flashed
+from Zephyr main a8cdae5. Checked from Python first: H4 is on the DK's
+second USB port (`if02`, `/dev/ttyACM1`), at 1 Mbaud, with or without
+hardware flow control; HCI Reset answers `04 0e 04 01 03 0c 00`, and Read
+BD_ADDR answers all zeros, so the board's host makes up a random static
+identity. That is why the board takes real entropy here: from the fixed
+seed, every tab would choose the same address.
+
+There is no DK in CI. A pty with the emulated controller behind it checked
+`--hci-tty` (Node's `fs` streams block a thread on a tty read until a byte
+comes, which kept the process from exiting; a `tty.ReadStream` does not),
+and the browser check gives the page a Web Serial port whose far end is
+`bt.mjs`.
