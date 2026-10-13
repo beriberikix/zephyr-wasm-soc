@@ -79,6 +79,14 @@ log, including what did not work. `BRIEF.md` is the original task.
   and stream writes; `central_multilink` holds 61 links to
   `peripheral_identity`; `central` connects to a cycling sensor; `observer`
   hears `beacon`, `broadcaster`, `ibeacon` and `eddystone`.
+* A real radio, too: "Bluetooth heart rate on a real radio" runs
+  `peripheral_hr` in the tab against a real controller through Web Serial
+  (Chrome or Edge). Flash upstream's `hci_uart` onto an nRF54L15-DK
+  (`west build -b nrf54l15dk/nrf54l15/cpuapp zephyr/samples/bluetooth/hci_uart`,
+  then `west flash`), press Connect controller and choose the DK's second
+  port (`if02`; `/dev/ttyACM1` on Linux), and Run; nRF Connect on a phone sees
+  "Zephyr Heartrate Sensor". From a terminal:
+  `node host/run.mjs --hci-tty /dev/ttyACM1 <peripheral_hr's zephyr.wasm>`.
 * The host's own network: lwIP at `192.0.2.2`, on the board's clock, plays
   the Linux host upstream's networking samples expect. It offers DHCP, DNS,
   SNTP, TFTP, HTTP, a WebSocket echo, CoAP over TCP, FTP, an MQTT broker

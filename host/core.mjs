@@ -274,6 +274,9 @@ export class Host {
    * Its public address comes from the seed, as the board's MAC does, so
    * the two boards of a pair differ and every run is the same. */
   btController() {
+    /* A real controller on a serial port, when the run was given one
+     * (host/hci_serial.mjs). */
+    if (!this.bt && this.opts.hciLink) this.bt = this.opts.hciLink;
     if (!this.bt) {
       const seed = (this.opts.seed ?? DEFAULT_SEED) >>> 0;
       this.bt = new BtController({
@@ -1619,7 +1622,7 @@ export class Host {
         }
         return true;
       }
-      if (this.opts.interactive || this.opts.uplink) {
+      if (this.opts.interactive || this.opts.uplink || this.opts.hciLink) {
         /* Let input arrive before deciding there is nothing to do. For a
          * board on an uplink (host/uplink.mjs) that input is frames from
          * the relay, as well as keys. */

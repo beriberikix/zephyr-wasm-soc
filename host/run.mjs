@@ -15,6 +15,7 @@ import process from 'node:process';
 import { Host, DEFAULT_SEED } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
+import { SerialHci } from './hci_serial.mjs';
 import { Lan, lanStamp } from './lan.mjs';
 import { startServices, httpGet } from './lan_services.mjs';
 import { describeWait, threadState } from './threads.mjs';
@@ -54,6 +55,8 @@ function parseArgs(argv) {
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
     else if (a === '--peer-stdin') opts.peerStdin = argv[++i];
     else if (a === '--uplink') opts.uplink = argv[++i];
+    else if (a === '--hci-tty') opts.hciTty = argv[++i];
+    else if (a === '--hci-no-flow') opts.hciNoFlow = true;
     else if (a === '--lan') opts.lan = true;
     else if (a === '--lan-dial') { opts.lan = true; opts.lanDial.push(parseDial(argv[++i])); }
     else if (a === '--lan-ping') { opts.lan = true; opts.lanPing.push(parsePing(argv[++i])); }
@@ -72,6 +75,14 @@ function parseArgs(argv) {
   if (opts.uplink) {
     /* Real peers follow the wall clock (host/uplink.mjs). */
     opts.clock = 'paced';
+  }
+  if (opts.hciTty) {
+    /* So does a real controller (host/hci_serial.mjs). And the board's
+     * entropy is the machine's: the host makes the controller's address
+     * from it when the controller has none, and a fixed seed would give
+     * every run the same one. */
+    opts.clock = 'paced';
+    opts.trueRandom = true;
   }
   opts.inputScript.sort((a, b) => (a.atNs < b.atNs ? -1 : a.atNs > b.atNs ? 1 : 0));
   return opts;
@@ -224,6 +235,12 @@ function usage() {
                      RootlessRelay (ENABLE_WSS=false npx rootlessrelay, then
                      ws://127.0.0.1:8086/). Needs a build with the
                      wasm-ethernet snippet. Implies --paced
+  --hci-tty <device> the board's Bluetooth controller is a real one on this
+                     serial port, at 1 Mbaud with hardware flow control,
+                     such as an nRF54L15-DK running samples/bluetooth/
+                     hci_uart (/dev/ttyACM1 there). Needs a build with the
+                     wasm-bt snippet. Implies --paced and --true-random
+  --hci-no-flow      with --hci-tty, no hardware flow control
   --lan              plug the board into the host's own network instead:
                      192.0.2.2 answers ARP, ping, DHCP, DNS, SNTP, TFTP,
                      HTTP, WebSocket (9001), CoAP over TCP (5683), FTP,
@@ -357,6 +374,28 @@ if (opts.peer) {
   if (opts.peerStdin) peer.type(fs.readFileSync(opts.peerStdin));
 }
 
+/* --hci-tty: the serial port is set up and open before the board boots,
+ * so the H4 driver's first HCI Reset has somewhere to go. */
+let hciStream = null;
+if (opts.hciTty) {
+  try {
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('stty', [process.platform === 'darwin' ? '-f' : '-F', opts.hciTty,
+                          '1000000', 'raw', '-echo', opts.hciNoFlow ? '-crtscts' : 'crtscts']);
+    const fd = fs.openSync(opts.hciTty, 'r+');
+    opts.hciLink = new SerialHci((bytes) => fs.writeSync(fd, bytes));
+    /* A tty stream, not an fs one: an fs read on a tty blocks a thread
+     * until a byte comes, and would keep Node from exiting at the end. */
+    const tty = await import('node:tty');
+    hciStream = new tty.ReadStream(fd);
+    hciStream.on('data', (chunk) => opts.hciLink.deliver(chunk));
+    process.stderr.write(`[hci: ${opts.hciTty}]\n`);
+  } catch (err) {
+    process.stderr.write(`--hci-tty: ${err.message}\n`);
+    process.exit(2);
+  }
+}
+
 const host = new Host(nodePlatform, opts);
 /* --uplink: the link is open before the board boots, so its first DHCP
  * discover has somewhere to go. */
@@ -398,8 +437,10 @@ if (peer) {
 } else {
   process.exitCode = await host.run();
 }
-/* An open socket would keep Node running after the board has finished. */
+/* An open socket or port would keep Node running after the board has
+ * finished. */
 uplink?.close();
+hciStream?.destroy();
 if (opts.flashFile) nodePlatform.flashChanged(host.flashImage());
 
 /* What the guest wrote through semihosting, such as a CTF trace. Only names

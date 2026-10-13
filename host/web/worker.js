@@ -18,6 +18,7 @@
 import { Host } from './core.mjs';
 import { Pair } from './pair.mjs';
 import { connectUplink } from './uplink.mjs';
+import { SerialHci } from './hci_serial.mjs';
 import { Lan, lanStamp } from './lan.mjs';
 import { startServices, httpGet } from './lan_services.mjs';
 
@@ -177,6 +178,13 @@ self.onmessage = async (event) => {
     return;
   }
 
+  if (msg.type === 'hci-rx') {
+    /* Bytes from a real Bluetooth controller, which the page reads from the
+     * serial port it holds. */
+    host?.opts.hciLink?.deliver(msg.bytes);
+    return;
+  }
+
   if (msg.type === 'input-events') {
     /* Touch and keys from the page. Queued and applied at the top of the
      * driver loop, like a button press. */
@@ -230,6 +238,16 @@ self.onmessage = async (event) => {
     lan: msg.uplink ? null : msg.lan || null,
   };
   if (opts.uplink) opts.clock = 'paced';
+  if (msg.hci === 'serial') {
+    /* A real Bluetooth controller, on the serial port the page holds
+     * (host/hci_serial.mjs). It answers in real time, so the board is
+     * paced; and its entropy is the machine's, since the host makes the
+     * controller's address from it when the controller has none, and a
+     * fixed seed would give every tab the same one. */
+    opts.hciLink = new SerialHci((bytes) => self.postMessage({ type: 'hci-tx', bytes }, [bytes.buffer]));
+    opts.clock = 'paced';
+    opts.trueRandom = true;
+  }
   lastFlash = msg.flashImage ?? null;
 
   /* Stop has to reach a run that is already going, and the only safe moment
