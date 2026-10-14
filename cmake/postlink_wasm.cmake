@@ -60,7 +60,10 @@ function(wasm_add_asyncify_step)
   # instrumented by the old ones.
   set_property(TARGET ${logical_target_for_zephyr_elf} APPEND PROPERTY LINK_DEPENDS
     ${WASM_MODULE_DIR}/scripts/check_sections_wasm.py
-    ${WASM_MODULE_DIR}/scripts/instrument_safepoints.py)
+    ${WASM_MODULE_DIR}/scripts/instrument_safepoints.py
+    ${WASM_MODULE_DIR}/scripts/describe_board.py
+    ${WASM_MODULE_DIR}/scripts/devices.py
+    ${WASM_MODULE_DIR}/scripts/wasmsection.py)
 
   # First, before anything is built on top of the link: every iterable list
   # must be laid out in upstream's order and between its bounds, or it is
@@ -103,6 +106,25 @@ function(wasm_add_asyncify_step)
       COMMENT "Asyncify: ${KERNEL_ELF_NAME} -> zephyr.wasm"
     )
   endif()
+
+  # Last: the module says what it is, in a custom section runtimes skip, so
+  # that one dropped onto the page needs nothing beside it. See DESIGN.md
+  # D17. The application is named by its place in the west workspace, never
+  # by a path on this machine.
+  add_custom_command(
+    TARGET ${logical_target_for_zephyr_elf} POST_BUILD
+    COMMAND ${PYTHON_EXECUTABLE} ${WASM_MODULE_DIR}/scripts/describe_board.py
+            --wasm ${wasm_out}
+            --edt ${PROJECT_BINARY_DIR}/edt.pickle
+            --map $<TARGET_FILE_DIR:${logical_target_for_zephyr_elf}>/${logical_target_for_zephyr_elf}.map
+            --config ${DOTCONFIG}
+            --dts ${PROJECT_BINARY_DIR}/zephyr.dts
+            --zephyr-base ${ZEPHYR_BASE}
+            --app ${APPLICATION_SOURCE_DIR}
+            --topdir "${WEST_TOPDIR}"
+            --version "${KERNEL_VERSION_STRING}"
+    COMMENT "Describing the board in zephyr.wasm"
+  )
 endfunction()
 
 cmake_language(DEFER DIRECTORY "${ZEPHYR_BASE}" CALL wasm_add_asyncify_step)
