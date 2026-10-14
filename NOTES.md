@@ -2261,3 +2261,15 @@ in as well as against `.config`.
 The build menu went too. The gallery had made it redundant, and the
 browser checks, which all drove the menu, now press the build's name and
 its row in the gallery, as a person does.
+
+### Tick 94 — bring your own
+
+A `zephyr.wasm` of one's own can be dropped onto the page. The page needed
+to know what such a build is before running it, and a dropped file has
+nothing beside it, so every build now says what it is: a custom section,
+`zephyr.board`, appended after Asyncify, with the description Tick 93's
+Hardware section is built from, the controls it wants, its devicetree
+source and the application's name. The site reads the same section back
+when it is staged, so there is one description and not two. A module built
+before this still runs; its imports say enough to guess its controls,
+since wasm-ld drops every host import the image never calls.

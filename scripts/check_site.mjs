@@ -111,6 +111,28 @@ async function distinctColours(file) {
   return seen.size;
 }
 
+/* The JSON in a module's zephyr.board custom section, or null. */
+function boardSection(data) {
+  const uleb = (pos) => {
+    let n = 0, shift = 0, byte;
+    do { byte = data[pos++]; n += (byte & 0x7f) * 2 ** shift; shift += 7; } while (byte & 0x80);
+    return [n, pos];
+  };
+  let pos = 8;
+  while (pos < data.length) {
+    const id = data[pos];
+    const [size, body] = uleb(pos + 1);
+    if (id === 0) {
+      const [len, at] = uleb(body);
+      if (data.subarray(at, at + len).toString() === 'zephyr.board') {
+        try { return JSON.parse(data.subarray(at + len, body + size).toString()); } catch { return null; }
+      }
+    }
+    pos = body + size;
+  }
+  return null;
+}
+
 const manifest = JSON.parse(await readFile(path.join(site, 'manifest.json'), 'utf8'));
 let failures = 0;
 let skipped = 0;
@@ -123,6 +145,13 @@ for (const b of manifest.builds) {
     const bytes = (await stat(path.join(site, u.path))).size;
     if (u.size !== bytes) {
       console.log(`  FAIL  ${u.name}: the manifest says ${u.size} bytes, the file has ${bytes}`);
+      failures++;
+    }
+    /* Every module describes itself (DESIGN.md D17): a zephyr.board
+     * section, which a build dropped onto the page is read by. */
+    const desc = boardSection(await readFile(path.join(site, u.path)));
+    if (!desc?.devicetree?.devices?.length || !Array.isArray(desc.uses)) {
+      console.log(`  FAIL  ${u.name}: no zephyr.board section with its devices`);
       failures++;
     }
     /* And the board it was built with, which the page's Hardware shows. */

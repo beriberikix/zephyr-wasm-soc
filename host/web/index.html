@@ -238,6 +238,16 @@
     border: 1px solid var(--line); color: var(--muted);
   }
   #galleryEmpty { color: var(--muted); padding: 16px 0; }
+  .gown { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .gown button { padding: 2px 10px; font-size: 13px; margin: 0 4px; }
+  .grow .remove { padding: 0 8px; font-size: 12px; }
+  /* A file held over the page. */
+  #dropOverlay {
+    position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border: 3px dashed var(--accent); font-size: 18px; pointer-events: none;
+  }
+  #dropOverlay[hidden] { display: none; }
   /* The hardware: one row per device the build was linked with. */
   #hardware { margin: 16px 0 0; font-size: 13px; }
   #hardware summary { cursor: pointer; font-weight: 600; }
@@ -444,8 +454,16 @@
              aria-label="search builds" autocomplete="off" spellcheck="false">
       <button id="galleryClose" type="button" aria-label="close">Close</button>
     </div>
+    <!-- A build of one's own: see addOwn() and DESIGN.md D17. -->
+    <div class="gown">
+      Built your own app for <code>wasm_node</code>?
+      <button id="openOwn" type="button">Open your zephyr.wasm&hellip;</button>
+      or drop it anywhere on the page.
+      <input id="ownFile" type="file" accept=".wasm,application/wasm" hidden>
+    </div>
     <div id="galleryList"></div>
   </dialog>
+  <div id="dropOverlay" hidden><span>Drop a <code>zephyr.wasm</code> built for <code>wasm_node</code></span></div>
   <!-- Which build this is, from the manifest: see loadManifest(). -->
   <footer id="buildinfo"></footer>
 </main>
@@ -617,6 +635,8 @@ async function loadManifest() {
     builds = manifest.builds;
     showBuildInfo(manifest.site);
     categories = manifest.categories ?? [];
+    /* The person's own builds, kept in this browser, come first. */
+    await loadOwn();
     /* A link to a build wins over the build last chosen here; either only
      * if this site still has it. A lesson's link can name its step, counted
      * from one as the lesson counts. */
@@ -1225,7 +1245,10 @@ function showSelected() {
   const build = builds.find((b) => b.name === selected);
   if (!build) return;
   buildTitleEl.textContent = build.title;
-  drawParts((build.boards?.[0] ?? build).devicetree);
+  /* A build of one's own that does not describe itself is still this
+   * board: it gets the parts every other build's devicetree has. */
+  drawParts((build.boards?.[0] ?? build).devicetree ??
+            builds.find((b) => b.devicetree)?.devicetree);
   showHardware(build);
   const uses = build.uses ?? [];
   ledGroup.hidden = !uses.includes('leds');
@@ -1316,22 +1339,29 @@ lessonNextEl.addEventListener('click', () =>
  * guest never waits for any of this. Storage can be unavailable -- a
  * private window, blocked site data -- and then every run starts erased,
  * which is what it did before this existed. */
-function flashStore(mode, fn) {
+/* Two stores: each build's flash, and builds of the person's own
+ * (addOwn). Version 2 added the second; an upgrade keeps the first. */
+function idbStore(store, mode, fn) {
   return new Promise((resolve) => {
     let open;
-    try { open = indexedDB.open('zephyr-wasm', 1); } catch { resolve(undefined); return; }
-    open.onupgradeneeded = () => open.result.createObjectStore('flash');
+    try { open = indexedDB.open('zephyr-wasm', 2); } catch { resolve(undefined); return; }
+    open.onupgradeneeded = () => {
+      for (const name of ['flash', 'builds']) {
+        if (!open.result.objectStoreNames.contains(name)) open.result.createObjectStore(name);
+      }
+    };
     open.onerror = () => resolve(undefined);
     open.onsuccess = () => {
       try {
-        const tx = open.result.transaction('flash', mode);
-        const req = fn(tx.objectStore('flash'));
+        const tx = open.result.transaction(store, mode);
+        const req = fn(tx.objectStore(store));
         tx.oncomplete = () => resolve(req.result);
         tx.onerror = tx.onabort = () => resolve(undefined);
       } catch { resolve(undefined); }
     };
   });
 }
+const flashStore = (mode, fn) => idbStore('flash', mode, fn);
 const loadFlash = (name) => flashStore('readonly', (s) => s.get(name));
 /* Saves are chained, so they land in order and the browser check can wait
  * for the last one before reloading. */
@@ -1457,7 +1487,7 @@ async function start() {
   };
 
   showSelected();
-  runStatus = build.hci === 'serial'
+  runStatus = build.hci === 'serial' && hciPort
     ? 'Running, with a real Bluetooth controller.'
     : build.uplink && uplinkUrl()
     ? 'Running, on a real network through the relay.'
@@ -1494,7 +1524,7 @@ async function start() {
   } else {
     w.postMessage({
       type: 'run',
-      url: `./${first.path}`,
+      url: first.url ?? `./${first.path}`,
       interactive,
       maxTimeMs: build.max_time_ms ?? 60_000,
       clock: build.clock ?? 'virtual',
@@ -1502,7 +1532,9 @@ async function start() {
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
       lan: build.lan ?? null,
-      hci: build.hci ?? null,
+      /* One's own radio build may run without a real controller, on the
+       * one the page emulates, with nobody to hear it. */
+      hci: build.hci && (hciPort || !build.hciOptional) ? build.hci : null,
     });
   }
   /* The board starts as the tilt pad has it: level, unless someone tilted
@@ -1580,6 +1612,15 @@ function galleryRow(b) {
       : 'The application, as this site built it';
     meta.append(a);
   }
+  if (b.own) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.textContent = 'Remove';
+    remove.title = 'Forget this build in this browser';
+    remove.onclick = () => removeOwn(b.name);
+    meta.append(remove);
+  }
   row.append(pick, meta);
   return row;
 }
@@ -1587,7 +1628,8 @@ function galleryRow(b) {
 function showGallery() {
   const words = gallerySearchEl.value.toLowerCase().split(/\s+/).filter(Boolean);
   const match = (b) => words.every((w) => galleryText(b).includes(w));
-  const sections = [['Lessons', builds.filter((b) => b.lesson?.length)],
+  const sections = [['Your builds', builds.filter((b) => b.own)],
+                    ['Lessons', builds.filter((b) => b.lesson?.length)],
                     ...categories.map((c) => [c, builds.filter((b) => b.category === c)])];
   galleryListEl.replaceChildren();
   let shown = 0;
@@ -1640,6 +1682,151 @@ document.addEventListener('keydown', (e) => {
   if (document.activeElement?.closest?.('#terms, #screen')) return;
   e.preventDefault();
   openGallery();
+});
+
+/* Builds of one's own. A zephyr.wasm built for wasm_node with this module
+ * carries a description of itself, in a custom section (scripts/
+ * describe_board.py): its devices, which controls it wants, whether it has
+ * a network or a radio, its devicetree. Dropped onto the page, or opened
+ * from the gallery, it becomes an entry like the site's own, and is kept in
+ * this browser. One built before builds described themselves still runs,
+ * with its controls guessed from what it imports. DESIGN.md D17. */
+const OWN_MAX = 5;
+const ownFileEl = document.getElementById('ownFile');
+const dropOverlayEl = document.getElementById('dropOverlay');
+
+/* A short, stable name for a file's bytes: FNV-1a, which needs no secure
+ * context, unlike crypto.subtle. */
+function ownHash(bytes) {
+  let h = 0x811c9dc5;
+  const view = new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i++) h = Math.imul(h ^ view[i], 0x01000193);
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+async function describeOwn(bytes) {
+  const mod = await WebAssembly.compile(bytes);
+  const imports = WebAssembly.Module.imports(mod).filter((i) => i.module === 'zephyr_host');
+  if (!imports.length) throw new Error('it imports nothing from zephyr_host, so it is not a build for wasm_node');
+  const section = WebAssembly.Module.customSections(mod, 'zephyr.board')[0];
+  if (section) return JSON.parse(new TextDecoder().decode(section));
+  const names = new Set(imports.map((i) => i.name));
+  return {
+    undescribed: true,
+    uses: [...(names.has('gpio_out') ? ['leds', 'buttons'] : []),
+           ...(names.has('storage_attach') ? ['flash'] : []),
+           ...(names.has('sensor_poll') ? ['accel'] : []), 'terminal'],
+    display: names.has('display_attach'),
+    network: names.has('eth_send'),
+    radio: false,
+    devicetree: null,
+  };
+}
+
+function ownBuild(rec, desc) {
+  const app = desc.app ?? rec.fileName.replace(/\.wasm$/, '');
+  const leaf = app.split('/').pop();
+  const needs = [desc.radio && 'real radio', desc.network && 'network', desc.display && 'screen',
+                 desc.uses.includes('terminal') && 'keyboard'].filter(Boolean);
+  return {
+    name: rec.name, own: true, kind: 'sample', category: 'Your builds',
+    title: `${leaf} (yours)`, app,
+    hint: desc.undescribed
+      ? `Your ${rec.fileName}. It does not describe its board, so the page guessed what it ` +
+        'has from what it imports; rebuilding it with this module adds the description.'
+      : `Your build of \`${app}\`${desc.zephyr ? `, Zephyr ${desc.zephyr}` : ''}. It runs ` +
+        `in real time until you press Stop${desc.radio ? '; Connect controller for a real ' +
+        'radio, or run it on the page\'s own with nobody to hear it' : ''}.`,
+    clock: 'paced', interactive: true, endless: true, max_time_ms: 1_800_000,
+    url: URL.createObjectURL(new Blob([rec.bytes], { type: 'application/wasm' })),
+    size: rec.bytes.byteLength,
+    uses: desc.uses,
+    display: desc.display || undefined,
+    lan: desc.network || undefined,
+    hci: desc.radio ? 'serial' : undefined,
+    hciOptional: desc.radio || undefined,
+    devicetree: desc.devicetree ?? undefined,
+    dtsText: desc.dts ?? undefined,
+    needs,
+  };
+}
+
+/* What this browser kept, newest first. */
+async function loadOwn() {
+  const recs = (await idbStore('builds', 'readonly', (s) => s.getAll())) ?? [];
+  recs.sort((a, b) => b.added - a.added);
+  for (const rec of recs.slice(0, OWN_MAX)) {
+    try { builds.push(ownBuild(rec, await describeOwn(rec.bytes))); } catch { /* skip it */ }
+  }
+}
+
+function forgetOwn(name) {
+  const gone = builds.find((b) => b.name === name);
+  if (gone?.url) URL.revokeObjectURL(gone.url);
+  builds = builds.filter((b) => b.name !== name);
+}
+
+async function addOwn(file) {
+  try {
+    const bytes = await file.arrayBuffer();
+    const desc = await describeOwn(bytes);
+    const rec = { name: `own:${ownHash(bytes)}`, fileName: file.name, bytes, added: Date.now() };
+    await idbStore('builds', 'readwrite', (s) => s.put(rec, rec.name));
+    forgetOwn(rec.name);
+    const build = ownBuild(rec, desc);
+    builds.unshift(build);
+    /* Only the newest are kept. */
+    const own = builds.filter((b) => b.own);
+    for (const old of own.slice(OWN_MAX)) {
+      await idbStore('builds', 'readwrite', (s) => s.delete(old.name));
+      forgetOwn(old.name);
+    }
+    if (galleryEl.open) galleryEl.close();
+    selectBuild(build.name);
+    statusEl.textContent = desc.undescribed
+      ? `Added ${build.title}, which does not describe its board. Press Run.`
+      : `Added ${build.title}. Press Run.`;
+    runEl.focus();
+  } catch (err) {
+    statusEl.textContent = `That is not a zephyr.wasm for wasm_node: ${err.message}`;
+  }
+}
+
+async function removeOwn(name) {
+  await idbStore('builds', 'readwrite', (s) => s.delete(name));
+  forgetOwn(name);
+  if (selected === name) {
+    selectBuild((builds.find((b) => b.category === categories[0]) ?? builds[0]).name);
+  }
+  showGallery();
+}
+
+document.getElementById('openOwn').onclick = () => ownFileEl.click();
+ownFileEl.onchange = () => {
+  const file = ownFileEl.files[0];
+  ownFileEl.value = '';
+  if (file) addOwn(file);
+};
+/* A file dragged over the page: say where it can go, and take it. */
+let dragDepth = 0;
+const carriesFile = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+document.addEventListener('dragenter', (e) => {
+  if (!carriesFile(e)) return;
+  dragDepth++;
+  dropOverlayEl.hidden = false;
+});
+document.addEventListener('dragleave', (e) => {
+  if (!carriesFile(e)) return;
+  if (--dragDepth <= 0) { dragDepth = 0; dropOverlayEl.hidden = true; }
+});
+document.addEventListener('dragover', (e) => { if (carriesFile(e)) e.preventDefault(); });
+document.addEventListener('drop', (e) => {
+  if (!carriesFile(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  dropOverlayEl.hidden = true;
+  const file = e.dataTransfer.files[0];
+  if (file && builds.length) addOwn(file);
 });
 
 /* The hardware: every device the build was linked with, from its
@@ -1749,7 +1936,7 @@ async function showDts(unit, node) {
   dtsTitleEl.textContent = `${unit.label ? `${unit.label}: ` : ''}zephyr.dts`;
   dtsTextEl.textContent = 'Loading…';
   if (!dtsDialogEl.open) dtsDialogEl.showModal();
-  let text = dtsCache.get(unit.dts);
+  let text = unit.dtsText ?? dtsCache.get(unit.dts);
   if (text === undefined) {
     try {
       const res = await fetch(`./${unit.dts}`);
@@ -1837,7 +2024,7 @@ document.getElementById('saveOut').onclick = () => {
 /* Whether this build can run now: one that needs a controller waits for
  * one. */
 function canRun(build) {
-  return !build || build.hci !== 'serial' || hciPort !== null;
+  return !build || build.hci !== 'serial' || hciPort !== null || !!build.hciOptional;
 }
 
 function hciWrite(bytes) {
@@ -1993,6 +2180,7 @@ window.zephyrEraseFlash = (name) => eraseFlash(name);
 window.zephyrFlashSaved = () => flashSaving;
 window.zephyrBuilds = () => builds;
 window.zephyrSelected = () => selected;
+window.zephyrRemoveOwn = (name) => removeOwn(name);
 window.zephyrLeds = () => {
   let v = 0;
   for (const [pin, el] of ledEls) if (el.classList.contains('on')) v |= 1 << pin;

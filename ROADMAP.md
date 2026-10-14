@@ -1178,8 +1178,13 @@ boards in lockstep. The page is where it trailed.
       map says, since the devicetree alone is nearly the same for every
       build. A row opens the build's `zephyr.dts` at its node. The single
       build button, which opens the gallery, replaced the menu beside it.
-- [ ] **Bring your own build.** Drop a `zephyr.wasm` built for `wasm_node`
-      onto the page, as kartben's takes an ELF.
+- [x] **Bring your own build** (`DESIGN.md` D17). A `zephyr.wasm` built
+      for `wasm_node` with this module describes itself, in a custom
+      section the last post-link step writes, so dropped onto the page it
+      gets its controls, its network or radio and its Hardware without
+      anything beside it. It is kept in this browser. One built before
+      builds described themselves runs with its controls guessed from its
+      imports.
 - [ ] **A thread timeline.** Context switches over time, from the hook the
       thread table already uses, which step back can scrub through.
 - [ ] **Run it from Zephyr's documentation.** A sample's page links here,

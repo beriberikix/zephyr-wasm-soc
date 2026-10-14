@@ -349,6 +349,27 @@ printed: a typo corrected with Backspace, a command recalled with the up
 arrow, the philosophers' table redrawn in place, LED 0 lit only while
 Button 0 is held.
 
+### Your own build
+
+Build your own application for this board as any sample is built, with this
+module, and drop its `zephyr.wasm` onto the page (or press the
+build's name and "Open your zephyr.wasm…"):
+
+```sh
+zephyr-wasm/scripts/build.sh build-mine path/to/my_app   # then drop build-mine/zephyr/zephyr.wasm
+```
+
+Every build describes itself, in a
+`zephyr.board` section of its module: the devices it was linked with,
+whether it has a shell, a display, flash, the network or a radio, its
+devicetree, and the application's name within the west workspace, never a
+path on your machine. So the page gives it the LEDs, buttons, tilt pad,
+display or keyboard it has, the page's own network if it has Ethernet, and
+for a Bluetooth build the choice of a real controller or the page's own.
+It runs in real time until Stop, and is kept in this browser (the last
+five) until you remove it from the gallery. Two-board builds of your own
+are not supported.
+
 ### A real network
 
 A tab cannot open raw sockets, so a board reaches a real network through a

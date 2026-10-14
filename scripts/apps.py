@@ -26,6 +26,7 @@ import sys
 
 import devices
 import sweeplib
+import wasmsection
 
 HERE = pathlib.Path(__file__).resolve().parent
 APPS = HERE / "apps.json"
@@ -59,10 +60,8 @@ def counted(builds: list[dict]) -> set[str]:
     return ours | theirs
 
 
+# What a build may show on the page; devices.uses() says which a build has.
 USES = {"leds", "buttons", "flash", "terminal", "accel"}
-# The Kconfig symbol each use is checked against, where it is not its own name.
-SYMBOL = {"terminal": "SHELL, UART_INTERRUPT_DRIVEN or CONSOLE_SUBSYS",
-          "accel": "SENSOR_WASM_BRIDGE"}
 
 
 # What a pair's board may be built with, beyond upstream's own files. The
@@ -266,64 +265,49 @@ def load(module: str) -> list[dict]:
     return builds
 
 
+def described(wasm: pathlib.Path) -> dict | None:
+    """What a built module says it is: the zephyr.board section that
+    scripts/describe_board.py writes into every build (DESIGN.md D17)."""
+    if not wasm.exists():
+        return None
+    payload = wasmsection.read(wasm, devices.SECTION)
+    return json.loads(payload) if payload else None
+
+
 def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
-    """What the page shows against what the build has.
+    """What the page shows against what the build has, as the build itself
+    says (its zephyr.board section, from its configuration and the devices
+    it was linked with).
 
     Display, flash, the terminal and the tilt control must match both ways: a
     canvas or an Erase button that does nothing is as wrong as one that is
-    missing. GPIO only one way,
-    because input drivers pull it in for builds with nothing to show on the
-    LED strip. The LEDs and the buttons are shown separately: blinky has no
-    use for the buttons.
+    missing. LEDs and buttons only one way: both come with the GPIO
+    controller, which input drivers pull in for builds with nothing to show,
+    and blinky has no use for the buttons. A radio or network snippet has to
+    have made its device.
     """
     problems = []
     for b in (u for entry in builds for u in units(entry)):
-        config = topdir / f"build-site-{b['name']}" / "zephyr" / ".config"
-        if not config.exists():
-            problems.append(f"{b['name']}: no {config}")
+        wasm = topdir / f"build-site-{b['name']}" / "zephyr" / "zephyr.wasm"
+        desc = described(wasm)
+        if desc is None:
+            problems.append(f"{b['name']}: {wasm} has no {devices.SECTION} section")
             continue
-        on = set()
-        lines = config.read_text().splitlines()
-        # Bluetooth's H4 driver takes UART interrupts too, on the HCI UART;
-        # that is not the console's.
-        h4 = "CONFIG_BT_UART=y" in lines
-        for line in lines:
-            # A build reads what is typed if it has a shell, takes UART
-            # interrupts itself (echo_bot) or reads the console subsystem.
-            for sym, use in (("GPIO", "gpio"), ("FLASH", "flash"), ("DISPLAY", "display"),
-                             ("SHELL", "terminal"), ("UART_INTERRUPT_DRIVEN", "terminal"),
-                             ("CONSOLE_SUBSYS", "terminal"),
-                             ("SENSOR_WASM_BRIDGE", "accel")):
-                if line == f"CONFIG_{sym}=y" and not (h4 and sym == "UART_INTERRUPT_DRIVEN"):
-                    on.add(use)
+        has = set(desc["uses"]) | ({"display"} if desc["display"] else set())
         shown = set(b.get("uses", [])) | ({"display"} if b.get("display") else set())
         for use in ("flash", "display", "terminal", "accel"):
-            if (use in on) != (use in shown):
-                problems.append(f"{b['name']}: CONFIG_{SYMBOL.get(use, use.upper())} is "
-                                f"{'set' if use in on else 'unset'} but the page "
-                                f"{'does not show' if use in on else 'shows'} it")
+            if (use in has) != (use in shown):
+                problems.append(f"{b['name']}: the build {'has' if use in has else 'has no'} "
+                                f"{use}, but the page {'does not show' if use in has else 'shows'} it")
         for part in ("leds", "buttons"):
-            if part in shown and "gpio" not in on:
-                problems.append(f"{b['name']}: the page shows the {part} "
-                                "but CONFIG_GPIO is unset")
-        # And against the devices the image was linked with (DESIGN.md
-        # D16): what the page offers has to be a device the build has, and
-        # a radio or a network snippet has to have made one.
-        board = devices.describe(topdir / f"build-site-{b['name']}", topdir)
-        if board is None:
-            problems.append(f"{b['name']}: no devicetree or link map in build-site-{b['name']}")
-            continue
-        compats = {d["compat"] for d in board["devices"]}
+            if part in shown and part not in has:
+                problems.append(f"{b['name']}: the page shows the {part}, "
+                                "but the build has no GPIO controller")
         args = b.get("args", [])
-        for compat, wanted, why in (
-                ("bosch,bmi160", "accel" in shown, "the tilt pad"),
-                ("wasm,host-display", "display" in shown, "the display"),
-                ("zephyr,sim-flash", "flash" in shown, "Erase flash"),
-                ("zephyr,bt-hci-uart", "-DSNIPPET=wasm-bt" in args, "the wasm-bt snippet"),
-                ("wasm,host-ethernet", "-DSNIPPET=wasm-ethernet" in args, "the wasm-ethernet snippet")):
-            if (compat in compats) != wanted:
-                problems.append(f"{b['name']}: the image {'has' if compat in compats else 'has no'} "
-                                f"a {compat} device, but {why} says otherwise")
+        for key, snippet in (("radio", "wasm-bt"), ("network", "wasm-ethernet")):
+            if desc[key] != (f"-DSNIPPET={snippet}" in args):
+                problems.append(f"{b['name']}: the build {'has' if desc[key] else 'has no'} "
+                                f"a {key}, but the {snippet} snippet says otherwise")
     return problems
 
 
@@ -381,10 +365,12 @@ def main() -> int:
     topdir = pathlib.Path(args.topdir)
 
     def board(name: str) -> dict:
-        # The board this unit was built with, from its devicetree and its
-        # link map; nothing when it has not been built here.
-        d = devices.describe(topdir / f"build-site-{name}", topdir)
-        return {"devicetree": d, "dts": f"dts/{name}.dts"} if d else {}
+        # The board this unit was built with, as its module says: from the
+        # staged copy, or the build itself; nothing when neither is here.
+        wasm = (pathlib.Path(site) / "m" / f"{name}.wasm" if site
+                else topdir / f"build-site-{name}" / "zephyr" / "zephyr.wasm")
+        d = described(wasm)
+        return {"devicetree": d["devicetree"], "dts": f"dts/{name}.dts"} if d else {}
 
     for b in builds:
         extra = gallery(b, args.module, out["site"]["zephyr"], out["site"]["commit"])

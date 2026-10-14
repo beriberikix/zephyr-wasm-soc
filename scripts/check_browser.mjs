@@ -22,9 +22,10 @@
 // right.
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -131,6 +132,28 @@ const until = async (what, fn, arg, timeout = 10_000) => {
     throw new Error(`${what}; the screen showed:`);
   }
 };
+/* A module without its zephyr.board section, as one built before builds
+ * described themselves would be. */
+function stripBoard(data) {
+  const uleb = (pos) => {
+    let n = 0, shift = 0, byte;
+    do { byte = data[pos++]; n += (byte & 0x7f) * 2 ** shift; shift += 7; } while (byte & 0x80);
+    return [n, pos];
+  };
+  const kept = [data.subarray(0, 8)];
+  let pos = 8;
+  while (pos < data.length) {
+    const [size, body] = uleb(pos + 1);
+    let drop = false;
+    if (data[pos] === 0) {
+      const [len, at] = uleb(body);
+      drop = data.subarray(at, at + len).toString() === 'zephyr.board';
+    }
+    if (!drop) kept.push(data.subarray(pos, body + size));
+    pos = body + size;
+  }
+  return Buffer.concat(kept);
+}
 /* Choose a build as a person does: press the build's name, then its row in
  * the gallery. The gallery is the only way to choose one. */
 const choose = async (name) => {
@@ -1307,6 +1330,64 @@ const pageChecks = [
     await page.keyboard.press('Escape');
     return `accel's bmi160@68 on i2c@100, marked; http-get's Ethernet; the pair's two HCI UARTs; ` +
            'blinky\'s four LEDs from the devicetree; zephyr.dts opens at the node';
+  }],
+  ['own', async () => {
+    /* A build of one's own, as someone who built it would bring it: the
+     * site's button sample, opened from the gallery. It describes itself,
+     * so it gets its LEDs, buttons and hardware; it is kept across a
+     * reload, and can be removed. One that does not describe itself still
+     * runs; a file that is not a build is refused. */
+    const status = () => page.evaluate(() => document.getElementById('status').textContent);
+    const own = () => page.evaluate(() => window.zephyrBuilds().filter((b) => b.own).map((b) => b.name));
+    for (const name of await own()) {
+      await page.evaluate((n) => window.zephyrRemoveOwn(n), name);
+    }
+    await page.setInputFiles('#ownFile', path.join(site, 'm', 'button.wasm'));
+    await until('the dropped build was not chosen', () => window.zephyrSelected()?.startsWith('own:'));
+    const name = await page.evaluate(() => window.zephyrSelected());
+    const title = await page.evaluate(() => document.getElementById('buildTitle').textContent);
+    if (title !== 'button (yours)') throw new Error(`it is called ${JSON.stringify(title)}`);
+    const shown = await page.evaluate(() => [!document.querySelector('#board .led')?.closest('.group').hidden,
+      !document.querySelector('#board .btn')?.closest('.group').hidden,
+      [...document.querySelectorAll('#hwList tr[data-node]')].map((tr) => tr.dataset.node)]);
+    if (!shown[0] || !shown[1] || !shown[2].includes('gpio_emul')) {
+      throw new Error(`LEDs ${shown[0]}, buttons ${shown[1]}, hardware ${shown[2]}`);
+    }
+    const pressed = async () => {
+      await page.click('#run');
+      await until('the dropped build never started', () => window.zephyrOutput().includes('Press the button'), null, 30_000);
+      await page.evaluate(() => window.zephyrPress(4, 0));
+      await until('Button 0 did not light LED 0', () => (window.zephyrLeds() & 1) === 1, null, 10_000);
+      await page.evaluate(() => window.zephyrPress(4, 1));
+      await page.click('#stop');
+      await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    };
+    await pressed();
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => (window.zephyrBuilds?.() ?? []).length > 0, null, { timeout: 15_000 });
+    if (await page.evaluate(() => window.zephyrSelected()) !== name) throw new Error('a reload lost the build');
+    await pressed();
+    await page.evaluate((n) => window.zephyrRemoveOwn(n), name);
+    if ((await own()).length) throw new Error('Remove left it listed');
+    /* Without its description: the same module, its section cut off. */
+    const bare = path.join(os.tmpdir(), 'check-browser-bare.wasm');
+    await writeFile(bare, stripBoard(await readFile(path.join(site, 'm', 'hello.wasm'))));
+    await page.setInputFiles('#ownFile', bare);
+    await until('the undescribed build was not added', () => /does not describe its board/.test(
+      document.getElementById('status').textContent));
+    await page.click('#run');
+    await until('the undescribed build did not run', () => window.zephyrOutput().includes('Hello World'), null, 30_000);
+    await page.click('#stop').catch(() => {});
+    await until('the run did not stop', () => !window.zephyrRunning(), null, 5_000);
+    await page.evaluate((n) => window.zephyrRemoveOwn(n), await page.evaluate(() => window.zephyrSelected()));
+    /* Not a build at all. */
+    const text = path.join(os.tmpdir(), 'check-browser-text.wasm');
+    await writeFile(text, 'not a module');
+    await page.setInputFiles('#ownFile', text);
+    await until('a text file was not refused', () =>
+      document.getElementById('status').textContent.startsWith('That is not a zephyr.wasm'));
+    return `${name} ran from the gallery's file input, lit LED 0, survived a reload and was removed; ` +
+           'an undescribed build ran; a text file was refused';
   }],
   ['fetch', async () => {
     /* A server error on the module: one is retried and the run goes

@@ -1660,6 +1660,43 @@ linked, the display only where the display is, Erase flash only with the
 flash controller, and the radio and network snippets only where they made
 an HCI UART or an Ethernet.
 
+### D17. A build describes itself
+
+A module dropped onto the page has nothing beside it. The site's builds
+have their `apps.json` entries, and the page needs what those say before it
+runs anything: which controls to show, whether there is a network or a
+radio, what hardware there is. kartben's page boots any ELF because QEMU's
+machine is fixed; here the board's devices come and go with the build.
+
+So every build carries its own description. The last post-link step,
+`scripts/describe_board.py`, appends a custom section called `zephyr.board`
+to `zephyr.wasm`. Runtimes skip custom sections, and nothing after it
+rewrites the module. It holds JSON:
+- the board as `devices.py` describes it (D16);
+- what the page would show, by one rule, `devices.uses()`;
+- whether it has the Ethernet or the HCI UART;
+- Zephyr's version and the devicetree source;
+- the application's name.
+
+The application is named by its place in the west workspace
+(`zephyr/samples/basic/button`), or by its directory's name alone outside
+it, because a path on the machine that built it would go wherever the
+module is shared.
+
+The same section is the one source for the site. Staging reads each
+module's section back for the manifest, and `check-uses` holds `apps.json`
+to it. `check_site` checks every staged module has one.
+
+On the page a dropped module becomes an entry like the site's. It is kept
+in IndexedDB, the last five, under its bytes' hash. It runs from a `blob:`
+URL, so the Worker needed no change, and in real time until Stop, as any
+build that waits for a person does. A Bluetooth build may also run without
+a real controller, on the page's own with nobody to hear it. A module built
+before builds described themselves still runs. Its controls are guessed
+from its imports, which wasm-ld keeps only for host calls the image makes
+(`gpio_out`, `display_attach`, `storage_attach`, `sensor_poll`,
+`eth_send`), and the page says that rebuilding adds the description.
+
 ## 4. Kernel features forced off
 
 Every Kconfig this port forces off, with the reason. Filled in as they are hit.
