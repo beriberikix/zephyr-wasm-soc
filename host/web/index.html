@@ -85,12 +85,14 @@
   #hint code { font-size: 12px; }
   #overrides { margin: 2px 0 2px; color: var(--muted); font-size: 12px; font-style: italic; }
   #overrides[hidden] { display: none; }
-  #uplinkRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
-  #uplinkRow[hidden] { display: none; }
+  #uplinkRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px;
+               flex-wrap: wrap; }
+  #uplinkRow[hidden], #uplinkRow [hidden] { display: none; }
   #hciRow { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px;
             flex-wrap: wrap; }
   #hciRow[hidden] { display: none; }
   #uplink { flex: 1; min-width: 0; max-width: 22em; font: inherit; padding: 2px 4px; }
+  #uplinkToken { flex: 1; min-width: 8em; max-width: 16em; font: inherit; padding: 2px 4px; }
   #status {
     margin: 0 0 12px; color: var(--fg); font-size: 13px; min-height: 1.5em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -343,13 +345,20 @@
   <!-- For a two-board build set up differently from how upstream ships it:
        what was changed, in words. Only addresses and ports ever are. -->
   <div id="overrides" hidden></div>
-  <!-- For a build on a real network: the relay that takes it there, which
-       the person runs themselves. Empty means no link. See host/uplink.mjs. -->
+  <!-- For a build on a real network: the relay that takes it there, one the
+       person runs themselves or relaynet with their own API token. Empty
+       means no link. See host/uplink.mjs. -->
   <div id="uplinkRow" hidden>
     <label for="uplink"
-           title="A relay that speaks v86's wsproxy protocol, such as RootlessRelay. Used from the next Run.">Uplink</label>
+           title="A relay that speaks v86's wsproxy protocol, such as RootlessRelay, or relaynet. Used from the next Run.">Uplink</label>
     <input id="uplink" type="url" placeholder="ws://127.0.0.1:8086/"
            spellcheck="false" autocomplete="off" aria-label="relay URL">
+    <button id="useRelaynet" type="button"
+            title="Put relaynet's endpoint in Uplink. It needs an API token from relaynet.network.">relaynet</button>
+    <label for="uplinkToken" id="uplinkTokenLabel" hidden
+           title="An API token from relaynet.network. Sent only to relaynet, and kept only in this tab.">Token</label>
+    <input id="uplinkToken" type="password" placeholder="rr_..." hidden
+           spellcheck="false" autocomplete="off" aria-label="relaynet API token">
   </div>
   <!-- For a build whose Bluetooth controller is a real one on a serial port,
        through Web Serial: an nRF54L15-DK running upstream's
@@ -474,6 +483,7 @@ import { FitAddon } from './vendor/addon-fit.mjs';
 import { IRQ } from './irq_lines.mjs';
 import { describeWait, threadState } from './threads.mjs';
 import { DEFAULT_SEED } from './core.mjs';
+import { RELAYNET_URL, isRelaynet } from './uplink.mjs';
 
 /*
  * The page. Everything interesting is in the Worker; this is a terminal just
@@ -1224,12 +1234,33 @@ const speeds = new Map(Object.entries(remembered.get('speeds') ?? {}));
 
 /* The relay a build on a real network goes through, if the person gave one:
  * ?uplink= for this visit, or what they typed last time. Nothing is ever
- * opened without it, and the page names no relay of its own. */
+ * opened without it. The one relay the page names is relaynet, which its
+ * button fills in; it takes a token of the person's own, which the page
+ * keeps in this tab only and never puts in the address. */
 const uplinkRowEl = document.getElementById('uplinkRow');
 const uplinkEl = document.getElementById('uplink');
+const uplinkTokenEl = document.getElementById('uplinkToken');
+const uplinkTokenLabelEl = document.getElementById('uplinkTokenLabel');
 uplinkEl.value = new URLSearchParams(location.search).get('uplink') ?? remembered.get('uplink') ?? '';
-uplinkEl.onchange = () => remembered.set('uplink', uplinkEl.value.trim());
 const uplinkUrl = () => (/^wss?:\/\/\S+$/.test(uplinkEl.value.trim()) ? uplinkEl.value.trim() : null);
+const showUplinkToken = () => {
+  const wanted = isRelaynet(uplinkEl.value.trim());
+  uplinkTokenEl.hidden = uplinkTokenLabelEl.hidden = !wanted;
+};
+uplinkEl.onchange = () => {
+  remembered.set('uplink', uplinkEl.value.trim());
+  showUplinkToken();
+};
+document.getElementById('useRelaynet').onclick = () => {
+  uplinkEl.value = RELAYNET_URL;
+  uplinkEl.onchange();
+  uplinkTokenEl.focus();
+};
+try { uplinkTokenEl.value = sessionStorage.getItem('zephyr-wasm.relaynet-token') ?? ''; } catch { /* none */ }
+uplinkTokenEl.onchange = () => {
+  try { sessionStorage.setItem('zephyr-wasm.relaynet-token', uplinkTokenEl.value.trim()); } catch { /* forget */ }
+};
+showUplinkToken();
 /* The real Bluetooth controller's row, and its port when one is open (see
  * hciPump below). */
 const hciRowEl = document.getElementById('hciRow');
@@ -1490,7 +1521,7 @@ async function start() {
   runStatus = build.hci === 'serial' && hciPort
     ? 'Running, with a real Bluetooth controller.'
     : build.uplink && uplinkUrl()
-    ? 'Running, on a real network through the relay.'
+    ? `Running, on a real network through ${isRelaynet(uplinkUrl()) ? 'relaynet' : 'the relay'}.`
     : build.lan
       ? 'Running, on the simulated network the page plays.'
       : build.uplink
@@ -1531,6 +1562,7 @@ async function start() {
       timeScale: paced ? Number(speedEl.value) : 1,
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
+      uplinkToken: build.uplink && isRelaynet(uplinkUrl()) ? uplinkTokenEl.value.trim() || null : null,
       lan: build.lan ?? null,
       /* One's own radio build may run without a real controller, on the
        * one the page emulates, with nobody to hear it. */

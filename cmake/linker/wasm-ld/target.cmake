@@ -50,6 +50,10 @@ function(toolchain_ld_link_elf)
     endif()
   endforeach()
 
+  # wasm-ld wants the stack a multiple of 16 bytes, and a sample may ask for
+  # any size (big_http_download asks for 2536), so it is rounded up.
+  math(EXPR main_stack_size "(${CONFIG_MAIN_STACK_SIZE} + 15) / 16 * 16")
+
   target_link_libraries(
     ${TOOLCHAIN_LD_LINK_ELF_TARGET_ELF}
     ${TOOLCHAIN_LD_LINK_ELF_LIBRARIES_PRE_SCRIPT}
@@ -65,7 +69,7 @@ function(toolchain_ld_link_elf)
     # into imports from a module named env, which then fails at instantiation
     # with a message that says nothing about which symbol was missing. Let the
     # link fail instead, where the name is printed.
-    ${LINKERFLAGPREFIX},-z,stack-size=${CONFIG_MAIN_STACK_SIZE}
+    ${LINKERFLAGPREFIX},-z,stack-size=${main_stack_size}
     ${LINKERFLAGPREFIX},--export=__stack_pointer
     ${LINKERFLAGPREFIX},--export=__heap_base
     ${LINKERFLAGPREFIX},--export=__data_end

@@ -25,6 +25,26 @@ the same files, drop the `sourceMappingURL` line, update this table, and run
 `scripts/check_browser.mjs`, which types into the shell with real key
 presses and reads back what the screen shows.
 
+# Vendored: relaynet's client helper
+
+The link to relaynet, a hosted relay (`host/uplink.mjs`, `DESIGN.md`
+D8l), goes through relaynet's own helper. It speaks the `relay.v1`
+handshake and keeps the session alive: a heartbeat, a reconnect with
+backoff, and stopping on final closes. `uplink.mjs` imports it from beside
+itself, so the file is `host/relaynet.mjs` and is staged flat with the
+other modules. Its licence ships here.
+
+| file               | from                                        |
+|--------------------|---------------------------------------------|
+| `../../relaynet.mjs` | `relaynet` 0.1.0, `relaynet.js`, unmodified |
+| `LICENSE.relaynet` | `relaynet` 0.1.0, `LICENSE` (MIT)           |
+
+    bb54b6fa638bacaeb93b21f7ea2d81e29e62b41df4435b1fac5cc131606fdbc3  relaynet-0.1.0.tgz
+
+To update: `npm pack relaynet@<v>`, copy `relaynet.js` to
+`host/relaynet.mjs` and `LICENSE`, update this table, and run a board on
+relaynet with `run.mjs --uplink relaynet`.
+
 # Vendored: lwIP, as tcpip.js builds it
 
 The host's own network, the LAN a board can be plugged into

@@ -261,6 +261,8 @@ self.onmessage = async (event) => {
     /* A relay the person gave the page (host/uplink.mjs). Real peers
      * follow the wall clock, so the board is paced. */
     uplink: msg.uplink || null,
+    /* relaynet's API token, which host/uplink.mjs sends to relaynet only. */
+    uplinkToken: msg.uplinkToken || null,
     /* The host's own network (host/lan.mjs), unless a relay replaces it. */
     lan: msg.uplink ? null : msg.lan || null,
   };
@@ -300,7 +302,7 @@ self.onmessage = async (event) => {
      * through the page. */
     if (opts.uplink) {
       uplink = await connectUplink(host, opts.uplink,
-        (line) => self.postMessage({ type: 'err', text: `\n${line}\n` }));
+        (line) => self.postMessage({ type: 'err', text: `\n${line}\n` }), opts.uplinkToken);
       self.postMessage({ type: 'err', text: `[uplink: connected to ${opts.uplink}]\n` });
     } else if (opts.lan) {
       /* What the network did goes in the terminal, a line at a time, as

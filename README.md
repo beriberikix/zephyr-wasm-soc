@@ -98,9 +98,10 @@ log, including what did not work. `BRIEF.md` is the original task.
   unmodified, with nothing leaving the page and the same output every
   run; what the network did shows as lines stamped `[lan <guest time>]`. `run.mjs --lan` in
   Node.
-* A real network, through a relay you run: the board's Ethernet frames go
-  over a WebSocket to any relay that speaks v86's wsproxy protocol, and
-  `dhcpv4_client` gets a real lease. See "A real network" below.
+* A real network, through a relay: the board's Ethernet frames go over a
+  WebSocket to any relay that speaks v86's wsproxy protocol, one you run or
+  [relaynet](https://relaynet.network), a hosted one, with a token of your
+  own. `dhcpv4_client` gets a real lease. See "A real network" below.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
@@ -391,8 +392,29 @@ zephyrproject.org` in its shell go through the relay. An uplinked board
 follows the wall clock, so unlike everything else here its runs are not
 repeatable.
 
+[relaynet](https://relaynet.network) is RootlessRelay hosted, so nothing
+has to run on your machine. It takes an API token: sign in, create one
+under API tokens, and keep it to yourself.
+
+```sh
+export RELAYNET_TOKEN=rr_...                 # sent to relaynet only
+node zephyr-wasm/host/run.mjs --uplink relaynet --interactive \
+    build-dhcp/zephyr/zephyr.wasm
+```
+
+On the page, press relaynet next to Uplink and paste the token into the
+Token field that appears. The page keeps the token in that tab only and
+never puts it in the address. relaynet's network is `10.0.2.0/24` too, so
+the same commands work; the pings take about 230 ms, the round trip to
+California. If the session drops, the link reconnects, and the board keeps
+its address if it renews within 60 s. Its connections to the internet do
+not survive, as on any network that goes away. Two tabs running the same
+build share a MAC, and relaynet would hand the session back and forth
+between them, so run one at a time.
+
 Most network samples ship with a static `192.0.2.1`, gateway and DNS
-`192.0.2.2`. RootlessRelay serves those once it has
+`192.0.2.2`. relaynet cannot serve those: it blocks the documentation
+ranges. RootlessRelay on your machine serves them once it has
 `upstream/rootlessrelay/0001`, with `GATEWAY_IP=192.0.2.2 DHCP_START=1
 DHCP_END=1`. `DESIGN.md` D8l has the rest.
 

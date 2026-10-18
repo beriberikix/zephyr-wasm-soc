@@ -939,6 +939,23 @@ What happened to each:
       and RootlessRelay under `native_sim`) and
       kartben/zephyr-in-the-browser (the `192.0.2.x` addressing, and an
       opt-in bridge).
+- [x] **relaynet, a hosted relay** (`DESIGN.md` D8l). `run.mjs --uplink
+      relaynet`, with the token in `$RELAYNET_TOKEN`, and on the page a
+      relaynet button and a Token field. The link speaks `relay.v1`
+      through relaynet's own helper, vendored, and reconnects when a
+      session drops. `dhcpv4_client` gets a lease from the production
+      service and, from its shell, pings the gateway and resolves real
+      names.
+      - **Not in CI.** The checks would need a token, which a fork's
+        workflow must not hold. A mock relay.v1 server in front of
+        RootlessRelay covered the handshake, a dropped session and the
+        reconnect.
+      - **`sockets/big_http_download`**, the one upstream sample that takes
+        DHCP and fetches from the internet, links now (its 2536-byte main
+        stack was not 16-byte aligned for wasm-ld) and gets a lease. It
+        cannot resolve its server's name. It keeps its static DNS server
+        `192.0.2.2` after DHCP offers a real one, on relaynet and on
+        RootlessRelay alike. That is Zephyr's side, not yet looked into.
 - [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
       reach a board's server (`dumb_http_server`); not tried yet.
 - [x] **The host as the LAN** (`DESIGN.md` D8m), which raised the score
