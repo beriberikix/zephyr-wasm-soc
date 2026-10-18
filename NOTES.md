@@ -2304,10 +2304,11 @@ downloads from the internet. It did not link. Its main stack is 2536
 bytes, and wasm-ld refuses a stack that is not a multiple of 16, so the
 linker script now rounds it up. Then it leased an address and never
 resolved `archive.ubuntu.com`: every lookup ended in `DNS_EAI_CANCELED`.
-The same thing happens on RootlessRelay, where the DHCP sample's own
-`net dns` resolves the same name. The difference is that
-`big_http_download` also sets a static `CONFIG_DNS_SERVER1="192.0.2.2"`.
-So it stays out of the gallery until that is understood.
+The resolver's debug log said why: "No free slots for server" when DHCP
+offered its DNS. The resolver has one slot by default and the sample's
+static `CONFIG_DNS_SERVER1="192.0.2.2"` held it, so queries kept going to
+an address nobody answers. It was not IPv6. The `wasm-ethernet` snippet now
+asks for two slots.
 
 A board's MAC comes from its seed, so two tabs on one relay shared it and
 relaynet gave the session back and forth. The page now passes a random seed

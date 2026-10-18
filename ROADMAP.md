@@ -964,28 +964,21 @@ What happened to each:
       page served from github.io the helper's `/api/me` check is blocked
       by CORS, so a bad token only says the relay could not be reached;
       confirm that message reads well.
-- [ ] **`big_http_download` resolving names.** Every `getaddrinfo` ends in
-      `DNS_EAI_CANCELED` (-101) after a good DHCP lease, through relaynet
-      (DNS offered: `8.8.8.8`) and through RootlessRelay 0.6.0 on loopback.
-      The DHCP sample resolves the same name on the same relays; it has no
-      `CONFIG_DNS_SERVER_IP_ADDRESSES`, while this sample sets
-      `CONFIG_DNS_SERVER1="192.0.2.2"`, and also enables IPv6, so
-      `getaddrinfo` may be asking for AAAA too.
-      - **Where to start.** Build with `-DSNIPPET=wasm-ethernet
-        -DCONFIG_DNS_RESOLVER_LOG_LEVEL_DBG=y -DCONFIG_NET_DHCPV4_LOG_LEVEL_DBG=y`,
-        run with `run.mjs --uplink ws://127.0.0.1:8086/` (RootlessRelay,
-        no token needed) and see which servers the queries go to and
-        whether `dns_resolve_reconfigure(..., DNS_SOURCE_DHCPV4)` in
-        `subsys/net/lib/dhcpv4/dhcpv4.c` succeeds. Then try the same build
-        with `-DCONFIG_NET_IPV6=n`, and separately with
-        `-DCONFIG_DNS_SERVER1=\"\"`, to tell the two suspects apart.
-      - **To add it to the gallery** it must run as shipped (`apps.py`
-        allows an uplink build nothing but the snippet). If the fix is a
-        Zephyr bug, carry it as an `upstream/zephyr` patch; if it is the
-        sample's configuration, decide whether to relax that rule. It
-        downloads about 7 MB at relaynet's 64 KiB per round trip, so give
-        it a generous `max_time_ms`, and its `expect` should be the hash
-        check the sample prints, not only a lease.
+- [x] **`big_http_download` resolving names.** The resolver has one server
+      slot (`CONFIG_DNS_RESOLVER_MAX_SERVERS=1`). The sample's static
+      `CONFIG_DNS_SERVER1="192.0.2.2"` fills it, so the server DHCP offers
+      gets "No free slots" and every query goes to `192.0.2.2`, where
+      nothing answers: `DNS_EAI_CANCELED` (-101). IPv6 was not the cause.
+      Found by building with the DNS and DHCP debug logs on and trying the
+      three variants against RootlessRelay 0.6.0: `CONFIG_NET_IPV6=n` still
+      failed; `CONFIG_DNS_SERVER1=""` and `CONFIG_DNS_RESOLVER_MAX_SERVERS=2`
+      both downloaded. The `wasm-ethernet` snippet now sets the latter, so
+      the sample works as shipped (3 MB in 60 s of guest time on loopback).
+      - **Still to do: the gallery entry.** Add it to `apps.json` with a
+        generous `max_time_ms` (about 7 MB at relaynet's 64 KiB per round
+        trip), and an `expect` on the hash check the sample prints, not
+        only a lease. Not run to completion here, so the hash line is
+        unconfirmed.
 - [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
       `mqtt_publisher` and most others use `192.0.2.1` with gateway and
       DNS `192.0.2.2`, which relaynet drops (documentation range).
