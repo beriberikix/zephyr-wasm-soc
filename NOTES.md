@@ -2308,3 +2308,8 @@ The same thing happens on RootlessRelay, where the DHCP sample's own
 `net dns` resolves the same name. The difference is that
 `big_http_download` also sets a static `CONFIG_DNS_SERVER1="192.0.2.2"`.
 So it stays out of the gallery until that is understood.
+
+A board's MAC comes from its seed, so two tabs on one relay shared it and
+relaynet gave the session back and forth. The page now passes a random seed
+of the browser's own to a run on a relay, kept in `localStorage`. Checked
+only by parsing the page script; no browser was run.

@@ -1257,6 +1257,18 @@ document.getElementById('useRelaynet').onclick = () => {
   uplinkTokenEl.focus();
 };
 try { uplinkTokenEl.value = sessionStorage.getItem('zephyr-wasm.relaynet-token') ?? ''; } catch { /* none */ }
+/* A board's MAC comes from its seed, and the fixed one would give every tab
+ * the same MAC, so two tabs on one relay would take its session back and
+ * forth. A run on a relay gets a seed of this browser's own, chosen once and
+ * kept. Other runs keep the fixed seed, which repeatable output relies on. */
+function browserSeed() {
+  let seed = remembered.get('seed');
+  if (!Number.isInteger(seed) || seed < 1 || seed > 0xffffffff) {
+    seed = (crypto.getRandomValues(new Uint32Array(1))[0] || DEFAULT_SEED) >>> 0;
+    remembered.set('seed', seed);
+  }
+  return seed;
+}
 uplinkTokenEl.onchange = () => {
   try { sessionStorage.setItem('zephyr-wasm.relaynet-token', uplinkTokenEl.value.trim()); } catch { /* forget */ }
 };
@@ -1562,6 +1574,7 @@ async function start() {
       timeScale: paced ? Number(speedEl.value) : 1,
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
+      seed: build.uplink && uplinkUrl() ? browserSeed() : undefined,
       uplinkToken: build.uplink && isRelaynet(uplinkUrl()) ? uplinkTokenEl.value.trim() || null : null,
       lan: build.lan ?? null,
       /* One's own radio build may run without a real controller, on the

@@ -994,13 +994,15 @@ What happened to each:
       change belongs in relaynet (beriberikix/relaynet, which pins
       rootlessRelay in hosted mode), for example a per-session option, not
       here. Nothing in this repo changes except a hint per sample.
-- [ ] **A MAC of one's own per browser.** A board's MAC comes from its seed,
-      which is `DEFAULT_SEED` for every single-board run, so two tabs with
-      the same build share a MAC and relaynet hands the session back and
-      forth between them (its docs: "Do not use one MAC in two pages at
-      once"). Pick a random seed or MAC once per browser and keep it in
-      `localStorage`, for uplinked runs only: the LAN and the pairs rely on
-      the fixed seed for repeatable output.
+- [x] **A MAC of one's own per browser.** A board's MAC comes from its
+      seed, which is `DEFAULT_SEED` for every single-board run, so two tabs
+      with the same build shared a MAC and relaynet handed the session back
+      and forth between them. A run on a relay now passes a random seed,
+      chosen once per browser and kept in `localStorage`
+      (`zephyr-wasm.seed`); the LAN and the pairs keep the fixed seed their
+      repeatable output relies on. Not run in a browser here: the script
+      parses, and the seed reaches the worker through the existing
+      `msg.seed`.
 - [ ] **relaynet in CI, when a token is there.** A job gated on a
       `RELAYNET_TOKEN` secret, so forks' pull requests never see it, that
       runs `check_site.mjs` for the uplink builds against relaynet. Use a
