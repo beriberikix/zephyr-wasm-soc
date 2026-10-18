@@ -953,9 +953,58 @@ What happened to each:
       - **`sockets/big_http_download`**, the one upstream sample that takes
         DHCP and fetches from the internet, links now (its 2536-byte main
         stack was not 16-byte aligned for wasm-ld) and gets a lease. It
-        cannot resolve its server's name. It keeps its static DNS server
-        `192.0.2.2` after DHCP offers a real one, on relaynet and on
-        RootlessRelay alike. That is Zephyr's side, not yet looked into.
+        cannot resolve its server's name, on relaynet and on RootlessRelay
+        alike. The suspect is its static DNS server `192.0.2.2`, kept
+        after DHCP offers a real one; not confirmed (see below).
+- [ ] **Try the page on relaynet with a real token.** Node was run against
+      the production service; the page was only checked on localhost, with
+      a relay on loopback and with relaynet but no token. To check: stage
+      the site, choose "DHCP client", press relaynet, paste a token, Run,
+      then `net ping 10.0.2.2` and `net dns zephyrproject.org`. From a
+      page served from github.io the helper's `/api/me` check is blocked
+      by CORS, so a bad token only says the relay could not be reached;
+      confirm that message reads well.
+- [ ] **`big_http_download` resolving names.** Every `getaddrinfo` ends in
+      `DNS_EAI_CANCELED` (-101) after a good DHCP lease, through relaynet
+      (DNS offered: `8.8.8.8`) and through RootlessRelay 0.6.0 on loopback.
+      The DHCP sample resolves the same name on the same relays; it has no
+      `CONFIG_DNS_SERVER_IP_ADDRESSES`, while this sample sets
+      `CONFIG_DNS_SERVER1="192.0.2.2"`, and also enables IPv6, so
+      `getaddrinfo` may be asking for AAAA too.
+      - **Where to start.** Build with `-DSNIPPET=wasm-ethernet
+        -DCONFIG_DNS_RESOLVER_LOG_LEVEL_DBG=y -DCONFIG_NET_DHCPV4_LOG_LEVEL_DBG=y`,
+        run with `run.mjs --uplink ws://127.0.0.1:8086/` (RootlessRelay,
+        no token needed) and see which servers the queries go to and
+        whether `dns_resolve_reconfigure(..., DNS_SOURCE_DHCPV4)` in
+        `subsys/net/lib/dhcpv4/dhcpv4.c` succeeds. Then try the same build
+        with `-DCONFIG_NET_IPV6=n`, and separately with
+        `-DCONFIG_DNS_SERVER1=\"\"`, to tell the two suspects apart.
+      - **To add it to the gallery** it must run as shipped (`apps.py`
+        allows an uplink build nothing but the snippet). If the fix is a
+        Zephyr bug, carry it as an `upstream/zephyr` patch; if it is the
+        sample's configuration, decide whether to relax that rule. It
+        downloads about 7 MB at relaynet's 64 KiB per round trip, so give
+        it a generous `max_time_ms`, and its `expect` should be the hash
+        check the sample prints, not only a lease.
+- [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
+      `mqtt_publisher` and most others use `192.0.2.1` with gateway and
+      DNS `192.0.2.2`, which relaynet drops (documentation range).
+      `upstream/rootlessrelay/0001` already teaches RootlessRelay to serve
+      that layout (`GATEWAY_IP=192.0.2.2 DHCP_START=1 DHCP_END=1`). The
+      change belongs in relaynet (beriberikix/relaynet, which pins
+      rootlessRelay in hosted mode), for example a per-session option, not
+      here. Nothing in this repo changes except a hint per sample.
+- [ ] **A MAC of one's own per browser.** A board's MAC comes from its seed,
+      which is `DEFAULT_SEED` for every single-board run, so two tabs with
+      the same build share a MAC and relaynet hands the session back and
+      forth between them (its docs: "Do not use one MAC in two pages at
+      once"). Pick a random seed or MAC once per browser and keep it in
+      `localStorage`, for uplinked runs only: the LAN and the pairs rely on
+      the fixed seed for repeatable output.
+- [ ] **relaynet in CI, when a token is there.** A job gated on a
+      `RELAYNET_TOKEN` secret, so forks' pull requests never see it, that
+      runs `check_site.mjs` for the uplink builds against relaynet. Use a
+      dedicated account or token; sessions count against its limit of 4.
 - [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
       reach a board's server (`dumb_http_server`); not tried yet.
 - [x] **The host as the LAN** (`DESIGN.md` D8m), which raised the score
@@ -1006,7 +1055,10 @@ What happened to each:
       `dumb_http_server_mt` traps on its thread entries (0014).
       `scripts/check_lan.mjs` covers each service.
 - [ ] **Pairs across tabs or machines**, through one relay:
-      RootlessRelay lets its VMs reach each other.
+      RootlessRelay lets its VMs reach each other, and relaynet does the
+      same for sessions of one account (`10.0.2.0/24`, by address). The
+      existing pairs' samples would need DHCP or `10.0.2.x` addresses, and
+      each board its own MAC (above).
 
 The sweep counts samples, and networking's samples are nearly all `net`
 harness: they need a peer, which twister never gives them. The virtual L2
