@@ -28,6 +28,9 @@
     "  guest does not race ahead while waiting for them.",
     "max_time_ms is what the page gives a build; ci_max_time_ms overrides it",
     "  for the checks, which have no one watching.",
+    "hosted_expect: for an uplink build, what check_site.mjs --hosted wants in place",
+    "  of expect when the relay is relaynet's, which is slow and shared: a run that",
+    "  would not finish in the time a check has is judged by how far it gets.",
     "ci_gpio: scripted input-pin events, so a sample that waits for a",
     "  button can be checked unattended and deterministically.",
     "upstream: unmodified upstream Zephyr code. false for this port's own",
@@ -1716,7 +1719,7 @@
       "name": "bigdl",
       "kind": "sample",
       "title": "Big HTTP download",
-      "hint": "big_http_download fetches a 6.5 MB file from archive.ubuntu.com over plain HTTP, checks its SHA-256 and goes round again, counting what it has downloaded. It needs the real internet: press relaynet and paste an API token from relaynet.network, or start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/. A round trip takes about 25 seconds, and the board runs on the real clock.",
+      "hint": "big_http_download fetches a 6.5 MB file from archive.ubuntu.com over plain HTTP, checks its SHA-256 and goes round again, counting what it has downloaded. It needs the real internet: press relaynet and paste an API token from relaynet.network, or start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/. On a local relay a round trip takes about 25 seconds; through relaynet it runs at about 16 KiB a second, so several minutes. The board runs on the real clock.",
       "upstream": true,
       "clock": "paced",
       "endless": true,
@@ -1729,6 +1732,9 @@
       ],
       "expect": [
         "Hash: 337c37d7ec00348414224baa6bdb2d43f2a34ef5676bafcdcad916f148b5b317"
+      ],
+      "hosted_expect": [
+        "Download progress: 1023 Bytes"
       ]
     }
   ]

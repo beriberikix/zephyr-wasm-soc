@@ -151,7 +151,7 @@ jobs:
             exit 0
           fi
           url=$(node -e "import('./zephyr-wasm/host/uplink.mjs').then(m => console.log(m.RELAYNET_URL))")
-          node zephyr-wasm/scripts/check_site.mjs _site --only dhcp,bigdl --uplink-relay "$url"
+          node zephyr-wasm/scripts/check_site.mjs _site --only dhcp,bigdl --uplink-relay "$url" --hosted
 
       - name: Check two runs are identical
         run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000

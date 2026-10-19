@@ -14,7 +14,7 @@
 // A two-board pair is run twice, and both boards' output must be the same
 // both times.
 //
-// Usage: node scripts/check_site.mjs [_site] [--only name,name]
+// Usage: node scripts/check_site.mjs [_site] [--only name,name] [--uplink-relay url [--hosted]]
 
 import { spawn } from 'node:child_process';
 import os from 'node:os';
@@ -33,6 +33,10 @@ const only = onlyIdx === -1 ? null : new Set(args[onlyIdx + 1].split(','));
  * starts one; without it those builds are skipped, and said to be. */
 const relayIdx = args.indexOf('--uplink-relay');
 const relay = relayIdx === -1 ? null : args[relayIdx + 1];
+/* --hosted: the relay is relaynet's, which is slow and shared. An entry that
+ * names hosted_expect is judged by it in place of expect, for a build whose
+ * full run would not fit in the time a check can give it. */
+const hosted = args.includes('--hosted');
 const values = new Set([onlyIdx, relayIdx].filter((i) => i !== -1).map((i) => i + 1));
 const site = args.find((a, i) => !a.startsWith('--') && !values.has(i))
   ?? path.join(here, '..', '..', '_site');
@@ -229,7 +233,7 @@ for (const b of manifest.builds) {
   if (b.lan && b.uplink && relay) {
     const real = await run(wasm, maxTime, stdin, b.ci_gpio, shot, b.ci_touch, b.ci_accel,
                            false, null, relay, undefined, typeAt);
-    for (const want of first.expect ?? []) {
+    for (const want of (hosted && b.hosted_expect) || first.expect || []) {
       if (!real.out.includes(want)) problems.push(`through the relay, missing: ${JSON.stringify(want)}`);
     }
   }
@@ -241,7 +245,7 @@ for (const b of manifest.builds) {
   }
   /* ci_expect is what the scripted ci_* input should produce, which only
    * this check scripts; the browser check gives the page real input. */
-  for (const want of [...(first.expect ?? []), ...(b.ci_expect ?? [])]) {
+  for (const want of [...((hosted && b.hosted_expect) || first.expect || []), ...(b.ci_expect ?? [])]) {
     if (!out.includes(want)) {
       problems.push(`missing from the ${second ? `${first.label}'s ` : ''}output: ${JSON.stringify(want)}`);
     }

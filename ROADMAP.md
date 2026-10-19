@@ -977,10 +977,13 @@ What happened to each:
       - **In the gallery** as `bigdl` (score 111 to 112). It loops
         forever, so it is `endless`; its `expect` is the SHA-256 the sample
         prints after the first 6 MiB, which took about 25 s of guest time
-        on loopback RootlessRelay. Through relaynet it should take about as
-        long (64 KiB per 230 ms round trip) but has not been run. The CI
-        relay does the real download, so `archive.ubuntu.com` being down
-        fails that check.
+        on loopback RootlessRelay. Through relaynet (CI, with the token) it
+        resolved the name and downloaded at only about 16 KiB a second, 940
+        KiB in 60 s, so the first hash would take several minutes. Its
+        `hosted_expect` asks only for the first progress line when run with
+        `check_site.mjs --hosted`. Why relaynet is that slow, against 64 KiB
+        per 230 ms round trip, is open. The CI relay does the real
+        download, so `archive.ubuntu.com` being down fails that check.
 - [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
       `mqtt_publisher` and most others use `192.0.2.1` with gateway and
       DNS `192.0.2.2`, which relaynet drops (documentation range).
@@ -1003,8 +1006,8 @@ What happened to each:
       `RELAYNET_TOKEN` repository secret, and skips, saying so, when there
       is none (a fork's pull request is given no secrets). The token is in
       that step's environment only. Use a dedicated token: sessions count
-      against its limit of 4. Written but not yet run with a token; the
-      first run with the secret set is the check. A relaynet outage fails
+      against its limit of 4. The first run with the token passed
+      `dhcp` and showed `bigdl` too slow for its hash (see above). A relaynet outage fails
       the job and so blocks the deploy; make the step `continue-on-error`
       if that is not wanted. The browser check still uses the local relay.
 - [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
