@@ -2273,3 +2273,52 @@ source and the application's name. The site reads the same section back
 when it is staged, so there is one description and not two. A module built
 before this still runs; its imports say enough to guess its controls,
 since wasm-ld drops every host import the image never calls.
+
+### Tick 95 — relaynet
+
+relaynet is RootlessRelay hosted for many accounts, behind an API token.
+The board's side of it was already done. The frames are wsproxy's, so the
+only new part is the handshake: the `relay.v1` subprotocol with the token
+as a second entry, the one way a browser can send a token with a
+WebSocket. relaynet publishes a small client helper for that, and for the
+session rules that come with a hosted relay: a heartbeat, a backoff, and
+which close codes are final. It is vendored unchanged as
+`host/relaynet.mjs` rather than written again.
+
+The token goes to relaynet's host and nowhere else, chosen by the URL.
+The first version sent it to whichever relay the run was given whenever
+`RELAYNET_TOKEN` was set, which would have handed it to anything on
+loopback.
+
+There is no token in CI, so the dropped session was tested against a
+mock: a relay.v1 server, with the `ws` package that RootlessRelay installs,
+in front of RootlessRelay on loopback. It closed the session with `1001`
+after a few seconds. The board's link reconnected two seconds later, and
+`net ping 10.0.2.2` typed after that was answered from the same address.
+Then on the production service, with a token made for the purpose:
+`dhcpv4_client` leased `10.0.2.16` (another session held `.15`), pinged
+the gateway at about 230 ms and resolved `zephyrproject.org`.
+
+`big_http_download` was the obvious second build, since it takes DHCP and
+downloads from the internet. It did not link. Its main stack is 2536
+bytes, and wasm-ld refuses a stack that is not a multiple of 16, so the
+linker script now rounds it up. Then it leased an address and never
+resolved `archive.ubuntu.com`: every lookup ended in `DNS_EAI_CANCELED`.
+The resolver's debug log said why: "No free slots for server" when DHCP
+offered its DNS. The resolver has one slot by default and the sample's
+static `CONFIG_DNS_SERVER1="192.0.2.2"` held it, so queries kept going to
+an address nobody answers. It was not IPv6. The `wasm-ethernet` snippet now
+asks for two slots.
+
+A board's MAC comes from its seed, so two tabs on one relay shared it and
+relaynet gave the session back and forth. The page now passes a random seed
+of the browser's own to a run on a relay, kept in `localStorage`. Checked
+only by parsing the page script; no browser was run.
+
+`big_http_download` through relaynet ran at 16 KB/s, from CI and from a
+laptop alike. The relay's own docs say 64 KiB per round trip per connection,
+so the suspect was the board: the sample sets `NET_TCP_MAX_RECV_WINDOW_SIZE=5120`,
+and 5 KiB over relaynet's 230 ms is 22 KB/s. With 32 KiB and the RX buffers
+to hold it, 115 KB/s. That is the `wasm-uplink` snippet, used by this entry
+only (`apps.py` allows it for an uplink build, nothing else), so the other
+Ethernet builds keep their memory.

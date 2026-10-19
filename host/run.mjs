@@ -14,7 +14,7 @@ import process from 'node:process';
 
 import { Host, DEFAULT_SEED } from './core.mjs';
 import { Pair } from './pair.mjs';
-import { connectUplink } from './uplink.mjs';
+import { connectUplink, RELAYNET_URL } from './uplink.mjs';
 import { SerialHci } from './hci_serial.mjs';
 import { Lan, lanStamp } from './lan.mjs';
 import { startServices, httpGet } from './lan_services.mjs';
@@ -54,7 +54,10 @@ function parseArgs(argv) {
     else if (a === '--peer-out') opts.peerOut = argv[++i];
     else if (a === '--peer-delay') opts.peerDelayMs = Number(argv[++i]);
     else if (a === '--peer-stdin') opts.peerStdin = argv[++i];
-    else if (a === '--uplink') opts.uplink = argv[++i];
+    else if (a === '--uplink') {
+      opts.uplink = argv[++i];
+      if (opts.uplink === 'relaynet') opts.uplink = RELAYNET_URL;
+    }
     else if (a === '--hci-tty') opts.hciTty = argv[++i];
     else if (a === '--hci-no-flow') opts.hciNoFlow = true;
     else if (a === '--lan') opts.lan = true;
@@ -234,7 +237,10 @@ function usage() {
                      relay that speaks v86's wsproxy protocol, such as
                      RootlessRelay (ENABLE_WSS=false npx rootlessrelay, then
                      ws://127.0.0.1:8086/). Needs a build with the
-                     wasm-ethernet snippet. Implies --paced
+                     wasm-ethernet snippet. Implies --paced.
+                     relaynet, short for wss://relay.relaynet.network/,
+                     is a hosted relay, which takes the API token in
+                     $RELAYNET_TOKEN
   --hci-tty <device> the board's Bluetooth controller is a real one on this
                      serial port, at 1 Mbaud with hardware flow control,
                      such as an nRF54L15-DK running samples/bluetooth/
@@ -402,8 +408,11 @@ const host = new Host(nodePlatform, opts);
 let uplink = null;
 if (opts.uplink) {
   try {
+    /* The token comes from the environment, as relaynet-bridge takes it,
+     * so it is in no command line or shell history. */
     uplink = await connectUplink(host, opts.uplink,
-                                 (line) => process.stderr.write(`${line}\n`));
+                                 (line) => process.stderr.write(`${line}\n`),
+                                 process.env.RELAYNET_TOKEN || null);
   } catch (err) {
     process.stderr.write(`--uplink: ${err.message}\n`);
     process.exit(2);

@@ -22,9 +22,9 @@ rm -rf "$site"
 mkdir -p "$site/m" "$site/dts"
 # Flat, apart from vendor/, because worker.js imports ./core.mjs,
 # ./pair.mjs, ./uplink.mjs, ./lan.mjs and ./lan_services.mjs, core.mjs
-# imports ./irq_lines.mjs and ./bt.mjs, worker.js ./hci_serial.mjs too, and
-# the page imports irq_lines.mjs
-# and ./threads.mjs. The
+# imports ./irq_lines.mjs and ./bt.mjs, worker.js ./hci_serial.mjs too,
+# uplink.mjs imports ./relaynet.mjs, and the page imports irq_lines.mjs,
+# ./threads.mjs and ./uplink.mjs. The
 # LAN's lwIP is vendor/tcpip.wasm.
 # Anything the page or the worker imports has to be listed here: a module
 # that fails to load takes the Worker with it and says nothing, so the page
@@ -32,7 +32,7 @@ mkdir -p "$site/m" "$site/dts"
 cp "$module/host/web/index.html" "$module/host/web/worker.js" \
    "$module/host/core.mjs" "$module/host/irq_lines.mjs" \
    "$module/host/threads.mjs" "$module/host/pair.mjs" \
-   "$module/host/uplink.mjs" "$module/host/lan.mjs" \
+   "$module/host/uplink.mjs" "$module/host/relaynet.mjs" "$module/host/lan.mjs" \
    "$module/host/lan_services.mjs" "$module/host/bt.mjs" \
    "$module/host/hci_serial.mjs" "$site/"
 # The page's terminal, xterm.js, vendored with its licence.
