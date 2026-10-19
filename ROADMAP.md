@@ -977,13 +977,16 @@ What happened to each:
       - **In the gallery** as `bigdl` (score 111 to 112). It loops
         forever, so it is `endless`; its `expect` is the SHA-256 the sample
         prints after the first 6 MiB, which took about 25 s of guest time
-        on loopback RootlessRelay. Through relaynet (CI, with the token) it
-        resolved the name and downloaded at only about 16 KiB a second, 940
-        KiB in 60 s, so the first hash would take several minutes. Its
-        `hosted_expect` asks only for the first progress line when run with
-        `check_site.mjs --hosted`. Why relaynet is that slow, against 64 KiB
-        per 230 ms round trip, is open. The CI relay does the real
-        download, so `archive.ubuntu.com` being down fails that check.
+        on loopback RootlessRelay.
+        Through relaynet it first ran at only about 16 KiB a second, and
+        the cause was not relaynet: the sample asks for a 5 KiB TCP receive
+        window, and window over round trip (230 ms) is 22 KB/s. The
+        `wasm-uplink` snippet, built on top of `wasm-ethernet` for this
+        entry only, asks for 32 KiB and the buffers to hold it; with it the
+        hash arrives through relaynet in under 90 s (not within 60 s, so
+        CI's relaynet run still asks only for the first progress line,
+        `hosted_expect`, as relaynet's speed varies). The CI relay does the
+        real download, so `archive.ubuntu.com` being down fails that check.
 - [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
       `mqtt_publisher` and most others use `192.0.2.1` with gateway and
       DNS `192.0.2.2`, which relaynet drops (documentation range).

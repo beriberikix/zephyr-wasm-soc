@@ -1719,7 +1719,7 @@
       "name": "bigdl",
       "kind": "sample",
       "title": "Big HTTP download",
-      "hint": "big_http_download fetches a 6.5 MB file from archive.ubuntu.com over plain HTTP, checks its SHA-256 and goes round again, counting what it has downloaded. It needs the real internet: press relaynet and paste an API token from relaynet.network, or start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/. On a local relay a round trip takes about 25 seconds; through relaynet it runs at about 16 KiB a second, so several minutes. The board runs on the real clock.",
+      "hint": "big_http_download fetches a 6.5 MB file from archive.ubuntu.com over plain HTTP, checks its SHA-256 and goes round again, counting what it has downloaded. It needs the real internet: press relaynet and paste an API token from relaynet.network, or start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/. On a local relay a round trip takes about 25 seconds; through relaynet it is a little over a minute. The board runs on the real clock.",
       "upstream": true,
       "clock": "paced",
       "endless": true,
@@ -1728,7 +1728,7 @@
       "ci_max_time_ms": 60000,
       "app": "zephyr/samples/net/sockets/big_http_download",
       "args": [
-        "-DSNIPPET=wasm-ethernet"
+        "-DSNIPPET=wasm-ethernet;wasm-uplink"
       ],
       "expect": [
         "Hash: 337c37d7ec00348414224baa6bdb2d43f2a34ef5676bafcdcad916f148b5b317"

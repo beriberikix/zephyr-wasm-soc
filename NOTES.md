@@ -2314,3 +2314,11 @@ A board's MAC comes from its seed, so two tabs on one relay shared it and
 relaynet gave the session back and forth. The page now passes a random seed
 of the browser's own to a run on a relay, kept in `localStorage`. Checked
 only by parsing the page script; no browser was run.
+
+`big_http_download` through relaynet ran at 16 KB/s, from CI and from a
+laptop alike. The relay's own docs say 64 KiB per round trip per connection,
+so the suspect was the board: the sample sets `NET_TCP_MAX_RECV_WINDOW_SIZE=5120`,
+and 5 KiB over relaynet's 230 ms is 22 KB/s. With 32 KiB and the RX buffers
+to hold it, 115 KB/s. That is the `wasm-uplink` snippet, used by this entry
+only (`apps.py` allows it for an uplink build, nothing else), so the other
+Ethernet builds keep their memory.

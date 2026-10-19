@@ -99,6 +99,9 @@ CATEGORIES = ("Kernel", "Drivers and sensors", "Display and input", "Storage",
               "Networking", "Bluetooth", "Subsystems", "Libraries", "Tests")
 
 
+UPLINK_SNIPPETS = "-DSNIPPET=wasm-ethernet;wasm-uplink"
+
+
 def category(b: dict, path: str) -> str:
     if b.get("category"):
         if b["category"] not in CATEGORIES:
@@ -203,10 +206,11 @@ def load(module: str) -> list[dict]:
             # the relay's DHCP gives it one.
             if "boards" in b:
                 sys.exit(f"apps.json: {b['name']}: an uplink is for one board, not a pair")
-            extra = [a for a in b.get("args", []) if a != "-DSNIPPET=wasm-ethernet"]
-            if extra or "-DSNIPPET=wasm-ethernet" not in b.get("args", []):
+            # wasm-uplink, on top of it, widens the TCP window for a sample
+            # whose own is too small to use a relay's round trip.
+            if b.get("args", []) not in (["-DSNIPPET=wasm-ethernet"], [UPLINK_SNIPPETS]):
                 sys.exit(f"apps.json: {b['name']} has an uplink, so it is built with "
-                         "-DSNIPPET=wasm-ethernet and nothing else")
+                         f"-DSNIPPET=wasm-ethernet or {UPLINK_SNIPPETS} and nothing else")
         if b.get("hci"):
             # A board whose Bluetooth controller is a real one on a serial
             # port (host/hci_serial.mjs), which the page reaches through Web
@@ -305,7 +309,8 @@ def check_uses(builds: list[dict], topdir: pathlib.Path) -> list[str]:
                                 "but the build has no GPIO controller")
         args = b.get("args", [])
         for key, snippet in (("radio", "wasm-bt"), ("network", "wasm-ethernet")):
-            if desc[key] != (f"-DSNIPPET={snippet}" in args):
+            if desc[key] != any(a.startswith("-DSNIPPET=") and snippet in a[len("-DSNIPPET="):].split(";")
+                                for a in args):
                 problems.append(f"{b['name']}: the build {'has' if desc[key] else 'has no'} "
                                 f"a {key}, but the {snippet} snippet says otherwise")
     return problems
