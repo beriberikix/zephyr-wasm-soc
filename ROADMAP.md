@@ -983,9 +983,9 @@ What happened to each:
         window, and window over round trip (230 ms) is 22 KB/s. The
         `wasm-uplink` snippet, built on top of `wasm-ethernet` for this
         entry only, asks for 32 KiB and the buffers to hold it; with it the
-        hash arrives through relaynet in under 90 s (not within 60 s, so
-        CI's relaynet run still asks only for the first progress line,
-        `hosted_expect`, as relaynet's speed varies). The CI relay does the
+        hash arrives through relaynet in under 90 s (not within 60 s), so
+        CI gives it `ci_max_time_ms` 120000 and expects the hash on the
+        local relay and on relaynet alike. The CI relay does the
         real download, so `archive.ubuntu.com` being down fails that check.
 - [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
       `mqtt_publisher` and most others use `192.0.2.1` with gateway and

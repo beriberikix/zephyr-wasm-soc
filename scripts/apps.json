@@ -1725,16 +1725,13 @@
       "endless": true,
       "uplink": true,
       "max_time_ms": 600000,
-      "ci_max_time_ms": 60000,
+      "ci_max_time_ms": 120000,
       "app": "zephyr/samples/net/sockets/big_http_download",
       "args": [
         "-DSNIPPET=wasm-ethernet;wasm-uplink"
       ],
       "expect": [
         "Hash: 337c37d7ec00348414224baa6bdb2d43f2a34ef5676bafcdcad916f148b5b317"
-      ],
-      "hosted_expect": [
-        "Download progress: 1023 Bytes"
       ]
     }
   ]
