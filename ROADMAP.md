@@ -10,7 +10,7 @@ Where this disagrees with the issue, this file is the newer document.
 ## The measure
 
 **Upstream Zephyr samples that pass their own acceptance criterion.** Score
-today: **111**. 62 pass upstream's own criterion, and 49 more are counted
+today: **112**. 62 pass upstream's own criterion, and 50 more are counted
 from the demo, below.
 
 The number is computed, not claimed. `scripts/check_samples.py` reads every
@@ -974,11 +974,13 @@ What happened to each:
       failed; `CONFIG_DNS_SERVER1=""` and `CONFIG_DNS_RESOLVER_MAX_SERVERS=2`
       both downloaded. The `wasm-ethernet` snippet now sets the latter, so
       the sample works as shipped (3 MB in 60 s of guest time on loopback).
-      - **Still to do: the gallery entry.** Add it to `apps.json` with a
-        generous `max_time_ms` (about 7 MB at relaynet's 64 KiB per round
-        trip), and an `expect` on the hash check the sample prints, not
-        only a lease. Not run to completion here, so the hash line is
-        unconfirmed.
+      - **In the gallery** as `bigdl` (score 111 to 112). It loops
+        forever, so it is `endless`; its `expect` is the SHA-256 the sample
+        prints after the first 6 MiB, which took about 25 s of guest time
+        on loopback RootlessRelay. Through relaynet it should take about as
+        long (64 KiB per 230 ms round trip) but has not been run. The CI
+        relay does the real download, so `archive.ubuntu.com` being down
+        fails that check.
 - [ ] **Static-address samples on relaynet.** `http_get`, `sntp_client`,
       `mqtt_publisher` and most others use `192.0.2.1` with gateway and
       DNS `192.0.2.2`, which relaynet drops (documentation range).
