@@ -998,10 +998,15 @@ What happened to each:
       repeatable output relies on. Not run in a browser here: the script
       parses, and the seed reaches the worker through the existing
       `msg.seed`.
-- [ ] **relaynet in CI, when a token is there.** A job gated on a
-      `RELAYNET_TOKEN` secret, so forks' pull requests never see it, that
-      runs `check_site.mjs` for the uplink builds against relaynet. Use a
-      dedicated account or token; sessions count against its limit of 4.
+- [x] **relaynet in CI, when a token is there.** A step in `pages.yml`
+      runs `check_site.mjs --only dhcp,bigdl` against relaynet with the
+      `RELAYNET_TOKEN` repository secret, and skips, saying so, when there
+      is none (a fork's pull request is given no secrets). The token is in
+      that step's environment only. Use a dedicated token: sessions count
+      against its limit of 4. Written but not yet run with a token; the
+      first run with the secret set is the check. A relaynet outage fails
+      the job and so blocks the deploy; make the step `continue-on-error`
+      if that is not wanted. The browser check still uses the local relay.
 - [ ] **Inbound through the relay.** RootlessRelay's reverse proxy may
       reach a board's server (`dumb_http_server`); not tried yet.
 - [x] **The host as the LAN** (`DESIGN.md` D8m), which raised the score

@@ -136,6 +136,23 @@ jobs:
       - name: Check the builds actually run
         run: node zephyr-wasm/scripts/check_site.mjs _site --uplink-relay ws://127.0.0.1:8086/
 
+      # The same two builds through relaynet, the hosted relay, with a token
+      # of the repository's own (Settings > Secrets > RELAYNET_TOKEN). A fork's
+      # pull request is given no secrets, and the step says so and passes.
+      # The token is in this step's environment only, and host/uplink.mjs
+      # sends it to relaynet's host and nowhere else. Use a dedicated token:
+      # a session counts against relaynet's limit of 4.
+      - name: Check the builds on relaynet
+        env:
+          RELAYNET_TOKEN: ${{ secrets.RELAYNET_TOKEN }}
+        run: |
+          if [ -z "$RELAYNET_TOKEN" ]; then
+            echo "no RELAYNET_TOKEN secret here (a fork, or none set): skipped"
+            exit 0
+          fi
+          url=$(node -e "import('./zephyr-wasm/host/uplink.mjs').then(m => console.log(m.RELAYNET_URL))")
+          node zephyr-wasm/scripts/check_site.mjs _site --only dhcp,bigdl --uplink-relay "$url"
+
       - name: Check two runs are identical
         run: ./zephyr-wasm/scripts/check_determinism.sh _site/m/sem.wasm --max-time 60000
 
