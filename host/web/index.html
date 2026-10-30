@@ -350,6 +350,8 @@
            title="A relay that speaks v86's wsproxy protocol, such as RootlessRelay. Used from the next Run.">Uplink</label>
     <input id="uplink" type="url" placeholder="ws://127.0.0.1:8086/"
            spellcheck="false" autocomplete="off" aria-label="relay URL">
+    <button id="uplinkRelaynet" type="button"
+            title="relaynet's hosted relay: nothing to run, and a temporary demo token (15 minutes) is fetched on Run.">Real network (relaynet)</button>
   </div>
   <!-- For a build whose Bluetooth controller is a real one on a serial port,
        through Web Serial: an nRF54L15-DK running upstream's
@@ -1224,12 +1226,50 @@ const speeds = new Map(Object.entries(remembered.get('speeds') ?? {}));
 
 /* The relay a build on a real network goes through, if the person gave one:
  * ?uplink= for this visit, or what they typed last time. Nothing is ever
- * opened without it, and the page names no relay of its own. */
+ * opened without it. "relaynet" (the button, or ?uplink=relaynet) names
+ * relaynet's hosted relay, which hands a page a demo token of its own. */
+const RELAYNET_UPLINKS = {
+  relaynet: 'wss://relay.relaynet.network/',
+  'relaynet-staging': 'wss://relay-staging.relaynet.network/',
+};
+const RELAYNET_HOSTS = ['relay.relaynet.network', 'relay-staging.relaynet.network'];
 const uplinkRowEl = document.getElementById('uplinkRow');
 const uplinkEl = document.getElementById('uplink');
 uplinkEl.value = new URLSearchParams(location.search).get('uplink') ?? remembered.get('uplink') ?? '';
 uplinkEl.onchange = () => remembered.set('uplink', uplinkEl.value.trim());
-const uplinkUrl = () => (/^wss?:\/\/\S+$/.test(uplinkEl.value.trim()) ? uplinkEl.value.trim() : null);
+const uplinkUrl = () => {
+  const value = uplinkEl.value.trim();
+  if (RELAYNET_UPLINKS[value]) return RELAYNET_UPLINKS[value];
+  return /^wss?:\/\/\S+$/.test(value) ? value : null;
+};
+const isRelaynet = (url) => {
+  try { return RELAYNET_HOSTS.includes(new URL(url).host); } catch { return false; }
+};
+document.getElementById('uplinkRelaynet').onclick = () => {
+  uplinkEl.value = 'relaynet';
+  remembered.set('uplink', 'relaynet');
+};
+
+/* A demo token from relaynet: 15 minutes, one session. When it cannot give
+ * one, the relay says why, and so does the status line. Each Run asks
+ * again, so Run is also how to reconnect. */
+async function relaynetToken(url) {
+  const http = new URL(url);
+  http.protocol = http.protocol === 'ws:' ? 'http:' : 'https:';
+  try {
+    const res = await fetch(`${http.origin}/api/anon/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.token) return { token: body.token };
+    if (body.error === 'free-tier-paused') return { message: `relaynet's free tier is paused until ${body.pausedUntil}.` };
+    if (body.error === 'relay-full') return { message: 'The relay is full. Try again in a few minutes.' };
+    if (body.error === 'anon-token-rate-limited') return { message: 'Too many demo tokens from this network. Try again later.' };
+    return { message: `relaynet refused a demo token (${body.error ?? res.status}).` };
+  } catch {
+    return { message: 'Could not reach relaynet.' };
+  }
+}
 /* The real Bluetooth controller's row, and its port when one is open (see
  * hciPump below). */
 const hciRowEl = document.getElementById('hciRow');
@@ -1419,6 +1459,22 @@ async function start() {
     setRunning(false);
     return;
   }
+  /* relaynet's relay wants a token; with none given the page asks it for a
+   * demo one, before the board boots so its first DHCP discover has a link. */
+  let uplinkToken = null;
+  if (build.uplink && uplinkUrl() && isRelaynet(uplinkUrl())) {
+    statusEl.textContent = 'Asking relaynet for a demo token...';
+    const got = await relaynetToken(uplinkUrl());
+    if (selected !== build.name || stopping) {
+      setRunning(false);
+      return;
+    }
+    if (!got.token) {
+      endRun(got.message);
+      return;
+    }
+    uplinkToken = got.token;
+  }
   const interactive = !!build.interactive;
   /* A two-board build runs its first board here, as a single build runs,
    * and its second in a Worker of its own, with the page as the wire. */
@@ -1490,7 +1546,7 @@ async function start() {
   runStatus = build.hci === 'serial' && hciPort
     ? 'Running, with a real Bluetooth controller.'
     : build.uplink && uplinkUrl()
-    ? 'Running, on a real network through the relay.'
+    ? (isRelaynet(uplinkUrl()) ? 'Running, on a real network through relaynet.' : 'Running, on a real network through the relay.')
     : build.lan
       ? 'Running, on the simulated network the page plays.'
       : build.uplink
@@ -1531,6 +1587,7 @@ async function start() {
       timeScale: paced ? Number(speedEl.value) : 1,
       flashImage,
       uplink: build.uplink ? uplinkUrl() : null,
+      uplinkToken,
       lan: build.lan ?? null,
       /* One's own radio build may run without a real controller, on the
        * one the page emulates, with nobody to hear it. */

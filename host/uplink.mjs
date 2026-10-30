@@ -14,6 +14,11 @@
  *
  *   ENABLE_WSS=false npx rootlessrelay        # ws://127.0.0.1:8086/
  *
+ * A hosted relay that wants a token (relaynet, RootlessRelay in hosted mode)
+ * takes it as a WebSocket subprotocol, next to "relay.v1": `token` below.
+ * Such a relay explains a refusal by closing the socket with a code and a
+ * reason, which the closing line shows.
+ *
  * Node 22 and a Worker both have WebSocket built in, so this one module
  * serves both, with nothing to install.
  *
@@ -43,9 +48,11 @@ const PENDING_MAX = 64;
  * @param url       ws:// or wss:// URL of a wsproxy relay
  * @param onStatus  called with a line of text for the terminal when the link
  *                  closes or fails after opening
+ * @param token     for a relay that wants one: sent as the subprotocols
+ *                  "relay.v1" and "relay.token.<token>"
  */
-export function connectUplink(host, url, onStatus = () => {}) {
-  const ws = new WebSocket(url);
+export function connectUplink(host, url, onStatus = () => {}, { token = null } = {}) {
+  const ws = token ? new WebSocket(url, ['relay.v1', `relay.token.${token}`]) : new WebSocket(url);
   ws.binaryType = 'arraybuffer';
   let open = false;
   let closing = false;      // closed from this end, which needs no notice
@@ -83,14 +90,19 @@ export function connectUplink(host, url, onStatus = () => {}) {
         reject(new Error(`could not reach the relay at ${url}`));
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      /* 1006 is the browser's "no close frame": a refused upgrade or a lost
+       * connection. Any other code came from the relay, often with why. */
+      const why = event.code && event.code !== 1006
+        ? ` (${event.code}${event.reason ? `: ${event.reason}` : ''})`
+        : '';
       if (!open) {
         restore();
-        reject(new Error(`could not reach the relay at ${url}`));
+        reject(new Error(`could not reach the relay at ${url}${why}`));
         return;
       }
       open = false;
-      if (!closing) onStatus(`*** the relay at ${url} closed the link ***`);
+      if (!closing) onStatus(`*** the relay at ${url} closed the link${why} ***`);
     };
   });
 }
