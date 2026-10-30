@@ -98,9 +98,10 @@ log, including what did not work. `BRIEF.md` is the original task.
   unmodified, with nothing leaving the page and the same output every
   run; what the network did shows as lines stamped `[lan <guest time>]`. `run.mjs --lan` in
   Node.
-* A real network, through a relay you run: the board's Ethernet frames go
-  over a WebSocket to any relay that speaks v86's wsproxy protocol, and
-  `dhcpv4_client` gets a real lease. See "A real network" below.
+* A real network, through a relay you run or relaynet's hosted one: the
+  board's Ethernet frames go over a WebSocket to any relay that speaks v86's
+  wsproxy protocol, and `dhcpv4_client` gets a real lease. See "A real
+  network" below.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
@@ -384,9 +385,18 @@ node zephyr-wasm/host/run.mjs --uplink ws://127.0.0.1:8086/ --interactive \
 ```
 
 On the page, choose "DHCP client on a real network", put the same URL in
-Uplink and press Run. It is empty until you fill it, and the page names no
-relay of its own. Chrome may ask before letting the site reach your
-machine. The board gets `10.0.2.15`; `net ping 10.0.2.2` and `net dns
+Uplink and press Run. It is empty until you fill it. Chrome may ask before
+letting the site reach your machine.
+
+Or, with nothing to run, press **Real network (relaynet)** (or open the page
+with `?uplink=relaynet`): the board goes through
+[relaynet](https://relaynet.network)'s hosted relay, a RootlessRelay in
+hosted mode. On Run the page asks it for a demo token (15 minutes, one
+session, web ports only) and the uplink sends it as the subprotocols
+`relay.v1` and `relay.token.<token>`. When relaynet cannot give one (its
+free tier is paused for the month, or it is full) the status line says why,
+and when it closes the link the terminal shows the code and reason. Run
+again to reconnect. `?uplink=relaynet-staging` uses its staging relay. The board gets `10.0.2.15`; `net ping 10.0.2.2` and `net dns
 zephyrproject.org` in its shell go through the relay. An uplinked board
 follows the wall clock, so unlike everything else here its runs are not
 repeatable.
