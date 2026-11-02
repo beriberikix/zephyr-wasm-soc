@@ -957,9 +957,12 @@ What happened to each:
         cannot resolve its server's name, on relaynet and on RootlessRelay
         alike. The suspect is its static DNS server `192.0.2.2`, kept
         after DHCP offers a real one; not confirmed (see below).
-- [ ] **Try the page on relaynet with a real token.** Node was run against
-      the production service; the page was only checked on localhost, with
-      a relay on loopback and with relaynet but no token. To check: stage
+- [x] **Try the page on relaynet with a real token.** Done 2026-11-02: the
+      page, served under its github.io origin, took a pasted API token
+      without asking for a demo one, leased 10.0.2.17 on the account's
+      network and resolved zephyrproject.org; Node did the same with
+      `$RELAYNET_TOKEN`. Before that, Node was run against the production
+      service and the page only on localhost. To check: stage
       the site, choose "DHCP client", press Real network (relaynet), paste
       a token, Run,
       then `net ping 10.0.2.2` and `net dns zephyrproject.org`. From a
