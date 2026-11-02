@@ -1694,7 +1694,7 @@
       "name": "dhcp",
       "kind": "sample",
       "title": "DHCP client",
-      "hint": "dhcpv4_client asks for an address and prints its lease. The page plays a Linux host at 192.0.2.2 on a simulated network and hands it 192.0.2.1; nothing leaves the page. In its shell, try `net iface`, `net ping 192.0.2.2` or `net dns zephyrproject.org`. Uplink is optional and can stay empty. To put the board on a real network instead, press relaynet and paste an API token from relaynet.network, or start a relay on your machine with `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/: the relay's own network gives it 10.0.2.15 or the next free address, with 10.0.2.2 as its gateway.",
+      "hint": "dhcpv4_client asks for an address and prints its lease. The page plays a Linux host at 192.0.2.2 on a simulated network and hands it 192.0.2.1; nothing leaves the page. In its shell, try `net iface`, `net ping 192.0.2.2` or `net dns zephyrproject.org`. Uplink is optional and can stay empty. To put the board on the internet instead, click Real network (relaynet): there is nothing to run, and a 15-minute demo token is fetched on Run, or paste an API token from relaynet.network for longer sessions. The relay gives it 10.0.2.15 or the next free address, with 10.0.2.2 as its gateway; in its shell try `net dns zephyrproject.org`. To use a relay on your own machine, start `ENABLE_WSS=false npx rootlessrelay` and set Uplink to ws://127.0.0.1:8086/.",
       "lan": true,
       "upstream": true,
       "clock": "paced",

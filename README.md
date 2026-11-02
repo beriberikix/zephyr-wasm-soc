@@ -98,10 +98,11 @@ log, including what did not work. `BRIEF.md` is the original task.
   unmodified, with nothing leaving the page and the same output every
   run; what the network did shows as lines stamped `[lan <guest time>]`. `run.mjs --lan` in
   Node.
-* A real network, through a relay: the board's Ethernet frames go over a
-  WebSocket to any relay that speaks v86's wsproxy protocol, one you run or
-  [relaynet](https://relaynet.network), a hosted one, with a token of your
-  own. `dhcpv4_client` gets a real lease. See "A real network" below.
+* A real network, through [relaynet](https://relaynet.network)'s hosted
+  relay, with a demo token or one of your own, or through a relay you run:
+  the board's Ethernet frames go over a WebSocket to any relay that speaks
+  v86's wsproxy protocol, and `dhcpv4_client` gets a real lease. See "A
+  real network" below.
 * 47 upstream samples pass their own twister criterion, unmodified, out of
   the 102 that twister itself would run on this board. Among them the
   meta-IRQ dispatcher, condition variables, message queues, RTIO, two zbus
@@ -374,43 +375,53 @@ are not supported.
 ### A real network
 
 A tab cannot open raw sockets, so a board reaches a real network through a
-relay on your machine. Any relay written for v86 works, since the board's
-frames go over a WebSocket one per message, which is v86's wsproxy
-protocol. RootlessRelay needs neither root nor a TAP device:
+relay: its Ethernet frames go over a WebSocket one per message, which is
+v86's wsproxy protocol.
 
-```sh
-ENABLE_WSS=false npx rootlessrelay            # listens on ws://127.0.0.1:8086/
-node zephyr-wasm/host/run.mjs --uplink ws://127.0.0.1:8086/ --interactive \
-    build-dhcp/zephyr/zephyr.wasm             # built with -DSNIPPET=wasm-ethernet
-```
+The quickest is [relaynet](https://relaynet.network), a hosted RootlessRelay,
+so nothing has to run on your machine. On the page, choose "DHCP client on a
+real network" and press **Real network (relaynet)** (or open the page with
+`?uplink=relaynet`), then Run. With no token of your own, the page asks
+relaynet for a demo token (15 minutes, one session, web ports only); for
+longer sessions and your account's limits, sign in at relaynet.network,
+create an API token and paste it into the Token field that appears. Either
+way the uplink sends it as the subprotocols `relay.v1` and
+`relay.token.<token>`, to relaynet only. A pasted token is kept in that tab
+and never put in the address. `?uplink=relaynet-staging` uses its staging
+relay.
 
-On the page, choose "DHCP client on a real network", put the same URL in
-Uplink and press Run. It is empty until you fill it, and the page names no
-relay of its own. Chrome may ask before letting the site reach your
-machine. The board gets `10.0.2.15`; `net ping 10.0.2.2` and `net dns
-zephyrproject.org` in its shell go through the relay. An uplinked board
-follows the wall clock, so unlike everything else here its runs are not
-repeatable.
-
-[relaynet](https://relaynet.network) is RootlessRelay hosted, so nothing
-has to run on your machine. It takes an API token: sign in, create one
-under API tokens, and keep it to yourself.
+From Node, the token comes from the environment, as relaynet-bridge takes it:
 
 ```sh
 export RELAYNET_TOKEN=rr_...                 # sent to relaynet only
 node zephyr-wasm/host/run.mjs --uplink relaynet --interactive \
+    build-dhcp/zephyr/zephyr.wasm             # built with -DSNIPPET=wasm-ethernet
+```
+
+The board gets `10.0.2.15`; `net ping 10.0.2.2` and `net dns
+zephyrproject.org` in its shell go through the relay. The pings take about
+230 ms, the round trip to California. When relaynet cannot give a demo token
+(its free tier is paused for the month, or it is full) the status line says
+why, and when it closes the link the terminal shows the code and reason. If
+a session drops, the link reconnects, and the board keeps its address if it
+renews within 60 s; its connections to the internet do not survive, as on
+any network that goes away. Each browser gets a MAC of its own, but two tabs
+of one browser running the same build share it, and relaynet would hand the
+session back and forth between them, so run one at a time. An uplinked board
+follows the wall clock, so unlike everything else here its runs are not
+repeatable.
+
+To use a relay on your own machine instead, for example offline: any relay
+written for v86 works, and RootlessRelay needs neither root nor a TAP device.
+
+```sh
+ENABLE_WSS=false npx rootlessrelay            # listens on ws://127.0.0.1:8086/
+node zephyr-wasm/host/run.mjs --uplink ws://127.0.0.1:8086/ --interactive \
     build-dhcp/zephyr/zephyr.wasm
 ```
 
-On the page, press relaynet next to Uplink and paste the token into the
-Token field that appears. The page keeps the token in that tab only and
-never puts it in the address. relaynet's network is `10.0.2.0/24` too, so
-the same commands work; the pings take about 230 ms, the round trip to
-California. If the session drops, the link reconnects, and the board keeps
-its address if it renews within 60 s. Its connections to the internet do
-not survive, as on any network that goes away. Two tabs running the same
-build share a MAC, and relaynet would hand the session back and forth
-between them, so run one at a time.
+On the page, put the same URL in Uplink and press Run. Chrome may ask before
+letting the site reach your machine.
 
 Most network samples ship with a static `192.0.2.1`, gateway and DNS
 `192.0.2.2`. relaynet cannot serve those: it blocks the documentation

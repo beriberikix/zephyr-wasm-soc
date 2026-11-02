@@ -940,8 +940,9 @@ What happened to each:
       kartben/zephyr-in-the-browser (the `192.0.2.x` addressing, and an
       opt-in bridge).
 - [x] **relaynet, a hosted relay** (`DESIGN.md` D8l). `run.mjs --uplink
-      relaynet`, with the token in `$RELAYNET_TOKEN`, and on the page a
-      relaynet button and a Token field. The link speaks `relay.v1`
+      relaynet`, with the token in `$RELAYNET_TOKEN`, and on the page the
+      Real network (relaynet) button, which fetches a demo token unless one
+      is pasted into the Token field. The link speaks `relay.v1`
       through relaynet's own helper, vendored, and reconnects when a
       session drops. `dhcpv4_client` gets a lease from the production
       service and, from its shell, pings the gateway and resolves real
@@ -959,7 +960,8 @@ What happened to each:
 - [ ] **Try the page on relaynet with a real token.** Node was run against
       the production service; the page was only checked on localhost, with
       a relay on loopback and with relaynet but no token. To check: stage
-      the site, choose "DHCP client", press relaynet, paste a token, Run,
+      the site, choose "DHCP client", press Real network (relaynet), paste
+      a token, Run,
       then `net ping 10.0.2.2` and `net dns zephyrproject.org`. From a
       page served from github.io the helper's `/api/me` check is blocked
       by CORS, so a bad token only says the relay could not be reached;

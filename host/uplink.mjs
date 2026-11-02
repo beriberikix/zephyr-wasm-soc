@@ -38,11 +38,12 @@
 
 import { connectRelay, RELAY_URL } from './relaynet.mjs';
 
-/* relaynet's endpoint, which takes no session without a token. */
+/* relaynet's endpoints, which take no session without a token. The page's
+ * ?uplink=relaynet-staging names the second, so it gets the token too. */
 export const RELAYNET_URL = RELAY_URL;
-const RELAYNET_HOST = new URL(RELAY_URL).host;
+const RELAYNET_HOSTS = [new URL(RELAY_URL).host, 'relay-staging.relaynet.network'];
 export const isRelaynet = (url) => {
-  try { return new URL(url).host === RELAYNET_HOST; } catch { return false; }
+  try { return RELAYNET_HOSTS.includes(new URL(url).host); } catch { return false; }
 };
 
 /* An Ethernet frame without its FCS: 1500 bytes of payload, 14 of header and
@@ -112,14 +113,19 @@ export function connectUplink(host, url, onStatus = () => {}, token = null) {
         reject(new Error(`could not reach the relay at ${url}`));
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      /* 1006 is the browser's "no close frame": a refused upgrade or a lost
+       * connection. Any other code came from the relay, often with why. */
+      const why = event.code && event.code !== 1006
+        ? ` (${event.code}${event.reason ? `: ${event.reason}` : ''})`
+        : '';
       if (!open) {
         restore();
-        reject(new Error(`could not reach the relay at ${url}`));
+        reject(new Error(`could not reach the relay at ${url}${why}`));
         return;
       }
       open = false;
-      if (!closing) onStatus(`*** the relay at ${url} closed the link ***`);
+      if (!closing) onStatus(`*** the relay at ${url} closed the link${why} ***`);
     };
   });
 }
