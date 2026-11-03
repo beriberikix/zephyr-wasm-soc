@@ -1024,6 +1024,46 @@ from Node.
 - **Chrome.** From an https page, Chrome may ask before letting the site
   reach a relay on the local machine.
 
+**relaynet.** relaynet is RootlessRelay in its hosted mode, for many
+accounts at once, at `wss://relay.relaynet.network/`. The frames are the
+same. What differs is the handshake: the socket asks for the `relay.v1`
+subprotocol and carries an API token as a second entry, `relay.token.<t>`,
+since a browser cannot set headers on a WebSocket. `host/uplink.mjs` uses
+relaynet's own client helper for that link, vendored as
+`host/relaynet.mjs`, rather than a second copy of its session rules. It
+also keeps the session alive. A `ping:` heartbeat notices a dead socket.
+A dropped session is reconnected with backoff, except after a final close
+(`1008`, a revoked token or a used-up quota), and the terminal says what
+happened. The board's MAC comes from its seed, so it is the same after a
+reconnect, and a renewal within relaynet's 60 s hold returns the same
+address. The relay ends connections to the internet with the session, and
+the board sees them reset.
+
+- **The token goes to relaynet only.** The link decides by the URL's
+  host: relaynet's endpoint gets the token, and any other relay is spoken
+  to as plain wsproxy with no token at all, even when one is set. So
+  `RELAYNET_TOKEN` in the environment does not leak to a relay on
+  loopback. `run.mjs` takes the token from that variable, the name
+  relaynet-bridge uses, so it is in no command line. The page keeps it in
+  `sessionStorage`, for one tab, and never in the address or in
+  `localStorage`. A github.io origin is shared by every project page of
+  its owner.
+- **Named, still off.** The page now names one relay, relaynet, as a
+  button that fills in Uplink. The publisher runs relaynet, so naming it is
+  that publisher's decision, which the original rule left to them. Nothing
+  connects until someone presses the button, gives a token and runs the
+  build, and visitors bring their own tokens.
+- **Errors.** Without a token the run ends before boot with a message
+  saying where to get one. A refused token ends it with relaynet's reason
+  (`invalid-token`, `token-expired`). The helper asks `/api/me`, which
+  answers from Node and is blocked by CORS on other sites' pages, so there
+  the run says only that the relay could not be reached.
+- **Addresses.** relaynet's DHCP gives `10.0.2.15` and up, gateway
+  `10.0.2.2`, DNS `8.8.8.8`, and it drops traffic to private and
+  documentation ranges. So only builds that take their address from DHCP
+  work on it. The static-address samples need a RootlessRelay of one's own
+  with `upstream/rootlessrelay/0001`.
+
 **Inbound** is the relay's business. RootlessRelay has a reverse proxy
 for it, and whether a board's server can be reached through it is not
 checked yet. zephyr-v86 recorded its relays as outbound only.
